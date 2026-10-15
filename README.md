@@ -2,22 +2,65 @@
 
 Segnapunti web per i tornei tra amici su F1 25.
 
-- **Backend**: Node.js + Express, database SQLite (modulo integrato `node:sqlite`)
-- **Frontend**: HTML/CSS/JavaScript senza framework
+- **Backend**: Go (solo libreria standard `net/http`), database SQLite con `modernc.org/sqlite` (Go puro, niente CGO)
+- **Frontend**: HTML/CSS/JavaScript senza framework, incorporato nel binario con `go:embed`
 - **Persistenza**: tutti i dati sono salvati in `data/scoreboard.db`
 
-## Avvio
+Il risultato della build è **un unico eseguibile** (~15 MB) che contiene server e frontend.
 
-Serve Node.js 22.13 o superiore.
+## Struttura
 
-```sh
-npm install
-npm start        # http://localhost:3000
-npm run dev      # riavvio automatico quando modifichi i file
-npm test         # smoke test delle API su un DB temporaneo
+```
+main.go                 avvio, configurazione, spegnimento pulito
+internal/api/           handler HTTP delle API REST
+internal/scoring/       punteggi F1 2025 e calcolo della classifica
+internal/store/         apertura del DB e migrazioni (migrations/NNN_*.sql)
+web/public/             frontend
 ```
 
-Variabili d'ambiente opzionali: `PORT` (default `3000`) e `DB_PATH` (default `data/scoreboard.db`).
+## Sviluppo
+
+Serve Go 1.26 o superiore (con `GOTOOLCHAIN=auto`, il default, Go lo scarica da solo).
+
+```sh
+go run .                 # http://localhost:3000
+go test ./...            # test delle API e del punteggio
+```
+
+Per vedere subito le modifiche al frontend senza ricompilare, servilo dal disco:
+
+```powershell
+$env:WEB_DIR = "web/public"; go run .
+```
+
+Variabili d'ambiente opzionali:
+
+| Variabile | Default              | Descrizione                                  |
+|-----------|----------------------|----------------------------------------------|
+| `PORT`    | `3000`               | Porta HTTP                                   |
+| `DB_PATH` | `data/scoreboard.db` | Percorso del database (relativo alla cartella di avvio) |
+| `WEB_DIR` | —                    | Se impostata, serve il frontend da questa cartella invece che dal binario |
+
+## Build e deploy
+
+Da Windows (PowerShell) si compila per qualsiasi destinazione:
+
+```powershell
+go build -o bin/f1-scoreboard.exe .                                          # Windows
+$env:GOOS="linux"; $env:GOARCH="arm64"; go build -o bin/f1-scoreboard-arm64 .  # Raspberry Pi (OS a 64 bit)
+$env:GOOS="linux"; $env:GOARCH="arm";   go build -o bin/f1-scoreboard-arm .    # Raspberry Pi (OS a 32 bit)
+$env:GOOS="linux"; $env:GOARCH="amd64"; go build -o bin/f1-scoreboard-amd64 .  # PC / thin client Linux
+Remove-Item Env:GOOS, Env:GOARCH                                               # torna alla build locale
+```
+
+Per il deploy basta copiare l'eseguibile sulla macchina di destinazione e avviarlo.
+
+## Database
+
+Lo schema è gestito da migrazioni SQL in `internal/store/migrations/`, applicate all'avvio.
+La versione corrente è salvata in `PRAGMA user_version`. Per modificare lo schema si aggiunge un
+nuovo file con il numero successivo (es. `002_telemetria.sql`): i file già esistenti non vanno
+mai modificati. I database creati dalla vecchia versione Node.js vengono adottati senza modifiche.
 
 ## Punteggio (regolamento F1 2025)
 
