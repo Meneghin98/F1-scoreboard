@@ -1,0 +1,41 @@
+// Suggerimenti per i campi circuito e scuderia (calendario e team F1 2025).
+
+export const TRACKS = [
+  'Australia – Melbourne',
+  'Cina – Shanghai',
+  'Giappone – Suzuka',
+  'Bahrain – Sakhir',
+  'Arabia Saudita – Jeddah',
+  'Miami',
+  'Emilia-Romagna – Imola',
+  'Monaco',
+  'Spagna – Barcellona',
+  'Canada – Montréal',
+  'Austria – Red Bull Ring',
+  'Gran Bretagna – Silverstone',
+  'Belgio – Spa-Francorchamps',
+  'Ungheria – Hungaroring',
+  'Olanda – Zandvoort',
+  'Italia – Monza',
+  'Azerbaijan – Baku',
+  'Singapore – Marina Bay',
+  'USA – Austin',
+  'Messico – Città del Messico',
+  'Brasile – Interlagos',
+  'Las Vegas',
+  'Qatar – Lusail',
+  'Abu Dhabi – Yas Marina',
+];
+
+export const TEAMS = [
+  'McLaren',
+  'Ferrari',
+  'Red Bull Racing',
+  'Mercedes',
+  'Aston Martin',
+  'Alpine',
+  'Haas',
+  'Racing Bulls',
+  'Williams',
+  'Kick Sauber',
+];

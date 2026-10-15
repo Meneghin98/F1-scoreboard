@@ -4,3 +4,5 @@ bin/
 *.exe
 *.log
 .env
+web/dist/*
+!web/dist/.gitkeep

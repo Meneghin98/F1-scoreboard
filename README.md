@@ -3,7 +3,7 @@
 Segnapunti web per i tornei tra amici su F1 25.
 
 - **Backend**: Go (solo libreria standard `net/http`), database SQLite con `modernc.org/sqlite` (Go puro, niente CGO)
-- **Frontend**: HTML/CSS/JavaScript senza framework, incorporato nel binario con `go:embed`
+- **Frontend**: React 19 + TypeScript + Tailwind CSS 4, compilato con Vite e incorporato nel binario con `go:embed`
 - **Persistenza**: tutti i dati sono salvati in `data/scoreboard.db`
 
 Il risultato della build è **un unico eseguibile** (~15 MB) che contiene server e frontend.
@@ -12,25 +12,37 @@ Il risultato della build è **un unico eseguibile** (~15 MB) che contiene server
 
 ```
 main.go                 avvio, configurazione, spegnimento pulito
+cmd/seed/               dati di esempio per lo sviluppo
 internal/api/           handler HTTP delle API REST
 internal/scoring/       punteggi F1 2025 e calcolo della classifica
 internal/store/         apertura del DB e migrazioni (migrations/NNN_*.sql)
-web/public/             frontend
+web/src/                frontend React (components/ e lib/ con client API e tipi)
+web/dist/               build del frontend, incorporata nel binario (non versionata)
 ```
 
 ## Sviluppo
 
-Serve Go 1.26 o superiore (con `GOTOOLCHAIN=auto`, il default, Go lo scarica da solo).
+Servono Go 1.26+ (con `GOTOOLCHAIN=auto`, il default, Go lo scarica da solo) e Node.js 22.12+.
 
 ```sh
-go run .                 # http://localhost:3000
-go test ./...            # test delle API e del punteggio
+cd web && npm install    # solo la prima volta
 ```
 
-Per vedere subito le modifiche al frontend senza ricompilare, servilo dal disco:
+Poi, in due terminali:
 
-```powershell
-$env:WEB_DIR = "web/public"; go run .
+```sh
+go run .                 # API su http://localhost:3000
+cd web && npm run dev    # frontend con hot reload su http://localhost:5173 (inoltra /api al server Go)
+```
+
+Per avere qualcosa da vedere, `go run ./cmd/seed` inserisce piloti, due tornei e una decina di gare
+di esempio (non fa nulla se nel database ci sono già tornei).
+
+Test e controlli:
+
+```sh
+go test ./...            # test delle API e del punteggio
+cd web && npm run typecheck
 ```
 
 Variabili d'ambiente opzionali:
@@ -39,21 +51,24 @@ Variabili d'ambiente opzionali:
 |-----------|----------------------|----------------------------------------------|
 | `PORT`    | `3000`               | Porta HTTP                                   |
 | `DB_PATH` | `data/scoreboard.db` | Percorso del database (relativo alla cartella di avvio) |
-| `WEB_DIR` | —                    | Se impostata, serve il frontend da questa cartella invece che dal binario |
+| `WEB_DIR` | —                    | Se impostata, serve il frontend da questa cartella (es. `web/dist`) invece che dal binario |
 
 ## Build e deploy
 
-Da Windows (PowerShell) si compila per qualsiasi destinazione:
+Prima si compila il frontend, poi il binario Go che lo incorpora. Da Windows (PowerShell):
 
 ```powershell
-go build -o bin/f1-scoreboard.exe .                                          # Windows
+npm --prefix web run build                                                     # frontend → web/dist
+go build -o bin/f1-scoreboard.exe .                                            # Windows
 $env:GOOS="linux"; $env:GOARCH="arm64"; go build -o bin/f1-scoreboard-arm64 .  # Raspberry Pi (OS a 64 bit)
 $env:GOOS="linux"; $env:GOARCH="arm";   go build -o bin/f1-scoreboard-arm .    # Raspberry Pi (OS a 32 bit)
 $env:GOOS="linux"; $env:GOARCH="amd64"; go build -o bin/f1-scoreboard-amd64 .  # PC / thin client Linux
 Remove-Item Env:GOOS, Env:GOARCH                                               # torna alla build locale
 ```
 
-Per il deploy basta copiare l'eseguibile sulla macchina di destinazione e avviarlo.
+Se si compila Go senza aver prima buildato il frontend, il server parte comunque ma segnala
+nel log che il frontend manca. Per il deploy basta copiare l'eseguibile sulla macchina di
+destinazione e avviarlo.
 
 ## Database
 

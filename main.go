@@ -34,6 +34,9 @@ func main() {
 	if dir := os.Getenv("WEB_DIR"); dir != "" {
 		static = os.DirFS(dir)
 	}
+	if _, err := fs.Stat(static, "index.html"); err != nil {
+		log.Print("attenzione: frontend non trovato, esegui \"npm run build\" in web/ prima di go build")
+	}
 
 	srv := &http.Server{Addr: ":" + port, Handler: api.New(db, static)}
 
