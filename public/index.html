@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>F1 2025 Scoreboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1><span class="accent">F1</span> 2025 Scoreboard</h1>
+    <div class="tournament-picker">
+      <select id="tournament-select" aria-label="Torneo"></select>
+      <button id="new-tournament" class="btn">+ Torneo</button>
+      <button id="delete-tournament" class="btn btn-ghost" title="Elimina torneo">Elimina</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="standings">Classifica</button>
+    <button class="tab" data-tab="races">Gare</button>
+    <button class="tab" data-tab="players">Piloti</button>
+  </nav>
+
+  <main>
+    <p id="no-tournament" class="empty" hidden>Crea un torneo per iniziare.</p>
+
+    <section id="tab-standings" class="panel">
+      <div id="standings"></div>
+    </section>
+
+    <section id="tab-races" class="panel" hidden>
+      <form id="race-form" class="card form-row">
+        <input name="track" list="tracks" placeholder="Circuito" required>
+        <select name="type">
+          <option value="race">Gran Premio</option>
+          <option value="sprint">Sprint</option>
+        </select>
+        <input name="date" type="date">
+        <button class="btn">Aggiungi gara</button>
+      </form>
+      <div id="races"></div>
+    </section>
+
+    <section id="tab-players" class="panel" hidden>
+      <form id="player-form" class="card form-row">
+        <input name="name" placeholder="Nome pilota" required>
+        <input name="team" list="teams" placeholder="Scuderia (opzionale)">
+        <button class="btn">Aggiungi pilota</button>
+      </form>
+      <div id="players"></div>
+    </section>
+  </main>
+
+  <datalist id="tracks">
+    <option value="Australia – Melbourne">
+    <option value="Cina – Shanghai">
+    <option value="Giappone – Suzuka">
+    <option value="Bahrain – Sakhir">
+    <option value="Arabia Saudita – Jeddah">
+    <option value="Miami">
+    <option value="Emilia-Romagna – Imola">
+    <option value="Monaco">
+    <option value="Spagna – Barcellona">
+    <option value="Canada – Montréal">
+    <option value="Austria – Red Bull Ring">
+    <option value="Gran Bretagna – Silverstone">
+    <option value="Belgio – Spa-Francorchamps">
+    <option value="Ungheria – Hungaroring">
+    <option value="Olanda – Zandvoort">
+    <option value="Italia – Monza">
+    <option value="Azerbaijan – Baku">
+    <option value="Singapore – Marina Bay">
+    <option value="USA – Austin">
+    <option value="Messico – Città del Messico">
+    <option value="Brasile – Interlagos">
+    <option value="Las Vegas">
+    <option value="Qatar – Lusail">
+    <option value="Abu Dhabi – Yas Marina">
+  </datalist>
+
+  <datalist id="teams">
+    <option value="McLaren">
+    <option value="Ferrari">
+    <option value="Red Bull Racing">
+    <option value="Mercedes">
+    <option value="Aston Martin">
+    <option value="Alpine">
+    <option value="Haas">
+    <option value="Racing Bulls">
+    <option value="Williams">
+    <option value="Kick Sauber">
+  </datalist>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
