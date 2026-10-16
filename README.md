@@ -84,9 +84,11 @@ Nel gioco: **Impostazioni → Impostazioni telemetria**
 | Indirizzo IP UDP       | IP del PC con il server (`127.0.0.1` se il gioco gira lì)     |
 | Porta UDP              | `20777`                                                       |
 | Frequenza di invio UDP | `20 Hz`                                                       |
-| Formato UDP            | `2025`                                                        |
+| Formato UDP            | `2025`, oppure `2026` con il DLC 2026 Season Pack             |
 
 Il gioco invia i dati solo quando si è in una sessione (in pista o nel garage), non dai menù.
+Con il DLC 2026 Season Pack il formato 2026 aggiunge le 24 auto e il pacchetto Car Telemetry 2:
+controlla quale formato è impostato nel gioco, il registratore lo mostra a ogni nuova sessione.
 
 ### Registrare una sessione
 

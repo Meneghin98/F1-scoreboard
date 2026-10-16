@@ -1,5 +1,10 @@
-// Package telemetry decodifica i pacchetti UDP inviati da F1 25 (formato 2025).
+// Package telemetry decodifica i pacchetti UDP inviati da F1 25.
 //
+// Sono supportati due formati, scelti nel gioco con l'opzione "Formato UDP":
+//   - 2025: F1 25 base, 22 auto, pacchetti 0-15;
+//   - 2026: F1 25 con il DLC "2026 Season Pack", 24 auto e il pacchetto 16 (Car Telemetry 2).
+//
+// L'header è identico nei due formati; cambia il contenuto (e la dimensione) dei pacchetti.
 // Tutti i valori sono little-endian e le struct sono "packed" (senza padding),
 // quindi si leggono direttamente con encoding/binary.
 package telemetry
@@ -10,6 +15,17 @@ import (
 	"errors"
 	"fmt"
 )
+
+// Valori di Header.PacketFormat supportati.
+const (
+	Format2025 = 2025
+	Format2026 = 2026
+)
+
+// SupportedFormat dice se il formato indicato nell'header è uno di quelli gestiti.
+func SupportedFormat(format uint16) bool {
+	return format == Format2025 || format == Format2026
+}
 
 // PacketID identifica il tipo di pacchetto (byte 6 dell'header).
 type PacketID uint8
@@ -31,11 +47,13 @@ const (
 	PacketMotionEx
 	PacketTimeTrial
 	PacketLapPositions
+	PacketCarTelemetry2 // solo formato 2026
 )
 
 var packetNames = [...]string{
 	"Motion", "Session", "LapData", "Event", "Participants", "CarSetups", "CarTelemetry", "CarStatus",
 	"FinalClassification", "LobbyInfo", "CarDamage", "SessionHistory", "TyreSets", "MotionEx", "TimeTrial", "LapPositions",
+	"CarTelemetry2",
 }
 
 func (id PacketID) String() string {
@@ -50,7 +68,7 @@ const HeaderSize = 29
 
 // Header è l'intestazione comune a tutti i pacchetti.
 type Header struct {
-	PacketFormat            uint16 // 2025
+	PacketFormat            uint16 // 2025 o 2026, vedi SupportedFormat
 	GameYear                uint8  // ultime due cifre, es. 25
 	GameMajorVersion        uint8  // versione del gioco, es. 1
 	GameMinorVersion        uint8  // es. 18

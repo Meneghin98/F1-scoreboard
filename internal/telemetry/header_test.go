@@ -59,3 +59,23 @@ func TestPacketIDString(t *testing.T) {
 		t.Fatal("nomi dei pacchetti errati")
 	}
 }
+
+func TestFormat2026(t *testing.T) {
+	// L'header del formato 2026 è identico: cambia solo il valore di PacketFormat.
+	want := Header{PacketFormat: Format2026, GameYear: 25, PacketID: PacketCarTelemetry2, SessionUID: 42}
+	got, err := ParseHeader(buildPacket(t, want, make([]byte, 240)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want || got.PacketID.String() != "CarTelemetry2" {
+		t.Fatalf("header %+v, atteso %+v", got, want)
+	}
+}
+
+func TestSupportedFormat(t *testing.T) {
+	for format, want := range map[uint16]bool{2024: false, 2025: true, 2026: true, 2027: false} {
+		if SupportedFormat(format) != want {
+			t.Errorf("SupportedFormat(%d) = %v", format, !want)
+		}
+	}
+}

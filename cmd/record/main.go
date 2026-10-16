@@ -5,7 +5,7 @@
 //	go run ./cmd/record -info gara.f1rec.gz   riassume il contenuto di una registrazione
 //
 // Nel gioco: Impostazioni → Impostazioni telemetria → Telemetria UDP attiva, porta 20777,
-// formato 2025, IP di questo PC (127.0.0.1 se il gioco gira qui).
+// formato 2025 (o 2026 con il DLC 2026 Season Pack), IP di questo PC (127.0.0.1 se il gioco gira qui).
 package main
 
 import (
@@ -154,8 +154,12 @@ func announce(packet []byte, at time.Duration, sessionUID uint64) uint64 {
 	}
 	stamp := formatDuration(at)
 	if h.SessionUID != 0 && h.SessionUID != sessionUID {
-		fmt.Printf("[%s] nuova sessione %016x (formato %d, gioco %d.%02d)\n",
-			stamp, h.SessionUID, h.PacketFormat, h.GameMajorVersion, h.GameMinorVersion)
+		fmt.Printf("[%s] nuova sessione %016x (formato %s, gioco %d.%02d)\n",
+			stamp, h.SessionUID, formatLabel(h.PacketFormat), h.GameMajorVersion, h.GameMinorVersion)
+		if !telemetry.SupportedFormat(h.PacketFormat) {
+			fmt.Printf("[%s] attenzione: il formato %d viene registrato ma non potrà essere decodificato; "+
+				"nel gioco imposta Formato UDP su 2025 o 2026\n", stamp, h.PacketFormat)
+		}
 		sessionUID = h.SessionUID
 	}
 	if code, ok := telemetry.EventCode(packet); ok {
@@ -185,6 +189,7 @@ func summarize(path string) error {
 		size     int64
 		last     time.Duration
 		counts   = map[telemetry.PacketID]int{}
+		formats  = map[uint16]int{}
 		events   = map[string]int{}
 		sessions []uint64
 		readErr  error
@@ -205,6 +210,7 @@ func summarize(path string) error {
 			continue
 		}
 		counts[h.PacketID]++
+		formats[h.PacketFormat]++
 		if h.SessionUID != 0 && !slices.Contains(sessions, h.SessionUID) {
 			sessions = append(sessions, h.SessionUID)
 		}
@@ -216,6 +222,9 @@ func summarize(path string) error {
 	fmt.Printf("%s\n  durata %s, %d pacchetti, %.1f MB non compressi\n", path, formatDuration(last), total, float64(size)/1e6)
 	if readErr != nil {
 		fmt.Printf("  attenzione: file troncato (%v), letti i pacchetti fino a quel punto\n", readErr)
+	}
+	for format, n := range formats {
+		fmt.Printf("  formato %s: %d pacchetti\n", formatLabel(format), n)
 	}
 	fmt.Printf("  sessioni: %d\n", len(sessions))
 	for _, uid := range sessions {
@@ -247,4 +256,14 @@ func summarize(path string) error {
 func formatDuration(d time.Duration) string {
 	d = d.Round(time.Second)
 	return fmt.Sprintf("%02d:%02d", int(d.Minutes()), int(d.Seconds())%60)
+}
+
+func formatLabel(format uint16) string {
+	switch format {
+	case telemetry.Format2025:
+		return "2025, F1 25"
+	case telemetry.Format2026:
+		return "2026, F1 25 + 2026 Season Pack"
+	}
+	return fmt.Sprintf("%d, non supportato", format)
 }
