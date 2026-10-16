@@ -1,9 +1,8 @@
 import { useState, type ReactNode } from 'react';
-import { ERS_MODE, FUEL_MIX } from '../lib/live';
-import type { LiveWheel, PlayerCar } from '../lib/types';
+import { ERS_MODE, FUEL_MIX, severity } from '../lib/live';
+import type { PlayerCar } from '../lib/types';
+import { CarDiagram } from './CarDiagram';
 import { Card, cx } from './ui';
-
-const WHEEL_LABELS = ['Ant. sx', 'Ant. dx', 'Post. sx', 'Post. dx'];
 
 // Statistiche dell'auto del giocatore. Ridotta mostra solo i dati principali;
 // un clic la apre a tutta larghezza (sotto la mappa) con tutti i dettagli.
@@ -70,49 +69,14 @@ function Summary({ car }: { car: PlayerCar }) {
   );
 }
 
-// Vista dettagliata: tutti i dati, divisi in sezioni affiancate.
+// Vista dettagliata: il disegno dell'auto con gomme e danni, accanto guida, carburante ed ERS.
 function Details({ car }: { car: PlayerCar }) {
   const d = car.damage;
 
   return (
-    <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-      <Section title="Guida">
-        <SpeedGear car={car} />
-        <Bar label="Giri motore" value={car.rpm.toLocaleString('it-IT')} ratio={car.maxRpm ? car.rpm / car.maxRpm : 0} color="bg-sky-500" />
-        <Bar label="Acceleratore" value={`${Math.round(car.throttle * 100)}%`} ratio={car.throttle} color="bg-green-500" />
-        <Bar label="Freno" value={`${Math.round(car.brake * 100)}%`} ratio={car.brake} color="bg-red-500" />
-        <div className="flex flex-col gap-1 text-sm">
-          <Stat label="Ripartizione freni" value={`${car.brakeBias}%`} />
-          <Stat label="Temp. motore" value={`${car.engineTemp}°C`} />
-        </div>
-      </Section>
-
-      <Section title="Carburante ed ERS">
-        <Bar label="Batteria ERS" value={`${Math.round(car.ersPercent)}%`} ratio={car.ersPercent / 100} color="bg-sprint" />
-        <div className="flex flex-col gap-1 text-sm">
-          <Stat label="Carburante" value={`${car.fuelKg.toFixed(1)} kg`} />
-          <FuelMargin car={car} />
-          <Stat label="Miscela" value={FUEL_MIX[car.fuelMix] ?? '–'} />
-          <Stat label="Modalità ERS" value={ERS_MODE[car.ersMode] ?? '–'} />
-          <Stat label="ERS usata nel giro" value={`${car.ersDeployedMj.toFixed(2)} MJ`} />
-          <Stat label="ERS recuperata nel giro" value={`${car.ersHarvestMj.toFixed(2)} MJ`} />
-        </div>
-      </Section>
-
-      <Section title="Gomme e freni">
-        <div className="grid grid-cols-2 gap-2">
-          {car.wheels.map((w, i) => (
-            <WheelTile key={i} label={WHEEL_LABELS[i]} wheel={w} />
-          ))}
-        </div>
-      </Section>
-
-      <Section title="Danni">
-        <div className="flex flex-col gap-1 text-sm">
-          {damageList(car).map(([label, pct]) => (
-            <Stat key={label} label={label} value={`${pct}%`} className={severityClass(pct, 20, 50)} />
-          ))}
-        </div>
+    <div className="grid gap-6 md:grid-cols-2">
+      <Section title="Gomme e danni">
+        <CarDiagram car={car} />
         {(d.drsFault || d.ersFault) && (
           <div className="flex gap-2">
             {d.drsFault && <Badge className="bg-red-950 text-accent-text">Guasto DRS</Badge>}
@@ -120,6 +84,31 @@ function Details({ car }: { car: PlayerCar }) {
           </div>
         )}
       </Section>
+
+      <div className="flex flex-col gap-6">
+        <Section title="Guida">
+          <SpeedGear car={car} />
+          <Bar label="Giri motore" value={car.rpm.toLocaleString('it-IT')} ratio={car.maxRpm ? car.rpm / car.maxRpm : 0} color="bg-sky-500" />
+          <Bar label="Acceleratore" value={`${Math.round(car.throttle * 100)}%`} ratio={car.throttle} color="bg-green-500" />
+          <Bar label="Freno" value={`${Math.round(car.brake * 100)}%`} ratio={car.brake} color="bg-red-500" />
+          <div className="flex flex-col gap-1 text-sm">
+            <Stat label="Ripartizione freni" value={`${car.brakeBias}%`} />
+            <Stat label="Temp. motore" value={`${car.engineTemp}°C`} />
+          </div>
+        </Section>
+  
+        <Section title="Carburante ed ERS">
+          <Bar label="Batteria ERS" value={`${Math.round(car.ersPercent)}%`} ratio={car.ersPercent / 100} color="bg-sprint" />
+          <div className="flex flex-col gap-1 text-sm">
+            <Stat label="Carburante" value={`${car.fuelKg.toFixed(1)} kg`} />
+            <FuelMargin car={car} />
+            <Stat label="Miscela" value={FUEL_MIX[car.fuelMix] ?? '–'} />
+            <Stat label="Modalità ERS" value={ERS_MODE[car.ersMode] ?? '–'} />
+            <Stat label="ERS usata nel giro" value={`${car.ersDeployedMj.toFixed(2)} MJ`} />
+            <Stat label="ERS recuperata nel giro" value={`${car.ersHarvestMj.toFixed(2)} MJ`} />
+          </div>
+        </Section>
+      </div>
     </div>
   );
 }
@@ -171,28 +160,6 @@ function FuelMargin({ car }: { car: PlayerCar }) {
   );
 }
 
-function WheelTile({ label, wheel: w }: { label: string; wheel: LiveWheel }) {
-  return (
-    <div className="rounded-md bg-surface-2 p-2 text-sm">
-      <div className="flex items-baseline justify-between">
-        <span className="text-xs text-muted">{label}</span>
-        <span className={cx('font-bold tabular-nums', severityClass(w.wear, 40, 60))} title="Usura">
-          {Math.round(w.wear)}%
-        </span>
-      </div>
-      <div className="tabular-nums" title="Temperatura superficie / interna">
-        {w.surfaceTemp}° / {w.innerTemp}°
-      </div>
-      <div className="flex justify-between text-xs text-muted tabular-nums">
-        <span>{w.pressure.toFixed(1)} psi</span>
-        <span title="Temperatura freno" className={severityClass(w.brakeDamage, 20, 50)}>
-          Freno {w.brakeTemp}°
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function Bar({ label, value, ratio, color }: { label: string; value: string; ratio: number; color: string }) {
   return (
     <div className="text-sm">
@@ -229,9 +196,8 @@ function gearLabel(gear: number): string {
   return String(gear);
 }
 
-// Giallo oltre la soglia di attenzione, rosso oltre quella critica.
+const SEVERITY_CLASS = { ok: '', warn: 'text-sprint', bad: 'text-accent-text' };
+
 function severityClass(value: number, warn: number, bad: number): string {
-  if (value >= bad) return 'text-accent-text';
-  if (value >= warn) return 'text-sprint';
-  return '';
+  return SEVERITY_CLASS[severity(value, warn, bad)];
 }

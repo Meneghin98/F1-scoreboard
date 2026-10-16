@@ -10,6 +10,14 @@ export const SAFETY_CAR = ['', 'Safety car', 'Virtual safety car', 'Giro di form
 export const FUEL_MIX = ['Povera', 'Standard', 'Ricca', 'Massima'];
 export const ERS_MODE = ['Spento', 'Medio', 'Hotlap', 'Sorpasso'];
 
+// Gravità di usura e danni: "warn" oltre la soglia di attenzione, "bad" oltre quella critica.
+export type Severity = 'ok' | 'warn' | 'bad';
+export function severity(value: number, warn: number, bad: number): Severity {
+  if (value >= bad) return 'bad';
+  if (value >= warn) return 'warn';
+  return 'ok';
+}
+
 // Colori delle mescole come nella grafica TV.
 export const TYRE_CLASS: Record<string, string> = {
   S: 'border-red-500 text-red-400',
