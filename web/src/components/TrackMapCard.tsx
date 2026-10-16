@@ -1,18 +1,29 @@
 import { teamColor } from '../lib/live';
 import type { LiveDriver, TrackMap } from '../lib/types';
 import { useTrackMap } from '../lib/useTrackMap';
-import { Card, Empty } from './ui';
+import { Card, cx, Empty } from './ui';
 
 // Oltre questa distanza (metri) due punti consecutivi non si collegano: in
 // mezzo c'è un tratto non ancora visto.
 const MAX_GAP = 40;
 
 // Pianta del circuito con la posizione delle auto in tempo reale.
-export function TrackMapCard({ uid, mapPoints, drivers }: { uid: string; mapPoints: number; drivers: LiveDriver[] }) {
+// La mappa riempie la card: le dimensioni le decide chi la usa tramite className.
+export function TrackMapCard({
+  uid,
+  mapPoints,
+  drivers,
+  className,
+}: {
+  uid: string;
+  mapPoints: number;
+  drivers: LiveDriver[];
+  className?: string;
+}) {
   const map = useTrackMap(uid, mapPoints);
 
   return (
-    <Card className="p-2">
+    <Card className={cx('flex items-center justify-center p-2', className)}>
       {map && map.points.length > 1 ? (
         <TrackMapSvg map={map} drivers={drivers} />
       ) : (
@@ -38,7 +49,7 @@ function TrackMapSvg({ map, drivers }: { map: TrackMap; drivers: LiveDriver[] })
   return (
     <svg
       viewBox={`${minX - pad} ${minZ - pad} ${maxX - minX + 2 * pad} ${maxZ - minZ + 2 * pad}`}
-      className="mx-auto block max-h-128 w-full"
+      className="block size-full"
       role="img"
       aria-label="Mappa del circuito"
     >

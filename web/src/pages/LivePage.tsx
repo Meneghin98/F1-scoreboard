@@ -1,10 +1,11 @@
+import { useState } from 'react';
 import { formatClock, formatGap, formatLapTime } from '../lib/format';
-import { isLive, SAFETY_CAR, TYRE_CLASS, WEATHER } from '../lib/live';
+import { isLive, SAFETY_CAR, teamColor, TYRE_CLASS, WEATHER } from '../lib/live';
 import type { LiveDriver, LiveSession, LiveSnapshot } from '../lib/types';
 import { useLive } from '../lib/useLive';
 import { LiveDot } from '../components/LiveBadge';
 import { TrackMapCard } from '../components/TrackMapCard';
-import { Card, cx, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
+import { Button, Card, cx, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
 
 // Classifica della sessione in corso, aggiornata in tempo reale dalla telemetria.
 export function LivePage() {
@@ -23,16 +24,42 @@ export function LivePage() {
     <>
       <SessionCard live={live} session={live.session} />
       {live.drivers.length ? (
-        <>
-          <Card>
-            <DriversTable session={live.session} drivers={live.drivers} />
-          </Card>
-          <TrackMapCard uid={live.session.uid} mapPoints={live.session.mapPoints} drivers={live.drivers} />
-        </>
+        <LiveBoard session={live.session} drivers={live.drivers} />
       ) : (
         <Empty>In attesa dei dati dei piloti…</Empty>
       )}
     </>
+  );
+}
+
+// Classifica ridotta a sinistra della mappa; estesa mostra tutti i dati e nasconde la mappa.
+function LiveBoard({ session, drivers }: { session: LiveSession; drivers: LiveDriver[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    // Solo la mappa ha una dimensione fissa: la classifica si allunga quanto serve per tutti i piloti.
+    <div className={cx('mb-4 grid items-start gap-4', !expanded && 'md:grid-cols-[20rem_22rem]')}>
+      <Card className="mb-0 p-0">
+        <div className="flex items-center justify-between border-b border-line px-4 py-2">
+          <h2 className="font-bold">Classifica</h2>
+          <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)}>
+            {expanded ? 'Riduci' : 'Espandi'}
+          </Button>
+        </div>
+        {expanded ? (
+          <DriversTable session={session} drivers={drivers} />
+        ) : (
+          <CompactStandings session={session} drivers={drivers} />
+        )}
+      </Card>
+      {/* Nascosta e non smontata, così la mappa già scaricata resta pronta per quando si riduce. */}
+      <TrackMapCard
+        className={cx('mb-0 h-80 md:size-88', expanded && 'hidden')}
+        uid={session.uid}
+        mapPoints={session.mapPoints}
+        drivers={drivers}
+      />
+    </div>
   );
 }
 
@@ -71,19 +98,59 @@ function SessionCard({ live, session: s }: { live: LiveSnapshot; session: LiveSe
   );
 }
 
-function DriversTable({ session, drivers }: { session: LiveSession; drivers: LiveDriver[] }) {
-  // In gara il distacco è quello in pista; in prova e qualifica conta il miglior giro.
+function fastestLap(drivers: LiveDriver[]): number {
   const bestTimes = drivers.map((d) => d.bestLapMs).filter(Boolean);
-  const fastest = bestTimes.length ? Math.min(...bestTimes) : 0;
-  const gap = (d: LiveDriver, ahead: LiveDriver | undefined): [string, string] => {
-    if (d.position === 1) return ['', ''];
-    if (session.isRace) return [formatGap(d.gapToLeaderMs), formatGap(d.gapAheadMs)];
-    if (!d.bestLapMs) return ['–', '–'];
-    return [
-      formatGap(d.bestLapMs - fastest),
-      ahead?.bestLapMs ? formatGap(d.bestLapMs - ahead.bestLapMs) : '–',
-    ];
-  };
+  return bestTimes.length ? Math.min(...bestTimes) : 0;
+}
+
+// Distacco dal primo e dall'auto davanti. In gara è quello in pista; in prova e
+// qualifica conta il miglior giro.
+function driverGap(session: LiveSession, d: LiveDriver, ahead: LiveDriver | undefined, fastest: number): [string, string] {
+  if (d.position === 1) return ['', ''];
+  if (session.isRace) return [formatGap(d.gapToLeaderMs), formatGap(d.gapAheadMs)];
+  if (!d.bestLapMs) return ['–', '–'];
+  return [
+    formatGap(d.bestLapMs - fastest),
+    ahead?.bestLapMs ? formatGap(d.bestLapMs - ahead.bestLapMs) : '–',
+  ];
+}
+
+// Versione ridotta della classifica: posizione, pilota e distacco dal primo.
+function CompactStandings({ session, drivers }: { session: LiveSession; drivers: LiveDriver[] }) {
+  const fastest = fastestLap(drivers);
+  const compact = 'px-2 py-1.5';
+
+  return (
+    <table className="w-full">
+      <tbody>
+        {drivers.map((d, i) => {
+          const [toLeader, toAhead] = driverGap(session, d, drivers[i - 1], fastest);
+          // Accanto al primo: il giro in gara, il miglior tempo in prova e qualifica.
+          const leaderInfo = session.isRace ? `Giro ${d.lap}` : formatLapTime(d.bestLapMs);
+          return (
+            <Tr key={d.carIndex}>
+              <Td className={cx(rankClass(d.position), compact, 'w-8 pl-4 text-right')}>{d.position}</Td>
+              <Td className={cx(compact, 'max-w-0 w-full', d.isPlayer && 'font-bold')}>
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-1 shrink-0 rounded-full" style={{ background: teamColor(d.team) }} />
+                  <span className="truncate" title={d.team}>{d.name}</span>
+                  {d.isPlayer && <span className="text-xs font-bold text-accent-text uppercase">Tu</span>}
+                  {d.inPit && <span className="text-xs font-bold text-sprint">PIT</span>}
+                </span>
+              </Td>
+              <Td num className={cx(compact, 'pr-4 text-sm')} title={toAhead && `Intervallo ${toAhead}`}>
+                {d.position === 1 ? <span className="text-muted">{leaderInfo}</span> : toLeader}
+              </Td>
+            </Tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function DriversTable({ session, drivers }: { session: LiveSession; drivers: LiveDriver[] }) {
+  const fastest = fastestLap(drivers);
 
   return (
     <Table>
@@ -103,7 +170,7 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
       </thead>
       <tbody>
         {drivers.map((d, i) => {
-          const [toLeader, toAhead] = gap(d, drivers[i - 1]);
+          const [toLeader, toAhead] = driverGap(session, d, drivers[i - 1], fastest);
           return (
             <Tr key={d.carIndex}>
               <Td className={rankClass(d.position)}>{d.position}</Td>
