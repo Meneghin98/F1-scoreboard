@@ -32,27 +32,30 @@ type SessionInfo struct {
 	Weather     uint8  `json:"weather"`
 	TrackTemp   int8   `json:"trackTemp"`
 	AirTemp     int8   `json:"airTemp"`
+	MapPoints   int    `json:"mapPoints"` // punti della pianta ricostruiti finora: quando cambia, il frontend la riscarica
 }
 
 type Driver struct {
-	CarIndex      int    `json:"carIndex"`
-	Position      uint8  `json:"position"`
-	Name          string `json:"name"`
-	Team          string `json:"team"`
-	RaceNumber    uint8  `json:"raceNumber"`
-	IsPlayer      bool   `json:"isPlayer"`
-	AI            bool   `json:"ai"`
-	Lap           uint8  `json:"lap"`
-	LastLapMS     uint32 `json:"lastLapMs"`
-	BestLapMS     uint32 `json:"bestLapMs"`
-	GapToLeaderMS uint32 `json:"gapToLeaderMs"`
-	GapAheadMS    uint32 `json:"gapAheadMs"`
-	InPit         bool   `json:"inPit"`
-	PitStops      uint8  `json:"pitStops"`
-	PenaltiesSec  uint8  `json:"penaltiesSec"`
-	Status        string `json:"status"`
-	Tyre          string `json:"tyre"` // S, M, H, I, W
-	TyreAge       uint8  `json:"tyreAge"`
+	CarIndex      int     `json:"carIndex"`
+	Position      uint8   `json:"position"`
+	Name          string  `json:"name"`
+	Team          string  `json:"team"`
+	RaceNumber    uint8   `json:"raceNumber"`
+	IsPlayer      bool    `json:"isPlayer"`
+	AI            bool    `json:"ai"`
+	Lap           uint8   `json:"lap"`
+	LastLapMS     uint32  `json:"lastLapMs"`
+	BestLapMS     uint32  `json:"bestLapMs"`
+	GapToLeaderMS uint32  `json:"gapToLeaderMs"`
+	GapAheadMS    uint32  `json:"gapAheadMs"`
+	InPit         bool    `json:"inPit"`
+	PitStops      uint8   `json:"pitStops"`
+	PenaltiesSec  uint8   `json:"penaltiesSec"`
+	Status        string  `json:"status"`
+	Tyre          string  `json:"tyre"` // S, M, H, I, W
+	TyreAge       uint8   `json:"tyreAge"`
+	X             float32 `json:"x"` // posizione sulla pianta, in metri (vedi Point)
+	Z             float32 `json:"z"`
 }
 
 // Tracker ricostruisce lo stato di una sessione dai pacchetti che riceve.
@@ -65,6 +68,8 @@ type Tracker struct {
 	laps           *telemetry.LapData
 	status         *telemetry.CarStatus
 	classification *telemetry.FinalClassification
+	motion         *telemetry.Motion
+	outline        *outline
 	bestLaps       map[uint8]uint32 // miglior giro per auto, dagli storici SessionHistory
 }
 
@@ -76,6 +81,7 @@ var relevant = map[telemetry.PacketID]bool{
 	telemetry.PacketCarStatus:           true,
 	telemetry.PacketFinalClassification: true,
 	telemetry.PacketSessionHistory:      true,
+	telemetry.PacketMotion:              true,
 }
 
 // Handle aggiorna lo stato con un pacchetto. Se il pacchetto appartiene a una
@@ -103,6 +109,14 @@ func (t *Tracker) Handle(h telemetry.Header, data []byte) {
 		t.status = p
 	case *telemetry.FinalClassification:
 		t.classification = p
+	case *telemetry.Motion:
+		t.motion = p
+		if t.outline == nil && t.session != nil && t.session.TrackLength > 0 {
+			t.outline = newOutline(int(t.session.TrackLength))
+		}
+		if t.outline != nil && t.laps != nil {
+			t.outline.add(t.laps, p)
+		}
 	case *telemetry.SessionHistory:
 		if t.bestLaps == nil {
 			t.bestLaps = map[uint8]uint32{}
@@ -121,6 +135,16 @@ func (t *Tracker) Participants() *telemetry.Participants { return t.participants
 
 // Classification restituisce la classifica finale, se è già arrivata.
 func (t *Tracker) Classification() *telemetry.FinalClassification { return t.classification }
+
+// TrackMap restituisce la pianta del circuito ricostruita finora, o nil se
+// non è ancora iniziata.
+func (t *Tracker) TrackMap() *TrackMap {
+	if t.outline == nil {
+		return nil
+	}
+	m := t.outline.trackMap()
+	return &m
+}
 
 // Snapshot fotografa lo stato attuale. status è deciso da chi chiama, che sa
 // da quanto tempo non arrivano pacchetti.
@@ -144,6 +168,9 @@ func (t *Tracker) Snapshot(status string) Snapshot {
 		info.Weather = s.Weather
 		info.TrackTemp = s.TrackTemperature
 		info.AirTemp = s.AirTemperature
+	}
+	if t.outline != nil {
+		info.MapPoints = t.outline.filled
 	}
 	snap.Session = info
 
@@ -178,6 +205,10 @@ func (t *Tracker) Snapshot(status string) Snapshot {
 		if s := t.status; s != nil && i < len(s.Cars) {
 			d.Tyre = tyreLetter(s.Cars[i].VisualTyreCompound)
 			d.TyreAge = s.Cars[i].TyresAgeLaps
+		}
+		if m := t.motion; m != nil && i < len(m.Cars) {
+			pos := m.Cars[i].WorldPosition
+			d.X, d.Z = round1(pos.X), round1(pos.Z)
 		}
 		if d.Position == 1 {
 			info.CurrentLap = d.Lap

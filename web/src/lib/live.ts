@@ -15,6 +15,27 @@ export const TYRE_CLASS: Record<string, string> = {
   W: 'border-blue-500 text-blue-400',
 };
 
+// Colori delle scuderie per la mappa. Il gioco aggiunge l'anno alle squadre
+// delle stagioni passate ("Ferrari '24"): si usa il colore della squadra.
+const TEAM_COLORS: Record<string, string> = {
+  Mercedes: '#27f4d2',
+  Ferrari: '#e8002d',
+  'Red Bull Racing': '#3671c6',
+  Williams: '#64c4ff',
+  'Aston Martin': '#229971',
+  Alpine: '#ff87bc',
+  RB: '#6692ff',
+  Haas: '#b6babd',
+  McLaren: '#ff8000',
+  Sauber: '#52e252',
+  Audi: '#bb0a30',
+  Cadillac: '#d4d4d8',
+};
+
+export function teamColor(team: string): string {
+  return TEAM_COLORS[team.replace(/ '\d\d$/, '')] ?? '#9a9aae';
+}
+
 // La sessione è in corso solo se arrivano dati e il gioco ne ha già comunicato i dettagli.
 export function isLive(live: LiveSnapshot | null): live is LiveSnapshot & { session: NonNullable<LiveSnapshot['session']> } {
   return live?.status === 'live' && live.session !== null;

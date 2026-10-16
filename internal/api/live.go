@@ -18,6 +18,16 @@ func (s *Server) getLive(w http.ResponseWriter, r *http.Request) error {
 	return err
 }
 
+// getLiveTrack restituisce la pianta del circuito della sessione in corso.
+func (s *Server) getLiveTrack(w http.ResponseWriter, r *http.Request) error {
+	m := s.live.TrackMap()
+	if m == nil {
+		return errorf(http.StatusNotFound, "Nessuna mappa disponibile")
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	return writeJSON(w, http.StatusOK, m)
+}
+
 // streamLive invia lo stato della sessione con Server-Sent Events: un messaggio
 // a ogni cambiamento (al massimo 4 al secondo). Il browser lo riceve con
 // EventSource, che si riconnette da solo se la connessione cade.

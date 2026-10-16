@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net"
 	"os"
 	"path/filepath"
@@ -301,5 +302,46 @@ func TestSlug(t *testing.T) {
 		if got := slug(in); got != want {
 			t.Errorf("slug(%q) = %q, atteso %q", in, got, want)
 		}
+	}
+}
+
+func TestTrackMapOnRecording(t *testing.T) {
+	var tr Tracker
+	for _, p := range loadRecording(t) {
+		if h, err := telemetry.ParseHeader(p.Data); err == nil && h.SessionUID != 0 {
+			tr.Handle(h, p.Data)
+		}
+	}
+	m := tr.TrackMap()
+	if m == nil {
+		t.Fatal("nessuna mappa")
+	}
+	// Con 20 auto per 5 giri ogni tratto di Monza deve essere stato visto.
+	want := (m.Length + outlineStep - 1) / outlineStep
+	if len(m.Points) < want*95/100 {
+		t.Errorf("%d punti su %d", len(m.Points), want)
+	}
+	// Punti consecutivi distano circa outlineStep metri: un salto grande vorrebbe
+	// dire posizioni associate al tratto sbagliato.
+	for i := 1; i < len(m.Points); i++ {
+		a, b := m.Points[i-1], m.Points[i]
+		if d := math.Hypot(float64(b.X-a.X), float64(b.Z-a.Z)); d > 4*outlineStep {
+			t.Errorf("salto di %.0f m al punto %d", d, i)
+		}
+	}
+	snap := tr.Snapshot("live")
+	if snap.Session.MapPoints != len(m.Points) {
+		t.Errorf("mapPoints %d, punti %d", snap.Session.MapPoints, len(m.Points))
+	}
+	// Monza si percorre in senso orario. Disegnando X verso destra e Z verso il
+	// basso (come fa il frontend) l'area con segno deve essere positiva:
+	// se fosse negativa la mappa risulterebbe specchiata.
+	var area float64
+	for i, a := range m.Points {
+		b := m.Points[(i+1)%len(m.Points)]
+		area += float64(a.X*b.Z - b.X*a.Z)
+	}
+	if area <= 0 {
+		t.Errorf("mappa specchiata: area con segno %.0f", area/2)
 	}
 }

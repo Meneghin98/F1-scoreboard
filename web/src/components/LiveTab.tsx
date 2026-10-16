@@ -3,6 +3,7 @@ import { isLive, SAFETY_CAR, TYRE_CLASS, WEATHER } from '../lib/live';
 import type { LiveDriver, LiveSession, LiveSnapshot } from '../lib/types';
 import { useLive } from '../lib/useLive';
 import { LiveDot } from './LiveBadge';
+import { TrackMapCard } from './TrackMapCard';
 import { Card, cx, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from './ui';
 
 // Classifica della sessione in corso, aggiornata in tempo reale dalla telemetria.
@@ -22,9 +23,12 @@ export function LiveTab() {
     <>
       <SessionCard live={live} session={live.session} />
       {live.drivers.length ? (
-        <Card>
-          <DriversTable session={live.session} drivers={live.drivers} />
-        </Card>
+        <>
+          <Card>
+            <DriversTable session={live.session} drivers={live.drivers} />
+          </Card>
+          <TrackMapCard uid={live.session.uid} mapPoints={live.session.mapPoints} drivers={live.drivers} />
+        </>
       ) : (
         <Empty>In attesa dei dati dei piloti…</Empty>
       )}

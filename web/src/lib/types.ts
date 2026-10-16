@@ -82,6 +82,7 @@ export interface LiveSession {
   weather: number;
   trackTemp: number;
   airTemp: number;
+  mapPoints: number;
 }
 
 export interface LiveDriver {
@@ -103,6 +104,8 @@ export interface LiveDriver {
   status: string;
   tyre: string;
   tyreAge: number;
+  x: number;
+  z: number;
 }
 
 export interface LiveSnapshot {
@@ -110,4 +113,10 @@ export interface LiveSnapshot {
   session: LiveSession | null;
   drivers: LiveDriver[];
   finished: boolean;
+}
+
+// Pianta del circuito ricostruita dalle posizioni delle auto (metri, X e Z del gioco).
+export interface TrackMap {
+  length: number;
+  points: { x: number; z: number }[];
 }

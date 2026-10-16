@@ -45,6 +45,7 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service) http.Handler {
 
 	mux.Handle("GET /api/live", s.handle(s.getLive))
 	mux.Handle("GET /api/live/stream", s.handle(s.streamLive))
+	mux.Handle("GET /api/live/track", s.handle(s.getLiveTrack))
 	mux.Handle("GET /api/telemetry/sessions", s.handle(s.listTelemetrySessions))
 	mux.Handle("GET /api/telemetry/sessions/{id}/download", s.handle(s.downloadTelemetrySession))
 

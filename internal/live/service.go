@@ -279,6 +279,18 @@ func (s *Service) Snapshot() []byte {
 	return s.snapshotJSON(time.Now())
 }
 
+// TrackMap restituisce la pianta del circuito della sessione in corso, o nil.
+// È separata dallo stato perché cambia poco ed è molto più grande: il frontend
+// la scarica solo quando cambia SessionInfo.MapPoints.
+func (s *Service) TrackMap() *TrackMap {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil {
+		return nil
+	}
+	return s.tracker.TrackMap()
+}
+
 // Subscribe registra un client che riceve lo stato a ogni cambiamento (subito
 // il primo). Il canale contiene sempre solo l'ultimo stato: un client lento
 // salta gli aggiornamenti intermedi invece di accumularli.

@@ -1,5 +1,5 @@
 import type {
-  Player, Race, RaceType, RaceWithResults, ResultInput, StandingsResponse, Tournament,
+  Player, Race, RaceType, RaceWithResults, ResultInput, StandingsResponse, Tournament, TrackMap,
 } from './types';
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -31,4 +31,6 @@ export const api = {
     request<void>(`/races/${raceId}/results`, 'PUT', { results }),
 
   standings: (tournamentId: number) => request<StandingsResponse>(`/tournaments/${tournamentId}/standings`),
+
+  liveTrack: () => request<TrackMap>('/live/track'),
 };
