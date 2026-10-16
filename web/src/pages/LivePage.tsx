@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { formatClock, formatGap, formatLapTime } from '../lib/format';
 import { isLive, SAFETY_CAR, teamColor, TYRE_CLASS, WEATHER } from '../lib/live';
-import type { LiveDriver, LiveSession, LiveSnapshot } from '../lib/types';
+import type { LiveDriver, LiveSession, LiveSnapshot, PlayerCar } from '../lib/types';
 import { useLive } from '../lib/useLive';
 import { LiveDot } from '../components/LiveBadge';
+import { PlayerCarCard } from '../components/PlayerCarCard';
 import { TrackMapCard } from '../components/TrackMapCard';
 import { Button, Card, cx, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
 
@@ -24,7 +25,7 @@ export function LivePage() {
     <>
       <SessionCard live={live} session={live.session} />
       {live.drivers.length ? (
-        <LiveBoard session={live.session} drivers={live.drivers} />
+        <LiveBoard session={live.session} drivers={live.drivers} player={live.player} />
       ) : (
         <Empty>In attesa dei dati dei piloti…</Empty>
       )}
@@ -32,13 +33,14 @@ export function LivePage() {
   );
 }
 
-// Classifica ridotta a sinistra della mappa; estesa mostra tutti i dati e nasconde la mappa.
-function LiveBoard({ session, drivers }: { session: LiveSession; drivers: LiveDriver[] }) {
+// Classifica ridotta a sinistra di mappa e auto del giocatore; estesa mostra
+// tutti i dati e nasconde la mappa.
+function LiveBoard({ session, drivers, player }: { session: LiveSession; drivers: LiveDriver[]; player: PlayerCar | null }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
     // Solo la mappa ha una dimensione fissa: la classifica si allunga quanto serve per tutti i piloti.
-    <div className={cx('mb-4 grid items-start gap-4', !expanded && 'md:grid-cols-[20rem_22rem]')}>
+    <div className={cx('mb-4 grid items-start gap-4', !expanded && 'md:grid-cols-[20rem_1fr]')}>
       <Card className="mb-0 p-0">
         <div className="flex items-center justify-between border-b border-line px-4 py-2">
           <h2 className="font-bold">Classifica</h2>
@@ -52,13 +54,17 @@ function LiveBoard({ session, drivers }: { session: LiveSession; drivers: LiveDr
           <CompactStandings session={session} drivers={drivers} />
         )}
       </Card>
-      {/* Nascosta e non smontata, così la mappa già scaricata resta pronta per quando si riduce. */}
-      <TrackMapCard
-        className={cx('mb-0 h-80 md:size-88', expanded && 'hidden')}
-        uid={session.uid}
-        mapPoints={session.mapPoints}
-        drivers={drivers}
-      />
+      {/* La scheda dell'auto si affianca alla mappa se c'è spazio, altrimenti va sotto. */}
+      <div className="flex flex-wrap items-start gap-4">
+        {/* Nascosta e non smontata, così la mappa già scaricata resta pronta per quando si riduce. */}
+        <TrackMapCard
+          className={cx('mb-0 h-80 w-full md:size-88', expanded && 'hidden')}
+          uid={session.uid}
+          mapPoints={session.mapPoints}
+          drivers={drivers}
+        />
+        {player && <PlayerCarCard car={player} className="mb-0" />}
+      </div>
     </div>
   );
 }

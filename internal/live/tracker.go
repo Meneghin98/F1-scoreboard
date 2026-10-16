@@ -13,6 +13,7 @@ type Snapshot struct {
 	Status   string       `json:"status"` // "waiting": nessun dato recente, "live": telemetria in arrivo
 	Session  *SessionInfo `json:"session"`
 	Drivers  []Driver     `json:"drivers"`
+	Player   *PlayerCar   `json:"player"`   // auto del giocatore, nil se non ci sono dati
 	Finished bool         `json:"finished"` // classifica finale ricevuta
 }
 
@@ -67,6 +68,8 @@ type Tracker struct {
 	participants   *telemetry.Participants
 	laps           *telemetry.LapData
 	status         *telemetry.CarStatus
+	carTelemetry   *telemetry.CarTelemetry
+	damage         *telemetry.CarDamage
 	classification *telemetry.FinalClassification
 	motion         *telemetry.Motion
 	outline        *outline
@@ -79,6 +82,8 @@ var relevant = map[telemetry.PacketID]bool{
 	telemetry.PacketParticipants:        true,
 	telemetry.PacketLapData:             true,
 	telemetry.PacketCarStatus:           true,
+	telemetry.PacketCarTelemetry:        true,
+	telemetry.PacketCarDamage:           true,
 	telemetry.PacketFinalClassification: true,
 	telemetry.PacketSessionHistory:      true,
 	telemetry.PacketMotion:              true,
@@ -107,6 +112,10 @@ func (t *Tracker) Handle(h telemetry.Header, data []byte) {
 		t.laps = p
 	case *telemetry.CarStatus:
 		t.status = p
+	case *telemetry.CarTelemetry:
+		t.carTelemetry = p
+	case *telemetry.CarDamage:
+		t.damage = p
 	case *telemetry.FinalClassification:
 		t.classification = p
 	case *telemetry.Motion:
@@ -183,6 +192,7 @@ func (t *Tracker) Snapshot(status string) Snapshot {
 		info.MapPoints = t.outline.filled
 	}
 	snap.Session = info
+	snap.Player = t.playerCar()
 
 	if t.laps == nil {
 		return snap

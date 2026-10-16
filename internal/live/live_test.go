@@ -85,6 +85,19 @@ func TestTrackerOnRecording(t *testing.T) {
 	if players != 1 || snap.Drivers[0].Name != "NORRIS" {
 		t.Errorf("%d giocatori, primo %s", players, snap.Drivers[0].Name)
 	}
+
+	car := snap.Player
+	if car == nil {
+		t.Fatal("dati dell'auto del giocatore mancanti")
+	}
+	if car.MaxRPM == 0 || car.BrakeBias == 0 || car.FuelKg <= 0 || car.EngineTemp == 0 {
+		t.Errorf("auto del giocatore %+v", car)
+	}
+	for i, w := range car.Wheels {
+		if w.SurfaceTemp == 0 || w.Pressure == 0 || w.Wear == 0 {
+			t.Errorf("ruota %d: %+v", i, w)
+		}
+	}
 }
 
 func newTestService(t *testing.T, record bool) (*Service, string) {

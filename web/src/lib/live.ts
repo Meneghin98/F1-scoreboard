@@ -6,6 +6,10 @@ export const WEATHER = ['Sereno', 'Poco nuvoloso', 'Nuvoloso', 'Pioggia leggera'
 // Indici come il campo safetyCar: 0 nessuna, 1 safety car, 2 virtual, 3 giro di formazione.
 export const SAFETY_CAR = ['', 'Safety car', 'Virtual safety car', 'Giro di formazione'];
 
+// Indici come i campi fuelMix ed ersMode dell'auto del giocatore.
+export const FUEL_MIX = ['Povera', 'Standard', 'Ricca', 'Massima'];
+export const ERS_MODE = ['Spento', 'Medio', 'Hotlap', 'Sorpasso'];
+
 // Colori delle mescole come nella grafica TV.
 export const TYRE_CLASS: Record<string, string> = {
   S: 'border-red-500 text-red-400',

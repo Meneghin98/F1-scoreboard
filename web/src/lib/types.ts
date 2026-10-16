@@ -107,11 +107,55 @@ export interface LiveDriver {
   x: number;
   z: number;
 }
+export interface LiveWheel {
+  surfaceTemp: number;
+  innerTemp: number;
+  pressure: number;
+  wear: number;
+  brakeTemp: number;
+  brakeDamage: number;
+}
+// Auto del giocatore. Le ruote sono in ordine: ant. sx, ant. dx, post. sx, post. dx.
+export interface PlayerCar {
+  carIndex: number;
+  speed: number;
+  gear: number;
+  rpm: number;
+  maxRpm: number;
+  throttle: number;
+  brake: number;
+  drs: boolean;
+  engineTemp: number;
+  drsAllowed: boolean;
+  pitLimiter: boolean;
+  brakeBias: number;
+  fuelMix: number;
+  fuelKg: number;
+  fuelLaps: number;
+  ersPercent: number;
+  ersMode: number;
+  ersDeployedMj: number;
+  ersHarvestMj: number;
+  wheels: LiveWheel[];
+  damage: {
+    frontWingLeft: number;
+    frontWingRight: number;
+    rearWing: number;
+    floor: number;
+    diffuser: number;
+    sidepod: number;
+    gearbox: number;
+    engine: number;
+    drsFault: boolean;
+    ersFault: boolean;
+  };
+}
 
 export interface LiveSnapshot {
   status: 'waiting' | 'live';
   session: LiveSession | null;
   drivers: LiveDriver[];
+  player: PlayerCar | null;
   finished: boolean;
 }
 
