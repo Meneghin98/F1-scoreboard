@@ -1,0 +1,9 @@
+# Fine riga LF per tutti i file di testo, su qualsiasi sistema operativo
+# (il server gira su Linux), indipendentemente da core.autocrlf.
+* text=auto eol=lf
+
+# File binari: nessuna conversione né diff testuale.
+*.png binary
+*.jpg binary
+*.ico binary
+*.db binary
