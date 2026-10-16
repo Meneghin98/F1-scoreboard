@@ -3,6 +3,8 @@
 //	go run ./cmd/record                  registra in recordings/<data-ora>.f1rec.gz finché non premi Ctrl+C
 //	go run ./cmd/record -out gara.f1rec.gz
 //	go run ./cmd/record -info gara.f1rec.gz   riassume il contenuto di una registrazione
+//	go run ./cmd/record -replay gara.f1rec.gz [-speed 4] [-to 127.0.0.1:20777]
+//	                                         la rimanda via UDP, come se fosse il gioco in diretta
 //
 // Nel gioco: Impostazioni → Impostazioni telemetria → Telemetria UDP attiva, porta 20777,
 // formato 2025 (o 2026 con il DLC 2026 Season Pack), IP di questo PC (127.0.0.1 se il gioco gira qui).
@@ -66,8 +68,17 @@ func main() {
 	addr := flag.String("addr", ":20777", "indirizzo UDP su cui ascoltare")
 	out := flag.String("out", "", "file di output (default recordings/<data-ora>.f1rec.gz)")
 	info := flag.String("info", "", "riassume il contenuto della registrazione indicata ed esce")
+	replayFile := flag.String("replay", "", "rimanda la registrazione indicata via UDP, come se fosse il gioco in diretta")
+	replayTo := flag.String("to", "127.0.0.1:20777", "destinazione di -replay")
+	speed := flag.Float64("speed", 1, "velocità di -replay (2 = doppia velocità)")
 	flag.Parse()
 
+	if *replayFile != "" {
+		if err := replay(*replayFile, *replayTo, *speed); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	if *info != "" {
 		if err := summarize(*info); err != nil {
 			log.Fatal(err)
@@ -396,4 +407,59 @@ func formatLabel(format uint16) string {
 		return "2026, F1 25 + 2026 Season Pack"
 	}
 	return fmt.Sprintf("%d, non supportato", format)
+}
+
+// replay invia i pacchetti di una registrazione a to, rispettando i tempi originali
+// (divisi per speed). Serve a provare il server e la pagina live senza il gioco.
+func replay(path, to string, speed float64) error {
+	if speed <= 0 {
+		return fmt.Errorf("velocità non valida: %v", speed)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	r, err := recording.NewReader(file)
+	if err != nil {
+		return err
+	}
+	conn, err := net.Dial("udp", to)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	fmt.Printf("Invio %s a %s (velocità %gx); Ctrl+C per interrompere.\n", path, to, speed)
+	start := time.Now()
+	var sessionUID uint64
+	sent := 0
+	for {
+		p, err := r.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		// Aspetta l'istante in cui il pacchetto era arrivato durante la registrazione.
+		if wait := time.Until(start.Add(time.Duration(float64(p.At) / speed))); wait > 0 {
+			select {
+			case <-ctx.Done():
+				fmt.Printf("\nInterrotto dopo %d pacchetti.\n", sent)
+				return nil
+			case <-time.After(wait):
+			}
+		}
+		if _, err := conn.Write(p.Data); err != nil {
+			return err
+		}
+		sent++
+		sessionUID = announce(p.Data, p.At, sessionUID)
+	}
+	fmt.Printf("\nInviati %d pacchetti in %s.\n", sent, time.Since(start).Round(time.Second))
+	return nil
 }

@@ -16,6 +16,7 @@ cmd/seed/               dati di esempio per lo sviluppo
 cmd/record/             registratore della telemetria UDP di F1 25
 internal/telemetry/     parser dei pacchetti di telemetria (formati 2025 e 2026)
 internal/recording/     formato dei file di registrazione (.f1rec.gz)
+internal/live/          ascolto UDP, stato live della sessione, registrazione automatica
 internal/api/           handler HTTP delle API REST
 internal/scoring/       punteggi F1 2025 e calcolo della classifica
 internal/store/         apertura del DB e migrazioni (migrations/NNN_*.sql)
@@ -50,11 +51,14 @@ cd web && npm run typecheck
 
 Variabili d'ambiente opzionali:
 
-| Variabile | Default              | Descrizione                                  |
-|-----------|----------------------|----------------------------------------------|
-| `PORT`    | `3000`               | Porta HTTP                                   |
-| `DB_PATH` | `data/scoreboard.db` | Percorso del database (relativo alla cartella di avvio) |
-| `WEB_DIR` | —                    | Se impostata, serve il frontend da questa cartella (es. `web/dist`) invece che dal binario |
+| Variabile          | Default              | Descrizione                                  |
+|--------------------|----------------------|----------------------------------------------|
+| `PORT`             | `3000`               | Porta HTTP                                   |
+| `DB_PATH`          | `data/scoreboard.db` | Percorso del database (relativo alla cartella di avvio) |
+| `WEB_DIR`          | —                    | Se impostata, serve il frontend da questa cartella (es. `web/dist`) invece che dal binario |
+| `TELEMETRY_ADDR`   | `:20777`             | Indirizzo UDP su cui ricevere la telemetria del gioco |
+| `TELEMETRY_DIR`    | `data/sessions`      | Cartella delle sessioni registrate (accanto al database) |
+| `TELEMETRY_RECORD` | `true`               | `false` per non registrare le sessioni su file |
 
 ## Build e deploy
 
@@ -78,6 +82,24 @@ destinazione e avviarlo.
 
 ## Telemetria di F1 25
 
+### Ascolto sempre attivo
+
+Il server ascolta la telemetria appena parte, senza configurazioni: appena il gioco entra in
+una sessione questa viene rilevata, mostrata nell'header ("Monza · Gara · Giro 2/5") e
+**registrata automaticamente** in `data/sessions/`, una registrazione per sessione (circa
+2 MB al minuto). Se la porta UDP è occupata (per esempio da `cmd/record`) il server parte
+comunque e riprova ogni 10 secondi.
+
+| Endpoint                                  | Descrizione                                              |
+|-------------------------------------------|----------------------------------------------------------|
+| `GET /api/live`                           | Stato della sessione in corso: circuito, giro, piloti, distacchi, gomme |
+| `GET /api/live/stream`                    | Lo stesso stato in tempo reale (Server-Sent Events, max 4 aggiornamenti/s) |
+| `GET /api/telemetry/sessions`             | Sessioni registrate                                      |
+| `GET /api/telemetry/sessions/{id}/download` | Scarica la registrazione di una sessione (`.f1rec.gz`) |
+
+Se il gioco gira su un altro dispositivo (console o altro PC), su Windows serve una regola del
+firewall per la porta UDP 20777 (vedi sotto per l'IP da impostare nel gioco).
+
 Nel gioco: **Impostazioni → Impostazioni telemetria**
 
 | Voce                   | Valore                                                        |
@@ -98,6 +120,7 @@ controlla quale formato è impostato nel gioco, il registratore lo mostra a ogni
 ```sh
 go run ./cmd/record                          # registra in recordings/<data-ora>.f1rec.gz, Ctrl+C per terminare
 go run ./cmd/record -info recordings/xxx.f1rec.gz   # riassunto: sessioni, circuito, classifica finale, eventi
+go run ./cmd/record -replay recordings/xxx.f1rec.gz -speed 10   # la rimanda al server come se fosse il gioco
 ```
 
 Durante la registrazione vengono segnalati inizio e fine sessione, bandiera a scacchi e arrivo

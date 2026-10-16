@@ -12,15 +12,18 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"f1-scoreboard/internal/live"
 )
 
 type Server struct {
-	db *sql.DB
+	db   *sql.DB
+	live *live.Service
 }
 
 // New restituisce l'handler HTTP completo: API sotto /api, file statici altrove.
-func New(db *sql.DB, static fs.FS) http.Handler {
-	s := &Server{db: db}
+func New(db *sql.DB, static fs.FS, liveService *live.Service) http.Handler {
+	s := &Server{db: db, live: liveService}
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /api/points", s.handle(s.getPoints))
@@ -39,6 +42,11 @@ func New(db *sql.DB, static fs.FS) http.Handler {
 	mux.Handle("PUT /api/races/{id}/results", s.handle(s.saveResults))
 
 	mux.Handle("GET /api/tournaments/{id}/standings", s.handle(s.getStandings))
+
+	mux.Handle("GET /api/live", s.handle(s.getLive))
+	mux.Handle("GET /api/live/stream", s.handle(s.streamLive))
+	mux.Handle("GET /api/telemetry/sessions", s.handle(s.listTelemetrySessions))
+	mux.Handle("GET /api/telemetry/sessions/{id}/download", s.handle(s.downloadTelemetrySession))
 
 	mux.Handle("/api/", s.handle(func(w http.ResponseWriter, r *http.Request) error {
 		return errorf(http.StatusNotFound, "Endpoint non trovato")

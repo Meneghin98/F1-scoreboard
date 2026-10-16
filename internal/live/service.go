@@ -1,0 +1,316 @@
+package live
+
+import (
+	"bytes"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"f1-scoreboard/internal/recording"
+	"f1-scoreboard/internal/telemetry"
+)
+
+const (
+	// Senza pacchetti per questo tempo lo stato torna "in attesa" (menù, pausa, gioco chiuso).
+	waitingAfter = 5 * time.Second
+	// Senza pacchetti per questo tempo la registrazione della sessione viene chiusa.
+	sessionTimeout = 60 * time.Second
+	// Frequenza massima degli aggiornamenti inviati ai browser.
+	broadcastEvery = 250 * time.Millisecond
+)
+
+// Options configura il servizio.
+type Options struct {
+	Dir    string // cartella delle registrazioni
+	Record bool   // registra ogni sessione su file
+}
+
+// Service riceve la telemetria, tiene lo stato live e registra le sessioni.
+type Service struct {
+	db   *sql.DB
+	opts Options
+
+	mu          sync.Mutex
+	tracker     Tracker
+	current     *session // sessione in corso, nil se nessuna
+	lastPacket  time.Time
+	warnedFmt   map[uint16]bool
+	subscribers map[chan []byte]struct{}
+	lastSent    []byte
+	stopped     bool // dopo lo spegnimento i pacchetti in ritardo vengono ignorati
+
+	done chan struct{}
+}
+
+// session è la sessione in corso, con la sua registrazione.
+type session struct {
+	id             int64 // riga in telemetry_sessions
+	uid            uint64
+	start          time.Time
+	name           string // file della registrazione, relativo a Options.Dir
+	file           *os.File
+	writer         *recording.Writer
+	lastFlush      time.Time
+	packets        int
+	bytes          int64
+	infoSaved      bool
+	classification bool
+}
+
+func NewService(db *sql.DB, opts Options) *Service {
+	return &Service{
+		db:          db,
+		opts:        opts,
+		warnedFmt:   map[uint16]bool{},
+		subscribers: map[chan []byte]struct{}{},
+		done:        make(chan struct{}),
+	}
+}
+
+// Done viene chiuso quando Run termina: i client in streaming lo usano per chiudersi.
+func (s *Service) Done() <-chan struct{} { return s.done }
+
+// Run ascolta la telemetria su addr finché ctx non viene annullato, poi chiude
+// la registrazione in corso.
+func (s *Service) Run(ctx context.Context, addr string) {
+	defer close(s.done)
+	s.closeOrphans()
+
+	listener := &Listener{Addr: addr, Handle: s.Handle}
+	go listener.Run(ctx)
+
+	ticker := time.NewTicker(broadcastEvery)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			s.mu.Lock()
+			s.stopped = true
+			s.endSession(time.Now())
+			s.mu.Unlock()
+			return
+		case now := <-ticker.C:
+			s.tick(now)
+		}
+	}
+}
+
+// Handle elabora un pacchetto arrivato all'istante at.
+func (s *Service) Handle(at time.Time, data []byte) {
+	h, err := telemetry.ParseHeader(data)
+	if err != nil {
+		return
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.stopped {
+		return
+	}
+	if !telemetry.SupportedFormat(h.PacketFormat) {
+		if !s.warnedFmt[h.PacketFormat] {
+			s.warnedFmt[h.PacketFormat] = true
+			log.Printf("telemetria: formato %d non supportato, nel gioco imposta Formato UDP su 2025 o 2026", h.PacketFormat)
+		}
+		return
+	}
+	// SessionUID 0 arriva da menù e caricamenti: non appartiene a nessuna sessione.
+	if h.SessionUID == 0 {
+		return
+	}
+	s.lastPacket = at
+
+	if s.current == nil || s.current.uid != h.SessionUID {
+		s.endSession(at)
+		s.startSession(at, h)
+	}
+	cur := s.current
+	cur.packets++
+	cur.bytes += int64(len(data))
+	if cur.writer != nil {
+		if err := cur.writer.Write(at.Sub(cur.start), data); err != nil {
+			log.Printf("telemetria: scrittura della registrazione: %v", err)
+			s.closeFile(cur)
+		}
+	}
+
+	s.tracker.Handle(h, data)
+	if !cur.infoSaved && s.tracker.Session() != nil {
+		cur.infoSaved = true
+		ses := s.tracker.Session()
+		s.exec("UPDATE telemetry_sessions SET track_id = ?, session_type = ?, total_laps = ? WHERE id = ?",
+			int(ses.TrackID), int(ses.SessionType), int(ses.TotalLaps), cur.id)
+		log.Printf("telemetria: sessione %016x: %s – %s", cur.uid, ses.TrackID, ses.SessionType)
+	}
+	if !cur.classification && s.tracker.Classification() != nil {
+		cur.classification = true
+		s.exec("UPDATE telemetry_sessions SET has_classification = 1 WHERE id = ?", cur.id)
+		log.Printf("telemetria: sessione %016x: classifica finale ricevuta", cur.uid)
+	}
+}
+
+func (s *Service) startSession(at time.Time, h telemetry.Header) {
+	name := fmt.Sprintf("%s_%016x.f1rec.gz", at.Format("2006-01-02_15-04-05"), h.SessionUID)
+	cur := &session{uid: h.SessionUID, start: at, name: name, lastFlush: at}
+
+	if s.opts.Record {
+		if err := s.openFile(cur); err != nil {
+			log.Printf("telemetria: impossibile registrare la sessione: %v", err)
+		}
+	}
+	err := s.db.QueryRow(`
+		INSERT INTO telemetry_sessions (session_uid, packet_format, started_at, file) VALUES (?, ?, ?, ?)
+		RETURNING id`, fmt.Sprintf("%016x", h.SessionUID), h.PacketFormat, dbTime(at), name).Scan(&cur.id)
+	if err != nil {
+		log.Printf("telemetria: salvataggio della sessione: %v", err)
+	}
+	s.current = cur
+	log.Printf("telemetria: nuova sessione %016x (formato %d)", h.SessionUID, h.PacketFormat)
+}
+
+func (s *Service) openFile(cur *session) error {
+	if err := os.MkdirAll(s.opts.Dir, 0o755); err != nil {
+		return err
+	}
+	f, err := os.Create(filepath.Join(s.opts.Dir, cur.name))
+	if err != nil {
+		return err
+	}
+	w, err := recording.NewWriter(f)
+	if err != nil {
+		f.Close()
+		return err
+	}
+	cur.file, cur.writer = f, w
+	return nil
+}
+
+func (s *Service) closeFile(cur *session) {
+	if cur.writer != nil {
+		if err := cur.writer.Close(); err != nil {
+			log.Printf("telemetria: chiusura della registrazione: %v", err)
+		}
+		cur.file.Close()
+		cur.writer, cur.file = nil, nil
+	}
+}
+
+// endSession chiude la sessione in corso (se c'è) e ne salva i dati finali.
+func (s *Service) endSession(at time.Time) {
+	cur := s.current
+	if cur == nil {
+		return
+	}
+	s.current = nil
+	s.closeFile(cur)
+	end := at
+	if !s.lastPacket.IsZero() && s.lastPacket.Before(at) {
+		end = s.lastPacket
+	}
+	s.exec("UPDATE telemetry_sessions SET ended_at = ?, packets = ?, size_bytes = ? WHERE id = ?",
+		dbTime(end), cur.packets, s.fileSize(cur), cur.id)
+	log.Printf("telemetria: sessione %016x terminata (%d pacchetti)", cur.uid, cur.packets)
+}
+
+func (s *Service) fileSize(cur *session) int64 {
+	info, err := os.Stat(filepath.Join(s.opts.Dir, cur.name))
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+// tick gestisce le scadenze (scrittura su disco, fine sessione) e invia lo
+// stato aggiornato ai browser collegati.
+func (s *Service) tick(now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if cur := s.current; cur != nil {
+		if now.Sub(s.lastPacket) > sessionTimeout {
+			s.endSession(now)
+		} else if cur.writer != nil && now.Sub(cur.lastFlush) >= time.Second {
+			cur.lastFlush = now
+			if err := cur.writer.Flush(); err != nil {
+				log.Printf("telemetria: scrittura della registrazione: %v", err)
+			}
+		}
+	}
+
+	msg := s.snapshotJSON(now)
+	if bytes.Equal(msg, s.lastSent) {
+		return
+	}
+	s.lastSent = msg
+	for ch := range s.subscribers {
+		send(ch, msg)
+	}
+}
+
+func (s *Service) snapshotJSON(now time.Time) []byte {
+	status := "waiting"
+	if s.current != nil && now.Sub(s.lastPacket) < waitingAfter {
+		status = "live"
+	}
+	var snap Snapshot
+	if s.current != nil {
+		snap = s.tracker.Snapshot(status)
+	} else {
+		snap = Snapshot{Status: status, Drivers: []Driver{}}
+	}
+	msg, err := json.Marshal(snap)
+	if err != nil {
+		log.Printf("telemetria: %v", err)
+	}
+	return msg
+}
+
+// Snapshot restituisce lo stato attuale in JSON.
+func (s *Service) Snapshot() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.snapshotJSON(time.Now())
+}
+
+// Subscribe registra un client che riceve lo stato a ogni cambiamento (subito
+// il primo). Il canale contiene sempre solo l'ultimo stato: un client lento
+// salta gli aggiornamenti intermedi invece di accumularli.
+func (s *Service) Subscribe() (updates <-chan []byte, unsubscribe func()) {
+	ch := make(chan []byte, 1)
+	s.mu.Lock()
+	s.subscribers[ch] = struct{}{}
+	send(ch, s.snapshotJSON(time.Now()))
+	s.mu.Unlock()
+	return ch, func() {
+		s.mu.Lock()
+		delete(s.subscribers, ch)
+		s.mu.Unlock()
+	}
+}
+
+// send mette msg nel canale sostituendo l'eventuale messaggio non ancora letto.
+func send(ch chan []byte, msg []byte) {
+	select {
+	case <-ch:
+	default:
+	}
+	ch <- msg
+}
+
+func (s *Service) exec(query string, args ...any) {
+	if _, err := s.db.Exec(query, args...); err != nil {
+		log.Printf("telemetria: %v", err)
+	}
+}
+
+// dbTime formatta un istante come datetime('now') di SQLite (UTC).
+func dbTime(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04:05")
+}

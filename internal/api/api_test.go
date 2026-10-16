@@ -1,16 +1,21 @@
 package api_test
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"f1-scoreboard/internal/api"
+	"f1-scoreboard/internal/live"
 	"f1-scoreboard/internal/store"
 )
 
@@ -21,7 +26,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(api.New(db, fstest.MapFS{}))
+	srv := httptest.NewServer(api.New(db, fstest.MapFS{}, live.NewService(db, live.Options{Dir: t.TempDir()})))
 	// I cleanup girano in ordine inverso: prima il server, poi il DB, poi la cartella temporanea.
 	t.Cleanup(func() { db.Close() })
 	t.Cleanup(srv.Close)
@@ -176,5 +181,46 @@ func TestErrors(t *testing.T) {
 				t.Error("manca il messaggio di errore")
 			}
 		})
+	}
+}
+
+func TestLiveEndpoints(t *testing.T) {
+	srv := newTestServer(t)
+
+	var snap struct {
+		Status  string `json:"status"`
+		Drivers []any  `json:"drivers"`
+	}
+	expectStatus(t, call(t, srv, "GET", "/live", nil, &snap), 200, "stato live")
+	if snap.Status != "waiting" || snap.Drivers == nil {
+		t.Errorf("stato senza telemetria: %+v", snap)
+	}
+
+	var sessions []any
+	expectStatus(t, call(t, srv, "GET", "/telemetry/sessions", nil, &sessions), 200, "elenco sessioni")
+	if sessions == nil || len(sessions) != 0 {
+		t.Errorf("sessioni %v", sessions)
+	}
+	expectStatus(t, call(t, srv, "GET", "/telemetry/sessions/99/download", nil, nil), 404, "sessione inesistente")
+	expectStatus(t, call(t, srv, "GET", "/telemetry/sessions/abc/download", nil, nil), 404, "id non numerico")
+}
+
+func TestLiveStream(t *testing.T) {
+	srv := newTestServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	req, _ := http.NewRequestWithContext(ctx, "GET", srv.URL+"/api/live/stream", nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if ct := res.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("Content-Type %q", ct)
+	}
+	// Il primo evento arriva subito, con lo stato attuale.
+	line, err := bufio.NewReader(res.Body).ReadString('\n')
+	if err != nil || !strings.HasPrefix(line, `data: {"status":"waiting"`) {
+		t.Fatalf("primo evento %q, %v", line, err)
 	}
 }

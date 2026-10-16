@@ -10,10 +10,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"f1-scoreboard/internal/api"
+	"f1-scoreboard/internal/live"
 	"f1-scoreboard/internal/store"
 	"f1-scoreboard/web"
 )
@@ -21,6 +23,9 @@ import (
 func main() {
 	port := envOr("PORT", "3000")
 	dbPath := envOr("DB_PATH", filepath.Join("data", "scoreboard.db"))
+	telemetryAddr := envOr("TELEMETRY_ADDR", ":20777")
+	sessionsDir := envOr("TELEMETRY_DIR", filepath.Join(filepath.Dir(dbPath), "sessions"))
+	record := !strings.EqualFold(os.Getenv("TELEMETRY_RECORD"), "false")
 
 	db, err := store.Open(dbPath)
 	if err != nil {
@@ -38,16 +43,24 @@ func main() {
 		log.Print("attenzione: frontend non trovato, esegui \"npm run build\" in web/ prima di go build")
 	}
 
-	srv := &http.Server{Addr: ":" + port, Handler: api.New(db, static)}
-
-	// Ctrl+C o SIGTERM (es. systemctl stop): chiude il server lasciando
-	// finire le richieste in corso, poi il defer chiude il database.
+	// Ctrl+C o SIGTERM (es. systemctl stop) annullano ctx e avviano lo spegnimento.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// La telemetria è sempre in ascolto: appena il gioco invia dati la sessione
+	// viene rilevata e registrata, senza configurazioni.
+	liveService := live.NewService(db, live.Options{Dir: sessionsDir, Record: record})
+	go liveService.Run(ctx, telemetryAddr)
+
+	srv := &http.Server{Addr: ":" + port, Handler: api.New(db, static, liveService)}
+
 	shutdownDone := make(chan struct{})
 	go func() {
 		defer close(shutdownDone)
 		<-ctx.Done()
+		// Prima si chiude la telemetria (salva la registrazione in corso e chiude
+		// gli stream live), poi il server HTTP lascia finire le richieste in corso.
+		<-liveService.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		srv.Shutdown(shutdownCtx)
