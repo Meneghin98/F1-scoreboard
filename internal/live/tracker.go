@@ -136,6 +136,16 @@ func (t *Tracker) Participants() *telemetry.Participants { return t.participants
 // Classification restituisce la classifica finale, se è già arrivata.
 func (t *Tracker) Classification() *telemetry.FinalClassification { return t.classification }
 
+// seedOutline parte da una pianta già nota (salvata in una sessione
+// precedente sullo stesso circuito); i tratti mancanti si completano dal vivo.
+func (t *Tracker) seedOutline(o *outline) {
+	if t.outline == nil || t.outline.length != o.length {
+		t.outline = o
+		return
+	}
+	t.outline.merge(o)
+}
+
 // TrackMap restituisce la pianta del circuito ricostruita finora, o nil se
 // non è ancora iniziata.
 func (t *Tracker) TrackMap() *TrackMap {

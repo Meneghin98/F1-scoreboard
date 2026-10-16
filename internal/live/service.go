@@ -61,6 +61,7 @@ type session struct {
 	bytes          int64
 	infoSaved      bool
 	classification bool
+	mapSaved       int // punti della pianta già salvati nel database
 }
 
 func NewService(db *sql.DB, opts Options) *Service {
@@ -148,6 +149,7 @@ func (s *Service) Handle(at time.Time, data []byte) {
 		s.exec("UPDATE telemetry_sessions SET track_id = ?, session_type = ?, total_laps = ? WHERE id = ?",
 			int(ses.TrackID), int(ses.SessionType), int(ses.TotalLaps), cur.id)
 		log.Printf("telemetria: sessione %016x: %s – %s", cur.uid, ses.TrackID, ses.SessionType)
+		s.loadTrackMap(cur, ses)
 	}
 	if !cur.classification && s.tracker.Classification() != nil {
 		cur.classification = true
@@ -244,6 +246,8 @@ func (s *Service) tick(now time.Time) {
 		}
 	}
 
+	s.saveTrackMap()
+
 	msg := s.snapshotJSON(now)
 	if bytes.Equal(msg, s.lastSent) {
 		return
@@ -277,6 +281,38 @@ func (s *Service) Snapshot() []byte {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.snapshotJSON(time.Now())
+}
+
+// loadTrackMap carica la pianta salvata del circuito, se c'è.
+func (s *Service) loadTrackMap(cur *session, ses *telemetry.Session) {
+	o, err := loadOutline(s.db, ses.TrackID, int(ses.TrackLength))
+	if err != nil {
+		log.Printf("telemetria: lettura della mappa del circuito: %v", err)
+		return
+	}
+	if o == nil {
+		return
+	}
+	cur.mapSaved = o.filled
+	s.tracker.seedOutline(o)
+	log.Printf("telemetria: mappa di %s caricata (%d punti)", ses.TrackID, o.filled)
+}
+
+// saveTrackMap salva la pianta del circuito quando è completa e ogni volta
+// che, da completa, si aggiunge un tratto mancante.
+func (s *Service) saveTrackMap() {
+	cur, o, ses := s.current, s.tracker.outline, s.tracker.Session()
+	if cur == nil || o == nil || ses == nil || !o.complete() || o.filled <= cur.mapSaved {
+		return
+	}
+	if err := saveOutline(s.db, ses.TrackID, o); err != nil {
+		log.Printf("telemetria: salvataggio della mappa del circuito: %v", err)
+		return
+	}
+	if cur.mapSaved == 0 {
+		log.Printf("telemetria: mappa di %s salvata (%d punti)", ses.TrackID, o.filled)
+	}
+	cur.mapSaved = o.filled
 }
 
 // TrackMap restituisce la pianta del circuito della sessione in corso, o nil.

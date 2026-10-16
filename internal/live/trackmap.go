@@ -1,6 +1,9 @@
 package live
 
 import (
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"math"
 
 	"f1-scoreboard/internal/telemetry"
@@ -9,7 +12,8 @@ import (
 // Il gioco non invia il disegno del circuito: lo si ricostruisce dalle
 // posizioni delle auto. Il giro è diviso in tratti di outlineStep metri e per
 // ogni tratto si tiene il primo punto in cui passa un'auto. Con molte auto in
-// pista il tracciato è completo in meno di un giro.
+// pista il tracciato è completo in meno di un giro. Una volta completo viene
+// salvato nel database (track_maps): le volte successive la mappa c'è subito.
 const outlineStep = 10 // metri
 
 // Point è una posizione sul piano orizzontale del circuito, in metri.
@@ -72,6 +76,81 @@ func (o *outline) trackMap() TrackMap {
 		}
 	}
 	return m
+}
+
+// merge aggiunge i tratti di other non ancora visti.
+func (o *outline) merge(other *outline) {
+	for i, seen := range other.seen {
+		if seen && !o.seen[i] {
+			o.points[i] = other.points[i]
+			o.seen[i] = true
+			o.filled++
+		}
+	}
+}
+
+// complete dice se la pianta è abbastanza completa da essere salvata. Qualche
+// tratto può mancare: se un'auto va veloce e i pacchetti sono radi, tra due
+// posizioni può saltare un tratto da 10 metri.
+func (o *outline) complete() bool {
+	return o.filled*100 >= len(o.points)*98
+}
+
+// --- Piante salvate --------------------------------------------------------
+
+// loadOutline legge la pianta salvata di un circuito. Restituisce nil se non
+// c'è o se non corrisponde (lunghezza del giro o passo diversi).
+func loadOutline(db *sql.DB, track telemetry.TrackID, length int) (*outline, error) {
+	var savedLength, step int
+	var data []byte
+	err := db.QueryRow("SELECT track_length, step, points FROM track_maps WHERE track_id = ?", int(track)).
+		Scan(&savedLength, &step, &data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if savedLength != length || step != outlineStep {
+		return nil, nil
+	}
+	var points []*Point
+	if err := json.Unmarshal(data, &points); err != nil {
+		return nil, err
+	}
+	o := newOutline(length)
+	if len(points) != len(o.points) {
+		return nil, nil
+	}
+	for i, p := range points {
+		if p != nil {
+			o.points[i] = *p
+			o.seen[i] = true
+			o.filled++
+		}
+	}
+	return o, nil
+}
+
+// saveOutline salva la pianta di un circuito, sostituendo quella precedente.
+func saveOutline(db *sql.DB, track telemetry.TrackID, o *outline) error {
+	points := make([]*Point, len(o.points))
+	for i := range o.points {
+		if o.seen[i] {
+			points[i] = &o.points[i]
+		}
+	}
+	data, err := json.Marshal(points)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`
+		INSERT INTO track_maps (track_id, track_length, step, points, updated_at) VALUES (?, ?, ?, ?, datetime('now'))
+		ON CONFLICT (track_id) DO UPDATE SET
+			track_length = excluded.track_length, step = excluded.step,
+			points = excluded.points, updated_at = excluded.updated_at`,
+		int(track), o.length, outlineStep, data)
+	return err
 }
 
 // round1 arrotonda ai 10 cm: più che sufficienti per una mappa e il JSON resta corto.

@@ -345,3 +345,45 @@ func TestTrackMapOnRecording(t *testing.T) {
 		t.Errorf("mappa specchiata: area con segno %.0f", area/2)
 	}
 }
+
+// La prima sessione su un circuito ne salva la pianta; dalla successiva la
+// mappa è completa appena arriva il primo pacchetto Session.
+func TestTrackMapIsSaved(t *testing.T) {
+	packets := loadRecording(t)
+	s, _ := newTestService(t, false)
+	base := time.Date(2026, 10, 16, 13, 31, 38, 0, time.UTC)
+	for _, p := range packets {
+		s.Handle(base.Add(p.At), p.Data)
+	}
+	s.tick(s.lastPacket)
+
+	var saved int
+	s.db.QueryRow("SELECT count(*) FROM track_maps WHERE track_id = ?", int(telemetry.TrackID(11))).Scan(&saved)
+	if saved != 1 {
+		t.Fatalf("%d piante salvate per Monza, attesa 1", saved)
+	}
+	full := s.TrackMap()
+
+	// Una nuova sessione sullo stesso database: si ferma al primo pacchetto Session.
+	s2 := NewService(s.db, Options{Record: false})
+	for _, p := range packets {
+		h, err := telemetry.ParseHeader(p.Data)
+		if err != nil || h.SessionUID == 0 {
+			continue
+		}
+		s2.Handle(base.Add(p.At), p.Data)
+		if h.PacketID == telemetry.PacketSession && s2.tracker.Session().TrackID == 11 {
+			break
+		}
+	}
+	m := s2.TrackMap()
+	if m == nil || len(m.Points) != len(full.Points) {
+		t.Fatalf("mappa caricata: %v punti, attesi %d", m, len(full.Points))
+	}
+	if m.Points[100] != full.Points[100] {
+		t.Errorf("punto 100: %+v, atteso %+v", m.Points[100], full.Points[100])
+	}
+	s2.mu.Lock()
+	s2.endSession(time.Now())
+	s2.mu.Unlock()
+}
