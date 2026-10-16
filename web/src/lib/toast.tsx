@@ -1,4 +1,5 @@
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { cx } from '../components/ui';
 
 const TOAST_DURATION_MS = 2500;
 
@@ -59,7 +60,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         ref={ref}
         popover="manual"
         role="status"
-        className={[
+        className={cx(
           // inset-auto annulla il posizionamento a schermo intero che il browser dà ai popover.
           'fixed inset-auto bottom-6 left-1/2 -translate-x-1/2 rounded-md border border-l-4 border-line border-l-accent',
           'bg-surface-2 px-5 py-3 text-fg shadow-xl shadow-black/40',
@@ -67,7 +68,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           // (display/overlay), starting: imposta il punto di partenza dell'apertura.
           'opacity-0 transition-[opacity,translate,display,overlay] transition-discrete duration-300',
           'translate-y-2 open:translate-y-0 open:opacity-100 starting:open:translate-y-2 starting:open:opacity-0',
-        ].join(' ')}
+        )}
       >
         {state?.text}
       </div>

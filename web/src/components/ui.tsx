@@ -1,9 +1,13 @@
 // Elementi grafici condivisi: tengono in un solo posto le classi Tailwind che si ripetono.
+import { clsx, type ClassValue } from 'clsx';
 import type { ButtonHTMLAttributes, ComponentProps, ReactNode } from 'react';
+import { twMerge } from 'tailwind-merge';
 
 // Unisce le classi ignorando i valori falsi: cx('a', cond && 'b').
-export function cx(...classes: (string | false | null | undefined)[]): string {
-  return classes.filter(Boolean).join(' ');
+// In caso di conflitto vince l'ultima, così <Card className="mb-0"> sostituisce
+// davvero il mb-4 di default invece di dipendere dall'ordine nel CSS generato.
+export function cx(...classes: ClassValue[]): string {
+  return twMerge(clsx(classes));
 }
 
 // Stile comune di input e select; fieldSmClass ha la stessa altezza di <Button size="sm">.
