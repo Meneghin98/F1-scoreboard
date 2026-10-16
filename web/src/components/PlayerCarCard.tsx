@@ -1,7 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { ERS_MODE, FUEL_MIX, severity } from '../lib/live';
 import type { PlayerCar } from '../lib/types';
+import { usePedalHistory } from '../lib/useLive';
 import { CarDiagram } from './CarDiagram';
+import { PedalChart } from './PedalChart';
 import { Card, cx } from './ui';
 
 // Statistiche dell'auto del giocatore. Ridotta mostra solo i dati principali;
@@ -72,6 +74,7 @@ function Summary({ car }: { car: PlayerCar }) {
 // Vista dettagliata: il disegno dell'auto con gomme e danni, accanto guida, carburante ed ERS.
 function Details({ car }: { car: PlayerCar }) {
   const d = car.damage;
+  const pedals = usePedalHistory();
 
   return (
     <div className="grid gap-6 md:grid-cols-2">
@@ -89,8 +92,7 @@ function Details({ car }: { car: PlayerCar }) {
         <Section title="Guida">
           <SpeedGear car={car} />
           <Bar label="Giri motore" value={car.rpm.toLocaleString('it-IT')} ratio={car.maxRpm ? car.rpm / car.maxRpm : 0} color="bg-sky-500" />
-          <Bar label="Acceleratore" value={`${Math.round(car.throttle * 100)}%`} ratio={car.throttle} color="bg-green-500" />
-          <Bar label="Freno" value={`${Math.round(car.brake * 100)}%`} ratio={car.brake} color="bg-red-500" />
+          <PedalChart samples={pedals} />
           <div className="flex flex-col gap-1 text-sm">
             <Stat label="Ripartizione freni" value={`${car.brakeBias}%`} />
             <Stat label="Temp. motore" value={`${car.engineTemp}°C`} />
