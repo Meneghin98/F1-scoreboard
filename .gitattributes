@@ -7,3 +7,6 @@
 *.jpg binary
 *.ico binary
 *.db binary
+
+# Registrazioni della telemetria: salvate con Git LFS (servono "git lfs install" sugli altri PC).
+*.f1rec.gz filter=lfs diff=lfs merge=lfs -text
