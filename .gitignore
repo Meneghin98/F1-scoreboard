@@ -6,3 +6,4 @@ bin/
 .env
 web/dist/*
 !web/dist/.gitkeep
+recordings/

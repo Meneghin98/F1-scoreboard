@@ -13,6 +13,9 @@ Il risultato della build è **un unico eseguibile** (~15 MB) che contiene server
 ```
 main.go                 avvio, configurazione, spegnimento pulito
 cmd/seed/               dati di esempio per lo sviluppo
+cmd/record/             registratore della telemetria UDP di F1 25
+internal/telemetry/     decodifica dei pacchetti di telemetria (formato 2025)
+internal/recording/     formato dei file di registrazione (.f1rec.gz)
 internal/api/           handler HTTP delle API REST
 internal/scoring/       punteggi F1 2025 e calcolo della classifica
 internal/store/         apertura del DB e migrazioni (migrations/NNN_*.sql)
@@ -69,6 +72,33 @@ Remove-Item Env:GOOS, Env:GOARCH                                               #
 Se si compila Go senza aver prima buildato il frontend, il server parte comunque ma segnala
 nel log che il frontend manca. Per il deploy basta copiare l'eseguibile sulla macchina di
 destinazione e avviarlo.
+
+## Telemetria di F1 25
+
+Nel gioco: **Impostazioni → Impostazioni telemetria**
+
+| Voce                   | Valore                                                        |
+|------------------------|---------------------------------------------------------------|
+| Telemetria UDP         | Attiva                                                        |
+| Modalità broadcast UDP | Disattivata                                                   |
+| Indirizzo IP UDP       | IP del PC con il server (`127.0.0.1` se il gioco gira lì)     |
+| Porta UDP              | `20777`                                                       |
+| Frequenza di invio UDP | `20 Hz`                                                       |
+| Formato UDP            | `2025`                                                        |
+
+Il gioco invia i dati solo quando si è in una sessione (in pista o nel garage), non dai menù.
+
+### Registrare una sessione
+
+```sh
+go run ./cmd/record                          # registra in recordings/<data-ora>.f1rec.gz, Ctrl+C per terminare
+go run ./cmd/record -info recordings/xxx.f1rec.gz   # riassunto: durata, sessioni, pacchetti, eventi
+```
+
+Durante la registrazione vengono segnalati inizio e fine sessione, bandiera a scacchi e arrivo
+della classifica finale. Il file viene scaricato su disco ogni secondo, quindi resta leggibile anche
+se il programma si interrompe. Le registrazioni (circa 160 KB/s non compressi a 20 Hz) sono escluse
+da Git.
 
 ## Database
 
