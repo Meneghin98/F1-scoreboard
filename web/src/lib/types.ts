@@ -63,3 +63,51 @@ export interface ResultInput {
   position: number | null;
   dnf: boolean;
 }
+
+// --- Telemetria live (vedi internal/live/tracker.go) ----------------------
+
+export interface LiveSession {
+  uid: string;
+  format: number;
+  trackId: number;
+  track: string;
+  sessionType: number;
+  type: string;
+  isRace: boolean;
+  totalLaps: number;
+  currentLap: number;
+  timeLeft: number;
+  paused: boolean;
+  safetyCar: number;
+  weather: number;
+  trackTemp: number;
+  airTemp: number;
+}
+
+export interface LiveDriver {
+  carIndex: number;
+  position: number;
+  name: string;
+  team: string;
+  raceNumber: number;
+  isPlayer: boolean;
+  ai: boolean;
+  lap: number;
+  lastLapMs: number;
+  bestLapMs: number;
+  gapToLeaderMs: number;
+  gapAheadMs: number;
+  inPit: boolean;
+  pitStops: number;
+  penaltiesSec: number;
+  status: string;
+  tyre: string;
+  tyreAge: number;
+}
+
+export interface LiveSnapshot {
+  status: 'waiting' | 'live';
+  session: LiveSession | null;
+  drivers: LiveDriver[];
+  finished: boolean;
+}

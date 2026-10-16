@@ -86,6 +86,7 @@ destinazione e avviarlo.
 
 Il server ascolta la telemetria appena parte, senza configurazioni: appena il gioco entra in
 una sessione questa viene rilevata, mostrata nell'header ("Monza · Gara · Giro 2/5") e
+nella pagina Live con la classifica in tempo reale, e
 **registrata automaticamente** in `data/sessions/`, una registrazione per sessione (circa
 2 MB al minuto). Se la porta UDP è occupata (per esempio da `cmd/record`) il server parte
 comunque e riprova ogni 10 secondi.

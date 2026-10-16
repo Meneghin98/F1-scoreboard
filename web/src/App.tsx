@@ -1,31 +1,27 @@
 import { useEffect, useState } from 'react';
+import { Dashboard } from './components/Dashboard';
+import { LiveBadge } from './components/LiveBadge';
+import { LiveTab } from './components/LiveTab';
 import { NewTournamentDialog } from './components/NewTournamentDialog';
 import { PlayersTab } from './components/PlayersTab';
 import { RacesTab } from './components/RacesTab';
 import { StandingsTab } from './components/StandingsTab';
-import { Button, cx, Empty, fieldSmClass } from './components/ui';
+import { Button, Empty, fieldSmClass } from './components/ui';
 import { api } from './lib/api';
 import { useConfirm } from './lib/confirm';
 import { TEAMS, TRACKS } from './lib/f1';
+import { href, useView, VIEW_LABELS } from './lib/route';
 import { useToast } from './lib/toast';
 import type { Tournament } from './lib/types';
-
-type Tab = 'standings' | 'races' | 'players';
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'standings', label: 'Classifica' },
-  { id: 'races', label: 'Gare' },
-  { id: 'players', label: 'Piloti' },
-];
 
 export function App() {
   const { run } = useToast();
   const confirm = useConfirm();
+  const view = useView();
   const [tournaments, setTournaments] = useState<Tournament[] | null>(null);
   const [tournamentId, setTournamentId] = useState<number | null>(
     () => Number(localStorage.getItem('tournamentId')) || null,
   );
-  const [tab, setTab] = useState<Tab>('standings');
   const [creating, setCreating] = useState(false);
 
   // Ricarica i tornei e seleziona selectId, oppure il primo se non esiste più.
@@ -59,14 +55,20 @@ export function App() {
     });
   }
 
-  const missing = tab !== 'players' && !tournamentId;
+  // Classifica e gare appartengono a un torneo: senza tornei non c'è niente da mostrare.
+  const missing = (view === 'standings' || view === 'races') && !tournamentId;
 
   return (
     <>
       <header className="flex flex-wrap items-center justify-between gap-4 border-b-3 border-accent bg-surface px-6 py-4">
-        <h1 className="text-2xl font-bold tracking-wide">
-          <span className="font-black text-accent italic">F1</span> 2025 Scoreboard
-        </h1>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <h1 className="text-2xl font-bold tracking-wide">
+            <a href={href('dashboard')}>
+              <span className="font-black text-accent italic">F1</span> 2025 Scoreboard
+            </a>
+          </h1>
+          <LiveBadge />
+        </div>
         <div className="flex items-center gap-2">
           <select
             aria-label="Torneo"
@@ -85,32 +87,26 @@ export function App() {
         </div>
       </header>
 
-      <nav className="flex gap-1 border-b border-line bg-surface px-6">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            className={cx(
-              'cursor-pointer border-b-3 px-4 py-3 font-semibold',
-              tab === t.id ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg',
-            )}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
-
-      {/* I tab montano solo dopo aver caricato i tornei, per non chiedere un torneo salvato che non esiste più. */}
+      {/* Le pagine montano solo dopo aver caricato i tornei, per non chiedere un torneo salvato che non esiste più. */}
       {tournaments && (
         <main className="mx-auto max-w-300 p-6">
+          {view !== 'dashboard' && (
+            <nav aria-label="Percorso" className="mb-4 flex items-center gap-2 text-sm">
+              <a href={href('dashboard')} className="text-muted hover:text-fg">{VIEW_LABELS.dashboard}</a>
+              <span className="text-muted">/</span>
+              <span aria-current="page" className="font-semibold">{VIEW_LABELS[view]}</span>
+            </nav>
+          )}
           {missing ? (
             <Empty>Crea un torneo per iniziare.</Empty>
           ) : (
             <section>
-              {/* key: cambiando torneo il tab riparte da zero (es. chiude l'editor dei risultati). */}
-              {tab === 'standings' && <StandingsTab key={tournamentId} tournamentId={tournamentId!} />}
-              {tab === 'races' && <RacesTab key={tournamentId} tournamentId={tournamentId!} />}
-              {tab === 'players' && <PlayersTab />}
+              {/* key: cambiando torneo la pagina riparte da zero (es. chiude l'editor dei risultati). */}
+              {view === 'dashboard' && <Dashboard key={tournamentId} tournamentId={tournamentId} />}
+              {view === 'standings' && <StandingsTab key={tournamentId} tournamentId={tournamentId!} />}
+              {view === 'races' && <RacesTab key={tournamentId} tournamentId={tournamentId!} />}
+              {view === 'players' && <PlayersTab />}
+              {view === 'live' && <LiveTab />}
             </section>
           )}
         </main>
