@@ -2,6 +2,8 @@ module f1-scoreboard
 
 go 1.26.0
 
+toolchain go1.26.9
+
 require modernc.org/sqlite v1.60.1
 
 require (
