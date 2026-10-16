@@ -5,6 +5,7 @@ import { RacesTab } from './components/RacesTab';
 import { StandingsTab } from './components/StandingsTab';
 import { Button, cx, Empty, fieldSmClass } from './components/ui';
 import { api } from './lib/api';
+import { useConfirm } from './lib/confirm';
 import { TEAMS, TRACKS } from './lib/f1';
 import { useToast } from './lib/toast';
 import type { Tournament } from './lib/types';
@@ -19,6 +20,7 @@ const TABS: { id: Tab; label: string }[] = [
 
 export function App() {
   const { run } = useToast();
+  const confirm = useConfirm();
   const [tournaments, setTournaments] = useState<Tournament[] | null>(null);
   const [tournamentId, setTournamentId] = useState<number | null>(
     () => Number(localStorage.getItem('tournamentId')) || null,
@@ -42,9 +44,15 @@ export function App() {
     localStorage.setItem('tournamentId', String(tournamentId ?? ''));
   }, [tournamentId]);
 
-  function handleDelete() {
+  async function handleDelete() {
     const t = tournaments?.find((x) => x.id === tournamentId);
-    if (!t || !confirm(`Eliminare il torneo "${t.name}" con tutte le sue gare?`)) return;
+    if (!t) return;
+    const ok = await confirm({
+      title: 'Eliminare il torneo?',
+      message: `"${t.name}" verrà eliminato insieme a tutte le sue gare e ai risultati.`,
+      confirmLabel: 'Elimina torneo',
+    });
+    if (!ok) return;
     run(async () => {
       await api.deleteTournament(t.id);
       await loadTournaments(null);

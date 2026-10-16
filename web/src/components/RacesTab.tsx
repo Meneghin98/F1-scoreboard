@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
+import { useConfirm } from '../lib/confirm';
 import { formatDate, raceLabels } from '../lib/format';
 import type { Player, RaceType, RaceWithResults } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
@@ -9,6 +10,7 @@ import { Button, Card, cx, dnfClass, Empty, fieldClass, rankClass, Table, Td, Th
 
 export function RacesTab({ tournamentId }: { tournamentId: number }) {
   const { run } = useToast();
+  const confirm = useConfirm();
   const [editingRaceId, setEditingRaceId] = useState<number | null>(null);
   const { data, reload } = useLoad(
     () => Promise.all([api.races(tournamentId), api.players()]),
@@ -31,8 +33,14 @@ export function RacesTab({ tournamentId }: { tournamentId: number }) {
     });
   }
 
-  function handleDelete(raceId: number) {
-    if (!confirm('Eliminare questa gara e i relativi risultati?')) return;
+  async function handleDelete(raceId: number) {
+    const race = data?.[0].find((r) => r.id === raceId);
+    const ok = await confirm({
+      title: 'Eliminare la gara?',
+      message: `${race?.track ?? 'La gara'} verrà eliminata insieme ai suoi risultati.`,
+      confirmLabel: 'Elimina gara',
+    });
+    if (!ok) return;
     run(async () => {
       await api.deleteRace(raceId);
       if (editingRaceId === raceId) setEditingRaceId(null);

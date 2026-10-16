@@ -23,6 +23,7 @@ export function Button({ variant = 'primary', size = 'md', className, ...props }
       className={cx(
         // Il bordo c'è sempre (trasparente nel primary), così tutte le varianti hanno la stessa altezza.
         'cursor-pointer rounded-md border font-semibold disabled:cursor-default disabled:opacity-50',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
         variant === 'primary' && 'border-transparent bg-accent text-white hover:brightness-110',
         variant === 'ghost' && 'border-line text-muted hover:border-muted hover:text-fg',
         size === 'md' ? 'px-4 py-2' : 'h-8 px-3 text-sm',
