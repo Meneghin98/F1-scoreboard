@@ -1,11 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Dashboard } from './components/Dashboard';
 import { LiveBadge } from './components/LiveBadge';
-import { LiveTab } from './components/LiveTab';
 import { NewTournamentDialog } from './components/NewTournamentDialog';
-import { PlayersTab } from './components/PlayersTab';
-import { RacesTab } from './components/RacesTab';
-import { StandingsTab } from './components/StandingsTab';
 import { Button, Empty, fieldSmClass } from './components/ui';
 import { api } from './lib/api';
 import { useConfirm } from './lib/confirm';
@@ -13,6 +8,11 @@ import { TEAMS, TRACKS } from './lib/f1';
 import { href, useView, VIEW_LABELS } from './lib/route';
 import { useToast } from './lib/toast';
 import type { Tournament } from './lib/types';
+import { DashboardPage } from './pages/DashboardPage';
+import { LivePage } from './pages/LivePage';
+import { PlayersPage } from './pages/PlayersPage';
+import { RacesPage } from './pages/RacesPage';
+import { StandingsPage } from './pages/StandingsPage';
 
 export function App() {
   const { run } = useToast();
@@ -102,11 +102,11 @@ export function App() {
           ) : (
             <section>
               {/* key: cambiando torneo la pagina riparte da zero (es. chiude l'editor dei risultati). */}
-              {view === 'dashboard' && <Dashboard key={tournamentId} tournamentId={tournamentId} />}
-              {view === 'standings' && <StandingsTab key={tournamentId} tournamentId={tournamentId!} />}
-              {view === 'races' && <RacesTab key={tournamentId} tournamentId={tournamentId!} />}
-              {view === 'players' && <PlayersTab />}
-              {view === 'live' && <LiveTab />}
+              {view === 'dashboard' && <DashboardPage key={tournamentId} tournamentId={tournamentId} />}
+              {view === 'standings' && <StandingsPage key={tournamentId} tournamentId={tournamentId!} />}
+              {view === 'races' && <RacesPage key={tournamentId} tournamentId={tournamentId!} />}
+              {view === 'players' && <PlayersPage />}
+              {view === 'live' && <LivePage />}
             </section>
           )}
         </main>

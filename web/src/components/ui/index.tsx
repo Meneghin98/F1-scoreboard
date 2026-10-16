@@ -87,3 +87,4 @@ export function rankClass(position: number | null): string {
 }
 
 export const dnfClass = 'font-bold text-accent-text';
+export { Dialog } from './Dialog';

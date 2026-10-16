@@ -20,7 +20,7 @@ internal/live/          ascolto UDP, stato live della sessione, registrazione au
 internal/api/           handler HTTP delle API REST
 internal/scoring/       punteggi F1 2025 e calcolo della classifica
 internal/store/         apertura del DB e migrazioni (migrations/NNN_*.sql)
-web/src/                frontend React (components/ e lib/ con client API e tipi)
+web/src/                frontend React (pages/, components/, components/ui/ e lib/)
 web/dist/               build del frontend, incorporata nel binario (non versionata)
 ```
 

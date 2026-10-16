@@ -5,10 +5,10 @@ import { formatDate, raceLabels } from '../lib/format';
 import type { Player, RaceType, RaceWithResults } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
-import { ResultsEditor } from './ResultsEditor';
-import { Button, Card, cx, dnfClass, Empty, fieldClass, rankClass, Table, Td, Th, Tr } from './ui';
+import { ResultsEditor } from '../components/ResultsEditor';
+import { Button, Card, cx, dnfClass, Empty, fieldClass, rankClass, Table, Td, Th, Tr } from '../components/ui';
 
-export function RacesTab({ tournamentId }: { tournamentId: number }) {
+export function RacesPage({ tournamentId }: { tournamentId: number }) {
   const { run } = useToast();
   const confirm = useConfirm();
   const [editingRaceId, setEditingRaceId] = useState<number | null>(null);

@@ -4,9 +4,9 @@ import { useConfirm } from '../lib/confirm';
 import type { Player } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
-import { Button, Card, cx, Empty, fieldClass, TeamTag } from './ui';
+import { Button, Card, cx, Empty, fieldClass, TeamTag } from '../components/ui';
 
-export function PlayersTab() {
+export function PlayersPage() {
   const { run } = useToast();
   const confirm = useConfirm();
   const { data: players, reload } = useLoad(api.players, []);

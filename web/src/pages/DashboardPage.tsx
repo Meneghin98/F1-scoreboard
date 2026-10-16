@@ -5,11 +5,11 @@ import { isLive, sessionSummary } from '../lib/live';
 import { href, VIEW_LABELS, type View } from '../lib/route';
 import { useLive } from '../lib/useLive';
 import { useLoad } from '../lib/useLoad';
-import { LiveDot } from './LiveBadge';
-import { cx, rankClass } from './ui';
+import { LiveDot } from '../components/LiveBadge';
+import { cx, rankClass } from '../components/ui';
 
 // Pagina iniziale: una card per ogni sezione, con un riassunto e il link per aprirla.
-export function Dashboard({ tournamentId }: { tournamentId: number | null }) {
+export function DashboardPage({ tournamentId }: { tournamentId: number | null }) {
   const live = useLive();
   const { data: standings } = useLoad(
     () => (tournamentId ? api.standings(tournamentId) : Promise.resolve(null)),

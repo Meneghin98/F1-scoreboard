@@ -38,7 +38,7 @@ function TrackMapSvg({ map, drivers }: { map: TrackMap; drivers: LiveDriver[] })
   return (
     <svg
       viewBox={`${minX - pad} ${minZ - pad} ${maxX - minX + 2 * pad} ${maxZ - minZ + 2 * pad}`}
-      className="mx-auto block max-h-[32rem] w-full"
+      className="mx-auto block max-h-128 w-full"
       role="img"
       aria-label="Mappa del circuito"
     >

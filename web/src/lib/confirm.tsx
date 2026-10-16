@@ -1,6 +1,5 @@
 import { createContext, use, useCallback, useState, type ReactNode } from 'react';
-import { Dialog } from '../components/Dialog';
-import { Button } from '../components/ui';
+import { Button, Dialog } from '../components/ui';
 
 interface ConfirmOptions {
   title: string;

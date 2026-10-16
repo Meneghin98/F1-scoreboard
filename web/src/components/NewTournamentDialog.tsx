@@ -2,8 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useToast } from '../lib/toast';
 import type { Tournament } from '../lib/types';
-import { Dialog } from './Dialog';
-import { Button, cx, fieldClass } from './ui';
+import { Button, cx, Dialog, fieldClass } from './ui';
 
 interface Props {
   open: boolean;

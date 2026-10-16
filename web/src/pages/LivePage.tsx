@@ -2,12 +2,12 @@ import { formatClock, formatGap, formatLapTime } from '../lib/format';
 import { isLive, SAFETY_CAR, TYRE_CLASS, WEATHER } from '../lib/live';
 import type { LiveDriver, LiveSession, LiveSnapshot } from '../lib/types';
 import { useLive } from '../lib/useLive';
-import { LiveDot } from './LiveBadge';
-import { TrackMapCard } from './TrackMapCard';
-import { Card, cx, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from './ui';
+import { LiveDot } from '../components/LiveBadge';
+import { TrackMapCard } from '../components/TrackMapCard';
+import { Card, cx, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
 
 // Classifica della sessione in corso, aggiornata in tempo reale dalla telemetria.
-export function LiveTab() {
+export function LivePage() {
   const live = useLive();
 
   if (!live) return <Empty>Connessione al server in corso…</Empty>;

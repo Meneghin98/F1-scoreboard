@@ -2,9 +2,9 @@ import { api } from '../lib/api';
 import { raceLabels } from '../lib/format';
 import type { Race, Standing } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
-import { Card, dnfClass, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from './ui';
+import { Card, dnfClass, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
 
-export function StandingsTab({ tournamentId }: { tournamentId: number }) {
+export function StandingsPage({ tournamentId }: { tournamentId: number }) {
   const { data } = useLoad(() => api.standings(tournamentId), [tournamentId]);
   if (!data) return null;
 
