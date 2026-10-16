@@ -14,7 +14,7 @@ Il risultato della build è **un unico eseguibile** (~15 MB) che contiene server
 main.go                 avvio, configurazione, spegnimento pulito
 cmd/seed/               dati di esempio per lo sviluppo
 cmd/record/             registratore della telemetria UDP di F1 25
-internal/telemetry/     decodifica dei pacchetti di telemetria (formato 2025)
+internal/telemetry/     parser dei pacchetti di telemetria (formati 2025 e 2026)
 internal/recording/     formato dei file di registrazione (.f1rec.gz)
 internal/api/           handler HTTP delle API REST
 internal/scoring/       punteggi F1 2025 e calcolo della classifica
@@ -94,13 +94,26 @@ controlla quale formato è impostato nel gioco, il registratore lo mostra a ogni
 
 ```sh
 go run ./cmd/record                          # registra in recordings/<data-ora>.f1rec.gz, Ctrl+C per terminare
-go run ./cmd/record -info recordings/xxx.f1rec.gz   # riassunto: durata, sessioni, pacchetti, eventi
+go run ./cmd/record -info recordings/xxx.f1rec.gz   # riassunto: sessioni, circuito, classifica finale, eventi
 ```
 
 Durante la registrazione vengono segnalati inizio e fine sessione, bandiera a scacchi e arrivo
 della classifica finale. Il file viene scaricato su disco ogni secondo, quindi resta leggibile anche
-se il programma si interrompe. Le registrazioni (circa 160 KB/s non compressi a 20 Hz) sono escluse
-da Git.
+se il programma si interrompe. Le registrazioni (circa 160 KB/s non compressi a 20 Hz) finiscono in
+`recordings/`, esclusa da Git: quelle da conservare vanno copiate in `testdata/recordings/`,
+salvata con Git LFS.
+
+### Parser
+
+`internal/telemetry` decodifica tutti i pacchetti di F1 25 nei formati 2025 e 2026
+(`telemetry.Parse`). È verificato in due modi:
+
+- **formato 2025**: `go test ./internal/telemetry` decodifica tutte le registrazioni in
+  `testdata/recordings` controllando che ogni pacchetto venga letto byte per byte e che i valori
+  siano plausibili (serve `git lfs pull` per scaricarle);
+- **formato 2026**: in mancanza di registrazioni, ogni pacchetto viene confrontato con la dimensione
+  ufficiale della specifica EA. Le forze G del 2026 sono esposte grezze perché EA non ne documenta
+  la scala.
 
 ## Database
 

@@ -27,15 +27,39 @@ import (
 	"f1-scoreboard/internal/telemetry"
 )
 
+// Descrizioni dei codici evento.
+var eventNames = map[string]string{
+	telemetry.EventSessionStarted:      "inizio sessione",
+	telemetry.EventSessionEnded:        "fine sessione",
+	telemetry.EventFastestLap:          "giro più veloce",
+	telemetry.EventRetirement:          "ritiro",
+	telemetry.EventDRSEnabled:          "DRS abilitato",
+	telemetry.EventDRSDisabled:         "DRS disabilitato",
+	telemetry.EventTeamMateInPits:      "compagno ai box",
+	telemetry.EventChequeredFlag:       "bandiera a scacchi",
+	telemetry.EventRaceWinner:          "vincitore della gara",
+	telemetry.EventPenalty:             "penalità",
+	telemetry.EventSpeedTrap:           "speed trap",
+	telemetry.EventStartLights:         "semaforo di partenza",
+	telemetry.EventLightsOut:           "semaforo spento",
+	telemetry.EventDriveThroughServed:  "drive through scontato",
+	telemetry.EventStopGoServed:        "stop and go scontato",
+	telemetry.EventFlashback:           "flashback",
+	telemetry.EventButtons:             "tasti premuti",
+	telemetry.EventRedFlag:             "bandiera rossa",
+	telemetry.EventOvertake:            "sorpasso",
+	telemetry.EventSafetyCar:           "safety car",
+	telemetry.EventCollision:           "collisione",
+	telemetry.EventPartialModeEnabled:  "modalità parziale abilitata",
+	telemetry.EventPartialModeDisabled: "modalità parziale disabilitata",
+	telemetry.EventOvertakeEnabled:     "overtake mode abilitato",
+	telemetry.EventOvertakeDisabled:    "overtake mode disabilitato",
+}
+
 // Eventi da segnalare a schermo durante la registrazione.
-var notableEvents = map[string]string{
-	"SSTA": "inizio sessione",
-	"SEND": "fine sessione",
-	"CHQF": "bandiera a scacchi",
-	"RCWN": "vincitore della gara",
-	"FTLP": "giro più veloce",
-	"SCAR": "safety car",
-	"RDFL": "bandiera rossa",
+var notableEvents = []string{
+	telemetry.EventSessionStarted, telemetry.EventSessionEnded, telemetry.EventChequeredFlag,
+	telemetry.EventRaceWinner, telemetry.EventFastestLap, telemetry.EventSafetyCar, telemetry.EventRedFlag,
 }
 
 func main() {
@@ -162,15 +186,22 @@ func announce(packet []byte, at time.Duration, sessionUID uint64) uint64 {
 		}
 		sessionUID = h.SessionUID
 	}
-	if code, ok := telemetry.EventCode(packet); ok {
-		if desc, notable := notableEvents[code]; notable {
-			fmt.Printf("[%s] evento %s: %s\n", stamp, code, desc)
-		}
+	if code, ok := telemetry.EventCode(packet); ok && slices.Contains(notableEvents, code) {
+		fmt.Printf("[%s] evento %s: %s\n", stamp, code, eventNames[code])
 	}
 	if h.PacketID == telemetry.PacketFinalClassification {
 		fmt.Printf("[%s] classifica finale ricevuta: puoi terminare con Ctrl+C\n", stamp)
 	}
 	return sessionUID
+}
+
+// sessionSummary raccoglie, per una sessione, gli ultimi pacchetti utili al riepilogo.
+type sessionSummary struct {
+	uid            uint64
+	start, end     time.Duration
+	session        *telemetry.Session
+	participants   *telemetry.Participants
+	classification *telemetry.FinalClassification
 }
 
 func summarize(path string) error {
@@ -185,17 +216,19 @@ func summarize(path string) error {
 	}
 
 	var (
-		total    int
-		size     int64
-		last     time.Duration
-		counts   = map[telemetry.PacketID]int{}
-		formats  = map[uint16]int{}
-		events   = map[string]int{}
-		sessions []uint64
-		readErr  error
+		total     int
+		size      int64
+		last      time.Duration
+		counts    = map[telemetry.PacketID]int{}
+		formats   = map[uint16]int{}
+		events    = map[string]int{}
+		sessions  []*sessionSummary
+		byUID     = map[uint64]*sessionSummary{}
+		parseErrs int
+		readErr   error
 	)
 	for {
-		p, err := r.Next()
+		rec, err := r.Next()
 		if err != nil {
 			if err != io.EOF {
 				readErr = err
@@ -203,19 +236,42 @@ func summarize(path string) error {
 			break
 		}
 		total++
-		size += int64(len(p.Data))
-		last = p.At
-		h, err := telemetry.ParseHeader(p.Data)
+		size += int64(len(rec.Data))
+		last = rec.At
+
+		p, err := telemetry.Parse(rec.Data)
 		if err != nil {
+			parseErrs++
+			if h, err := telemetry.ParseHeader(rec.Data); err == nil {
+				counts[h.PacketID]++
+				formats[h.PacketFormat]++
+			}
 			continue
 		}
+		h := p.PacketHeader()
 		counts[h.PacketID]++
 		formats[h.PacketFormat]++
-		if h.SessionUID != 0 && !slices.Contains(sessions, h.SessionUID) {
-			sessions = append(sessions, h.SessionUID)
+		if e, ok := p.(*telemetry.Event); ok {
+			events[e.Code]++
 		}
-		if code, ok := telemetry.EventCode(p.Data); ok {
-			events[code]++
+		if h.SessionUID == 0 {
+			continue
+		}
+		s := byUID[h.SessionUID]
+		if s == nil {
+			s = &sessionSummary{uid: h.SessionUID, start: rec.At}
+			byUID[h.SessionUID] = s
+			sessions = append(sessions, s)
+		}
+		s.end = rec.At
+
+		switch p := p.(type) {
+		case *telemetry.Session:
+			s.session = p
+		case *telemetry.Participants:
+			s.participants = p
+		case *telemetry.FinalClassification:
+			s.classification = p
 		}
 	}
 
@@ -223,34 +279,108 @@ func summarize(path string) error {
 	if readErr != nil {
 		fmt.Printf("  attenzione: file troncato (%v), letti i pacchetti fino a quel punto\n", readErr)
 	}
+	if parseErrs > 0 {
+		fmt.Printf("  attenzione: %d pacchetti non decodificabili\n", parseErrs)
+	}
 	for format, n := range formats {
 		fmt.Printf("  formato %s: %d pacchetti\n", formatLabel(format), n)
 	}
-	fmt.Printf("  sessioni: %d\n", len(sessions))
-	for _, uid := range sessions {
-		fmt.Printf("    %016x\n", uid)
+
+	for i, s := range sessions {
+		printSession(i+1, s)
 	}
-	fmt.Println("  pacchetti per tipo:")
+
+	fmt.Println("\npacchetti per tipo:")
 	ids := make([]telemetry.PacketID, 0, len(counts))
 	for id := range counts {
 		ids = append(ids, id)
 	}
 	slices.Sort(ids)
 	for _, id := range ids {
-		fmt.Printf("    %-20s %7d\n", id, counts[id])
+		fmt.Printf("  %-20s %7d\n", id, counts[id])
 	}
 	if len(events) > 0 {
-		fmt.Println("  eventi:")
+		fmt.Println("eventi:")
 		codes := make([]string, 0, len(events))
 		for code := range events {
 			codes = append(codes, code)
 		}
 		slices.Sort(codes)
 		for _, code := range codes {
-			fmt.Printf("    %s %5d  %s\n", code, events[code], notableEvents[code])
+			fmt.Printf("  %s %5d  %s\n", code, events[code], eventNames[code])
 		}
 	}
 	return nil
+}
+
+func printSession(n int, s *sessionSummary) {
+	title := "tipo sconosciuto"
+	if s.session != nil {
+		title = fmt.Sprintf("%s – %s", s.session.TrackID, s.session.SessionType)
+		if s.session.SessionType.IsRace() {
+			title += fmt.Sprintf(", %d giri", s.session.TotalLaps)
+		}
+	}
+	fmt.Printf("\nSessione %d: %s (da %s a %s, id %016x)\n", n, title, formatDuration(s.start), formatDuration(s.end), s.uid)
+
+	if s.participants != nil {
+		fmt.Printf("  %d piloti\n", s.participants.NumActiveCars)
+	}
+	if s.classification == nil {
+		fmt.Println("  nessuna classifica finale")
+		return
+	}
+
+	// La classifica è indicizzata per auto: la riordino per posizione.
+	type row struct {
+		idx   int
+		entry telemetry.ClassificationEntry
+	}
+	var rows []row
+	for i, c := range s.classification.Cars {
+		if c.Position > 0 {
+			rows = append(rows, row{i, c})
+		}
+	}
+	slices.SortFunc(rows, func(a, b row) int { return int(a.entry.Position) - int(b.entry.Position) })
+
+	fmt.Println("  classifica finale:")
+	for _, r := range rows {
+		name, team := fmt.Sprintf("auto %d", r.idx), ""
+		if s.participants != nil && r.idx < len(s.participants.Cars) {
+			p := s.participants.Cars[r.idx]
+			name, team = p.Name, p.TeamID.String()
+		}
+		result := formatRaceTime(r.entry.TotalRaceTime)
+		if r.entry.ResultStatus != telemetry.ResultFinished {
+			result = r.entry.ResultStatus.String()
+		}
+		player := ""
+		if h := s.classification.Header; r.idx == int(h.PlayerCarIndex) {
+			player = "  ◀ giocatore"
+		} else if r.idx == int(h.SecondaryPlayerCarIndex) {
+			player = "  ◀ giocatore 2"
+		}
+		fmt.Printf("  %3d. %-20s %-16s %2d giri  %-12s  miglior giro %s  %2d punti%s\n",
+			r.entry.Position, name, team, r.entry.NumLaps, result, formatLapTime(r.entry.BestLapTimeMS), r.entry.Points, player)
+	}
+}
+
+// formatLapTime formatta un tempo sul giro in m:ss.mmm.
+func formatLapTime(ms uint32) string {
+	if ms == 0 {
+		return "   -    "
+	}
+	return fmt.Sprintf("%d:%02d.%03d", ms/60_000, ms/1000%60, ms%1000)
+}
+
+// formatRaceTime formatta un tempo totale di gara (in secondi) in h:mm:ss.mmm o m:ss.mmm.
+func formatRaceTime(seconds float64) string {
+	ms := uint64(seconds*1000 + 0.5)
+	if ms >= 3_600_000 {
+		return fmt.Sprintf("%d:%02d:%02d.%03d", ms/3_600_000, ms/60_000%60, ms/1000%60, ms%1000)
+	}
+	return fmt.Sprintf("%d:%02d.%03d", ms/60_000, ms/1000%60, ms%1000)
 }
 
 func formatDuration(d time.Duration) string {
