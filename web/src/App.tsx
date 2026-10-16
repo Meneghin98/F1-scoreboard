@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { NewTournamentDialog } from './components/NewTournamentDialog';
 import { PlayersTab } from './components/PlayersTab';
 import { RacesTab } from './components/RacesTab';
 import { StandingsTab } from './components/StandingsTab';
@@ -23,6 +24,7 @@ export function App() {
     () => Number(localStorage.getItem('tournamentId')) || null,
   );
   const [tab, setTab] = useState<Tab>('standings');
+  const [creating, setCreating] = useState(false);
 
   // Ricarica i tornei e seleziona selectId, oppure il primo se non esiste più.
   async function loadTournaments(selectId: number | null) {
@@ -39,15 +41,6 @@ export function App() {
   useEffect(() => {
     localStorage.setItem('tournamentId', String(tournamentId ?? ''));
   }, [tournamentId]);
-
-  function handleNew() {
-    const name = prompt('Nome del torneo:', `Torneo F1 2025 #${(tournaments?.length ?? 0) + 1}`);
-    if (!name?.trim()) return;
-    run(async () => {
-      const t = await api.createTournament(name);
-      await loadTournaments(t.id);
-    });
-  }
 
   function handleDelete() {
     const t = tournaments?.find((x) => x.id === tournamentId);
@@ -77,7 +70,7 @@ export function App() {
               ? tournaments.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)
               : <option value="">Nessun torneo</option>}
           </select>
-          <Button size="sm" onClick={handleNew}>+ Torneo</Button>
+          <Button size="sm" onClick={() => setCreating(true)}>+ Torneo</Button>
           <Button variant="ghost" size="sm" title="Elimina torneo" disabled={!tournamentId} onClick={handleDelete}>
             Elimina
           </Button>
@@ -114,6 +107,13 @@ export function App() {
           )}
         </main>
       )}
+
+      <NewTournamentDialog
+        open={creating}
+        defaultName={`Torneo F1 2025 #${(tournaments?.length ?? 0) + 1}`}
+        onClose={() => setCreating(false)}
+        onCreated={(t) => loadTournaments(t.id)}
+      />
 
       <datalist id="tracks">
         {TRACKS.map((track) => <option key={track} value={track} />)}
