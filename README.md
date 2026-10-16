@@ -61,13 +61,16 @@ Variabili d'ambiente opzionali:
 Prima si compila il frontend, poi il binario Go che lo incorpora. Da Windows (PowerShell):
 
 ```powershell
-npm --prefix web run build                                                     # frontend → web/dist
+npm --prefix web run build                                                     # frontend → web/dist (con le versioni .gz)
 go build -o bin/f1-scoreboard.exe .                                            # Windows
 $env:GOOS="linux"; $env:GOARCH="arm64"; go build -o bin/f1-scoreboard-arm64 .  # Raspberry Pi (OS a 64 bit)
 $env:GOOS="linux"; $env:GOARCH="arm";   go build -o bin/f1-scoreboard-arm .    # Raspberry Pi (OS a 32 bit)
 $env:GOOS="linux"; $env:GOARCH="amd64"; go build -o bin/f1-scoreboard-amd64 .  # PC / thin client Linux
 Remove-Item Env:GOOS, Env:GOARCH                                               # torna alla build locale
 ```
+
+Il server invia ai browser la versione `.gz` dei file JS e CSS e fa tenere in cache per sempre
+i file in `assets/`, che cambiano nome a ogni build.
 
 Se si compila Go senza aver prima buildato il frontend, il server parte comunque ma segnala
 nel log che il frontend manca. Per il deploy basta copiare l'eseguibile sulla macchina di

@@ -43,7 +43,7 @@ func New(db *sql.DB, static fs.FS) http.Handler {
 	mux.Handle("/api/", s.handle(func(w http.ResponseWriter, r *http.Request) error {
 		return errorf(http.StatusNotFound, "Endpoint non trovato")
 	}))
-	mux.Handle("/", http.FileServerFS(static))
+	mux.Handle("/", staticHandler(static))
 
 	return mux
 }
