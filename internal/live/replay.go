@@ -180,7 +180,13 @@ func buildReplay(next func() (recording.Packet, error), uid uint64, names map[in
 			continue
 		}
 		if !started {
-			// Il replay parte dal primo pacchetto della sessione.
+			// Mentre carica la sessione il gioco manda solo eventi (tasti premuti,
+			// "sessione iniziata"), senza circuito né piloti: il replay parte
+			// quando arrivano gli altri dati.
+			if h.PacketID == telemetry.PacketEvent {
+				tracker.Handle(h, p.Data)
+				continue
+			}
 			started, base = true, p.At
 		}
 		at := p.At - base

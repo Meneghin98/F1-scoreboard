@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { formatClock, formatGap, formatLapTime } from '../lib/format';
-import { isLive, SAFETY_CAR, teamColor, TYRE_CLASS, WEATHER } from '../lib/live';
+import { isLive, isLoading, SAFETY_CAR, teamColor, TYRE_CLASS, WEATHER } from '../lib/live';
 import type { LiveDriver, LiveSession, LiveSnapshot, PlayerCar, TrackMap } from '../lib/types';
 import { useLive, usePedalHistory, type PedalSample } from '../lib/useLive';
 import { LiveDot } from '../components/LiveBadge';
@@ -19,6 +19,18 @@ export function LivePage() {
     return (
       <Card>
         <Empty>Nessuna sessione in corso.</Empty>
+      </Card>
+    );
+  }
+
+  if (isLoading(live.session)) {
+    return (
+      <Card className="flex items-center gap-3">
+        <LiveDot active />
+        <div>
+          <div className="text-xl font-bold">Sessione in caricamento…</div>
+          <div className="text-sm text-muted">Circuito e piloti arrivano quando il gioco ti porta ai box o in pista.</div>
+        </div>
       </Card>
     );
   }

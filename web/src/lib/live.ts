@@ -1,5 +1,5 @@
 // Etichette per i dati della telemetria live.
-import type { LiveSnapshot } from './types';
+import type { LiveSession, LiveSnapshot } from './types';
 
 export const WEATHER = ['Sereno', 'Poco nuvoloso', 'Nuvoloso', 'Pioggia leggera', 'Pioggia forte', 'Temporale'];
 
@@ -53,10 +53,17 @@ export function isLive(live: LiveSnapshot | null): live is LiveSnapshot & { sess
   return live?.status === 'live' && live.session !== null;
 }
 
+// Il gioco ha già cambiato sessione ma non ne ha ancora inviato i dettagli: mentre
+// carica manda solo eventi. Circuito e piloti arrivano tutti insieme quando si è ai box o in pista.
+export function isLoading(session: LiveSession): boolean {
+  return session.trackId < 0;
+}
+
 // Riassunto in una riga: "Monza · Gara · Giro 12/20".
 export function sessionSummary(live: LiveSnapshot): string {
   const s = live.session;
   if (!s) return '';
+  if (isLoading(s)) return 'Sessione in caricamento…';
   const details = [s.track, s.type];
   if (s.isRace && s.totalLaps > 0) {
     details.push(live.finished ? 'Finita' : `Giro ${Math.max(s.currentLap, 1)}/${s.totalLaps}`);

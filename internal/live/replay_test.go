@@ -71,6 +71,11 @@ func TestReplayOnRecording(t *testing.T) {
 		t.Errorf("mapPoints %d: la pianta del replay non deve essere riscaricata", end.Session.MapPoints)
 	}
 
+	// Il replay parte quando la sessione è caricata: circuito e piloti ci sono subito.
+	if start := frameSnapshot(t, frameAt(t, r, 0)); start.Session == nil || start.Session.Track != "Monza" || len(start.Drivers) == 0 {
+		t.Errorf("inizio del replay: sessione %+v, %d piloti", start.Session, len(start.Drivers))
+	}
+
 	// A metà gara non è ancora finita, e tornando indietro lo stato è quello di allora.
 	mid := frameAt(t, r, r.Duration/2)
 	snap := frameSnapshot(t, mid)
