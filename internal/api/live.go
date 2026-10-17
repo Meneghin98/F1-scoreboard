@@ -93,3 +93,95 @@ func (s *Server) downloadTelemetrySession(w http.ResponseWriter, r *http.Request
 	http.ServeFile(w, r, path)
 	return nil
 }
+
+// sessionID legge il parametro {id} di una sessione registrata.
+func sessionID(r *http.Request) (int64, error) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		return 0, errorf(http.StatusNotFound, "Sessione non trovata")
+	}
+	return id, nil
+}
+
+// sessionError traduce gli errori del servizio di telemetria nelle risposte HTTP.
+func sessionError(err error) error {
+	var invalid *live.InvalidError
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, live.ErrSessionNotFound):
+		return errorf(http.StatusNotFound, "Sessione non trovata")
+	case errors.Is(err, live.ErrSessionRecording):
+		return errorf(http.StatusConflict, "La sessione è ancora in registrazione")
+	case errors.As(err, &invalid):
+		return errorf(http.StatusBadRequest, "%s", invalid.Error())
+	}
+	return err
+}
+
+func (s *Server) deleteTelemetrySession(w http.ResponseWriter, r *http.Request) error {
+	id, err := sessionID(r)
+	if err != nil {
+		return err
+	}
+	if err := sessionError(s.live.DeleteSession(id)); err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// setTelemetryPlayers cambia i piloti associati ai giocatori di una sessione.
+// Body: { "players": [{ "carIndex": 3, "playerId": 1 }, { "carIndex": 5, "playerId": null }] }
+func (s *Server) setTelemetryPlayers(w http.ResponseWriter, r *http.Request) error {
+	id, err := sessionID(r)
+	if err != nil {
+		return err
+	}
+	var body struct {
+		Players []struct {
+			CarIndex int    `json:"carIndex"`
+			PlayerID *int64 `json:"playerId"`
+		} `json:"players"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		return err
+	}
+	players := map[int]*int64{}
+	for _, p := range body.Players {
+		players[p.CarIndex] = p.PlayerID
+	}
+	if err := sessionError(s.live.SetSessionPlayers(id, players)); err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// setTelemetryRace collega una sessione a una gara del torneo.
+// Body: { "raceId": 4 } per una gara esistente, { "raceId": null } per scollegarla,
+// { "tournamentId": 2, "type": "race" } per creare la gara dalla registrazione.
+func (s *Server) setTelemetryRace(w http.ResponseWriter, r *http.Request) error {
+	id, err := sessionID(r)
+	if err != nil {
+		return err
+	}
+	var body struct {
+		RaceID       *int64 `json:"raceId"`
+		TournamentID *int64 `json:"tournamentId"`
+		Type         string `json:"type"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		return err
+	}
+	if body.TournamentID != nil {
+		_, err = s.live.LinkNewRace(id, *body.TournamentID, body.Type)
+	} else {
+		err = s.live.SetSessionRace(id, body.RaceID)
+	}
+	if err := sessionError(err); err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}

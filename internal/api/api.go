@@ -48,6 +48,9 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service) http.Handler {
 	mux.Handle("GET /api/live/track", s.handle(s.getLiveTrack))
 	mux.Handle("GET /api/telemetry/sessions", s.handle(s.listTelemetrySessions))
 	mux.Handle("GET /api/telemetry/sessions/{id}/download", s.handle(s.downloadTelemetrySession))
+	mux.Handle("DELETE /api/telemetry/sessions/{id}", s.handle(s.deleteTelemetrySession))
+	mux.Handle("PUT /api/telemetry/sessions/{id}/players", s.handle(s.setTelemetryPlayers))
+	mux.Handle("PUT /api/telemetry/sessions/{id}/race", s.handle(s.setTelemetryRace))
 
 	mux.Handle("/api/", s.handle(func(w http.ResponseWriter, r *http.Request) error {
 		return errorf(http.StatusNotFound, "Endpoint non trovato")

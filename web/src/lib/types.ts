@@ -164,3 +164,52 @@ export interface TrackMap {
   length: number;
   points: { x: number; z: number }[];
 }
+
+// --- Registrazioni (vedi internal/live/sessions.go) -----------------------
+
+export interface SessionPlayer {
+  carIndex: number;
+  name: string; // nome mostrato dal gioco
+  team: string;
+  raceNumber: number;
+  position: number | null;
+  dnf: boolean;
+  playerId: number | null; // pilota del segnapunti associato
+  playerName: string | null;
+}
+
+export interface SessionRace {
+  id: number;
+  track: string;
+  type: RaceType;
+  date: string | null;
+  tournamentId: number;
+  tournamentName: string;
+}
+
+export interface SessionRecord {
+  id: number;
+  uid: string;
+  format: number;
+  trackId: number | null;
+  track: string;
+  sessionType: number | null;
+  type: string;
+  isRace: boolean;
+  totalLaps: number | null;
+  startedAt: string; // UTC, "AAAA-MM-GG hh:mm:ss"
+  endedAt: string | null;
+  recording: boolean;
+  downloadable: boolean;
+  sizeBytes: number;
+  packets: number;
+  hasClassification: boolean;
+  cars: number | null;
+  analyzed: boolean;
+  players: SessionPlayer[];
+  race: SessionRace | null;
+  providesResults: boolean; // gara con classifica finale: i risultati del torneo vengono da qui
+}
+
+// Collegamento a una gara: esistente, nessuna (null) o nuova nel torneo indicato.
+export type SessionRaceInput = { raceId: number | null } | { tournamentId: number; type: RaceType };

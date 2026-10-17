@@ -3,7 +3,7 @@ import { useSyncExternalStore } from 'react';
 // Navigazione tra le pagine con l'hash dell'URL (#/live, #/races…): il tasto
 // "indietro" del browser funziona e una pagina si può aprire direttamente da un link.
 
-export type View = 'dashboard' | 'standings' | 'races' | 'players' | 'live';
+export type View = 'dashboard' | 'standings' | 'races' | 'players' | 'live' | 'recordings';
 
 export const VIEW_LABELS: Record<View, string> = {
   dashboard: 'Dashboard',
@@ -11,6 +11,7 @@ export const VIEW_LABELS: Record<View, string> = {
   races: 'Gare',
   players: 'Piloti',
   live: 'Live',
+  recordings: 'Registrazioni',
 };
 
 export function href(view: View): string {

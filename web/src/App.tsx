@@ -12,6 +12,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { LivePage } from './pages/LivePage';
 import { PlayersPage } from './pages/PlayersPage';
 import { RacesPage } from './pages/RacesPage';
+import { RecordingsPage } from './pages/RecordingsPage';
 import { StandingsPage } from './pages/StandingsPage';
 
 export function App() {
@@ -107,6 +108,7 @@ export function App() {
               {view === 'races' && <RacesPage key={tournamentId} tournamentId={tournamentId!} />}
               {view === 'players' && <PlayersPage />}
               {view === 'live' && <LivePage />}
+              {view === 'recordings' && <RecordingsPage tournaments={tournaments} />}
             </section>
           )}
         </main>

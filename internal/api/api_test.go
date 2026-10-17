@@ -224,3 +224,14 @@ func TestLiveStream(t *testing.T) {
 		t.Fatalf("primo evento %q, %v", line, err)
 	}
 }
+
+func TestTelemetrySessionEndpoints(t *testing.T) {
+	srv := newTestServer(t)
+	var errBody map[string]string
+	expectStatus(t, call(t, srv, "DELETE", "/telemetry/sessions/1", nil, &errBody), http.StatusNotFound, "eliminazione")
+	expectStatus(t, call(t, srv, "PUT", "/telemetry/sessions/1/players", map[string]any{"players": []any{}}, &errBody),
+		http.StatusNotFound, "piloti")
+	expectStatus(t, call(t, srv, "PUT", "/telemetry/sessions/1/race", map[string]any{"raceId": nil}, &errBody),
+		http.StatusNotFound, "gara")
+	expectStatus(t, call(t, srv, "PUT", "/telemetry/sessions/abc/race", nil, &errBody), http.StatusNotFound, "id non valido")
+}

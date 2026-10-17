@@ -33,32 +33,83 @@ type SessionRecord struct {
 	SizeBytes         int64   `json:"sizeBytes"`
 	Packets           int     `json:"packets"`
 	HasClassification bool    `json:"hasClassification"`
+	Cars              *int    `json:"cars"` // auto in pista, nil se non ancora noto
+
+	// Analyzed è falso finché i giocatori non sono stati estratti dalla registrazione.
+	Analyzed bool            `json:"analyzed"`
+	Players  []SessionPlayer `json:"players"`
+	Race     *SessionRace    `json:"race"` // gara del torneo a cui appartiene, nil se nessuna
+	// ProvidesResults è vero per le gare con la classifica finale: se collegate
+	// a una gara del torneo, i risultati vengono presi da qui.
+	ProvidesResults bool `json:"providesResults"`
 
 	file string
+}
+
+// SessionPlayer è un giocatore umano della sessione.
+type SessionPlayer struct {
+	CarIndex   int     `json:"carIndex"`
+	Name       string  `json:"name"` // nome mostrato dal gioco
+	Team       string  `json:"team"`
+	RaceNumber int     `json:"raceNumber"`
+	Position   *int    `json:"position"` // posizione finale, nil senza classifica
+	DNF        bool    `json:"dnf"`
+	PlayerID   *int64  `json:"playerId"` // pilota del segnapunti associato
+	PlayerName *string `json:"playerName"`
+}
+
+// SessionRace è la gara del torneo collegata a una sessione.
+type SessionRace struct {
+	ID             int64   `json:"id"`
+	Track          string  `json:"track"`
+	Type           string  `json:"type"`
+	Date           *string `json:"date"`
+	TournamentID   int64   `json:"tournamentId"`
+	TournamentName string  `json:"tournamentName"`
 }
 
 // Sessions restituisce le sessioni registrate, dalla più recente.
 func (s *Service) Sessions() ([]SessionRecord, error) {
 	rows, err := s.db.Query(`
-		SELECT id, session_uid, packet_format, track_id, session_type, total_laps, started_at, ended_at,
-		       file, size_bytes, packets, has_classification
-		FROM telemetry_sessions ORDER BY id DESC`)
+		SELECT s.id, s.session_uid, s.packet_format, s.track_id, s.session_type, s.total_laps, s.started_at, s.ended_at,
+		       s.file, s.size_bytes, s.packets, s.has_classification, s.cars, s.analyzed,
+		       r.id, r.track, r.type, r.date, t.id, t.name
+		FROM telemetry_sessions s
+		LEFT JOIN races r ON r.id = s.race_id
+		LEFT JOIN tournaments t ON t.id = r.tournament_id
+		ORDER BY s.id DESC`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	records := []SessionRecord{}
+	byID := map[int64]int{} // posizione in records, per aggiungere i giocatori
 	for rows.Next() {
-		var r SessionRecord
+		var (
+			r                     SessionRecord
+			raceID, tournamentID  *int64
+			raceTrack, raceType   *string
+			raceDate, tournamentN *string
+		)
 		err := rows.Scan(&r.ID, &r.UID, &r.Format, &r.TrackID, &r.SessionType, &r.TotalLaps, &r.StartedAt,
-			&r.EndedAt, &r.file, &r.SizeBytes, &r.Packets, &r.HasClassification)
+			&r.EndedAt, &r.file, &r.SizeBytes, &r.Packets, &r.HasClassification, &r.Cars, &r.Analyzed,
+			&raceID, &raceTrack, &raceType, &raceDate, &tournamentID, &tournamentN)
 		if err != nil {
 			return nil, err
 		}
+		if raceID != nil {
+			r.Race = &SessionRace{ID: *raceID, Track: *raceTrack, Type: *raceType, Date: raceDate,
+				TournamentID: *tournamentID, TournamentName: *tournamentN}
+		}
+		r.Players = []SessionPlayer{}
+		byID[r.ID] = len(records)
 		records = append(records, r)
 	}
 	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := s.addPlayers(records, byID); err != nil {
 		return nil, err
 	}
 
@@ -80,6 +131,7 @@ func (s *Service) Sessions() ([]SessionRecord, error) {
 			st := telemetry.SessionType(*r.SessionType)
 			r.Type, r.IsRace = st.String(), st.IsRace()
 		}
+		r.ProvidesResults = r.IsRace && r.HasClassification
 		if info, err := os.Stat(filepath.Join(s.opts.Dir, r.file)); err == nil {
 			r.Downloadable = true
 			r.SizeBytes = info.Size()
@@ -90,6 +142,36 @@ func (s *Service) Sessions() ([]SessionRecord, error) {
 		}
 	}
 	return records, nil
+}
+
+// addPlayers aggiunge alle sessioni i loro giocatori, in ordine d'arrivo.
+func (s *Service) addPlayers(records []SessionRecord, byID map[int64]int) error {
+	rows, err := s.db.Query(`
+		SELECT tp.session_id, tp.car_index, tp.name, tp.team, tp.race_number, tp.position, tp.result_status,
+		       tp.player_id, p.name
+		FROM telemetry_players tp LEFT JOIN players p ON p.id = tp.player_id
+		ORDER BY tp.session_id, tp.position IS NULL, tp.position, tp.car_index`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			sessionID int64
+			p         SessionPlayer
+			status    *int
+		)
+		err := rows.Scan(&sessionID, &p.CarIndex, &p.Name, &p.Team, &p.RaceNumber, &p.Position, &status,
+			&p.PlayerID, &p.PlayerName)
+		if err != nil {
+			return err
+		}
+		p.DNF = status != nil && !classified(status)
+		if i, ok := byID[sessionID]; ok {
+			records[i].Players = append(records[i].Players, p)
+		}
+	}
+	return rows.Err()
 }
 
 // SessionFile restituisce il percorso della registrazione di una sessione e un
@@ -175,4 +257,24 @@ func slug(s string) string {
 		}
 	}
 	return strings.TrimSuffix(b.String(), "-")
+}
+
+// raceTrackNames sono i nomi dei circuiti come li propone il frontend per le
+// gare inserite a mano (web/src/lib/f1.ts): una gara creata da una
+// registrazione si chiama come una inserita a mano.
+var raceTrackNames = map[telemetry.TrackID]string{
+	0: "Australia – Melbourne", 2: "Cina – Shanghai", 3: "Bahrain – Sakhir", 4: "Spagna – Barcellona",
+	5: "Monaco", 6: "Canada – Montréal", 7: "Gran Bretagna – Silverstone", 9: "Ungheria – Hungaroring",
+	10: "Belgio – Spa-Francorchamps", 11: "Italia – Monza", 12: "Singapore – Marina Bay", 13: "Giappone – Suzuka",
+	14: "Abu Dhabi – Yas Marina", 15: "USA – Austin", 16: "Brasile – Interlagos", 17: "Austria – Red Bull Ring",
+	19: "Messico – Città del Messico", 20: "Azerbaijan – Baku", 26: "Olanda – Zandvoort",
+	27: "Emilia-Romagna – Imola", 29: "Arabia Saudita – Jeddah", 30: "Miami", 31: "Las Vegas", 32: "Qatar – Lusail",
+}
+
+// RaceTrackName restituisce il nome del circuito da usare per una gara del torneo.
+func RaceTrackName(id telemetry.TrackID) string {
+	if name, ok := raceTrackNames[id]; ok {
+		return name
+	}
+	return id.String()
 }

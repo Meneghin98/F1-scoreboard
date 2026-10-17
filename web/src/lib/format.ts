@@ -28,3 +28,24 @@ export function raceLabels(races: Race[]): Map<number, string> {
   let s = 0;
   return new Map(races.map((race) => [race.id, race.type === 'sprint' ? `S${++s}` : `R${++r}`]));
 }
+
+// Orario salvato dal server in UTC ("2026-10-16 13:31:38") → data e ora locali.
+export function formatDateTime(utc: string): string {
+  return new Date(`${utc.replace(' ', 'T')}Z`).toLocaleString('it-IT', {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// Durata tra due orari UTC del server: "12:34" o "1:02:03".
+export function formatDuration(fromUtc: string, toUtc: string): string {
+  const parse = (s: string) => Date.parse(`${s.replace(' ', 'T')}Z`);
+  const total = Math.max(0, Math.round((parse(toUtc) - parse(fromUtc)) / 1000));
+  const h = Math.floor(total / 3600);
+  const clock = formatClock(total % 3600);
+  return h ? `${h}:${clock.padStart(5, '0')}` : clock;
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}

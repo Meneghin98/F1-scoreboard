@@ -82,6 +82,7 @@ func (s *Service) Done() <-chan struct{} { return s.done }
 func (s *Service) Run(ctx context.Context, addr string) {
 	defer close(s.done)
 	s.closeOrphans()
+	go s.analyzePending()
 
 	listener := &Listener{Addr: addr, Handle: s.Handle}
 	go listener.Run(ctx)
@@ -218,6 +219,11 @@ func (s *Service) endSession(at time.Time) {
 	}
 	s.exec("UPDATE telemetry_sessions SET ended_at = ?, packets = ?, size_bytes = ? WHERE id = ?",
 		dbTime(end), cur.packets, s.fileSize(cur), cur.id)
+	// Il tracker ha ancora i dati di questa sessione: la successiva non è ancora iniziata.
+	d := sessionData{header: s.tracker.header, participants: s.tracker.Participants(), classification: s.tracker.Classification()}
+	if err := s.savePlayers(cur.id, d); err != nil {
+		log.Printf("telemetria: salvataggio dei giocatori: %v", err)
+	}
 	log.Printf("telemetria: sessione %016x terminata (%d pacchetti)", cur.uid, cur.packets)
 }
 

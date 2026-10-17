@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { api } from '../lib/api';
-import { formatDate } from '../lib/format';
+import { formatDate, formatDateTime } from '../lib/format';
 import { isLive, sessionSummary } from '../lib/live';
 import { href, VIEW_LABELS, type View } from '../lib/route';
 import { useLive } from '../lib/useLive';
@@ -16,11 +16,13 @@ export function DashboardPage({ tournamentId }: { tournamentId: number | null })
     [tournamentId],
   );
   const { data: players } = useLoad(() => api.players(), []);
+  const { data: sessions } = useLoad(() => api.sessions(), []);
 
   const races = standings?.races ?? [];
   const sprints = races.filter((r) => r.type === 'sprint').length;
   const lastRace = races.at(-1);
   const active = isLive(live);
+  const unassigned = sessions?.filter((s) => !s.race && !s.recording).length ?? 0;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -77,6 +79,21 @@ export function DashboardPage({ tournamentId }: { tournamentId: number | null })
             <BigNumber value={players.length} label={players.length === 1 ? 'pilota' : 'piloti'} />
             {players.length > 0 && (
               <p className="truncate text-sm text-muted">{players.map((p) => p.name).join(', ')}</p>
+            )}
+          </>
+        )}
+      </DashboardCard>
+
+      <DashboardCard view="recordings" className="sm:col-span-2">
+        {sessions && (
+          <>
+            <BigNumber value={sessions.length} label={sessions.length === 1 ? 'registrazione' : 'registrazioni'}>
+              {unassigned > 0 && `${unassigned} senza torneo`}
+            </BigNumber>
+            {sessions[0] && (
+              <p className="text-sm text-muted">
+                Ultima: {[sessions[0].track, sessions[0].type].filter(Boolean).join(' – ')} · {formatDateTime(sessions[0].startedAt)}
+              </p>
             )}
           </>
         )}
