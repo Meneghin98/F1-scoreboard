@@ -209,6 +209,7 @@ export interface SessionRecord {
   players: SessionPlayer[];
   race: SessionRace | null;
   providesResults: boolean; // gara con classifica finale: i risultati del torneo vengono da qui
+  deleteAt: string | null; // UTC: eliminata perché non terminata (senza classifica finale e senza torneo)
 }
 
 // Collegamento a una gara: esistente, nessuna (null) o nuova nel torneo indicato.

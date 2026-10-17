@@ -27,6 +27,7 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
   const [tournamentFilter, setTournamentFilter] = useState(ALL);
   const [playerFilter, setPlayerFilter] = useState(ALL);
   const [trackFilter, setTrackFilter] = useState(ALL);
+  const [showUnfinished, setShowUnfinished] = useState(false);
   const [assigning, setAssigning] = useState<SessionRecord | null>(null);
 
   if (!data) return null;
@@ -35,7 +36,9 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
   // Circuiti presenti nelle registrazioni, in ordine alfabetico.
   const tracks = [...new Set(sessions.map((s) => s.track).filter(Boolean))].sort();
 
+  const unfinishedCount = sessions.filter(isUnfinished).length;
   const visible = sessions.filter((s) =>
+    (showUnfinished || !isUnfinished(s)) &&
     (tournamentFilter === ALL ||
       (tournamentFilter === NONE ? !s.race : s.race?.tournamentId === Number(tournamentFilter))) &&
     (playerFilter === ALL || s.players.some((p) => p.playerId === Number(playerFilter))) &&
@@ -113,9 +116,21 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
             Azzera filtri
           </Button>
         )}
+        {unfinishedCount > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-pressed={showUnfinished}
+            title="Sessioni finite senza classifica finale: vengono eliminate 48 ore dopo la fine, se non sono assegnate a un torneo"
+            className={cx(showUnfinished && 'border-muted text-fg')}
+            onClick={() => setShowUnfinished(!showUnfinished)}
+          >
+            {showUnfinished ? 'Nascondi' : 'Mostra'} non terminate ({unfinishedCount})
+          </Button>
+        )}
         <span className="ml-auto text-sm text-muted">
           {visible.length} {visible.length === 1 ? 'registrazione' : 'registrazioni'}
-          {filtered && ` su ${sessions.length}`}
+          {visible.length !== sessions.length && ` su ${sessions.length}`}
         </span>
         <Button variant="ghost" size="sm" onClick={reload}>Aggiorna</Button>
       </Card>
@@ -123,7 +138,11 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
       {!sessions.length ? (
         <Empty>Nessuna registrazione: le sessioni vengono registrate da sole quando il gioco invia la telemetria.</Empty>
       ) : !visible.length ? (
-        <Empty>Nessuna registrazione corrisponde ai filtri.</Empty>
+        <Empty>
+          {!filtered && !showUnfinished
+            ? 'Ci sono solo sessioni non terminate: usa "Mostra non terminate" per vederle.'
+            : 'Nessuna registrazione corrisponde ai filtri.'}
+        </Empty>
       ) : visible.map((s) => (
         <RecordingCard
           key={s.id}
@@ -143,6 +162,11 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
       />
     </>
   );
+}
+
+// Sessione finita senza classifica finale (abbandonata o interrotta): nascosta di default.
+function isUnfinished(s: SessionRecord): boolean {
+  return !s.hasClassification && !s.recording;
 }
 
 // Nome leggibile della registrazione: circuito e tipo di sessione.
@@ -177,6 +201,7 @@ function RecordingCard({ session: s, players, onAssign, onDelete, onPlayerChange
             {s.recording && <LiveDot active />}
             {sessionTitle(s)}
             {s.recording && <span className="text-sm font-semibold text-green-400">in registrazione</span>}
+            {isUnfinished(s) && <span className="text-sm font-semibold text-muted">non terminata</span>}
           </h3>
           <p className="text-sm text-muted">{details.join(' · ')}</p>
           <p className="mt-1 text-sm">
@@ -193,6 +218,11 @@ function RecordingCard({ session: s, players, onAssign, onDelete, onPlayerChange
               <span className="text-muted">Nessun torneo</span>
             )}
           </p>
+          {s.deleteAt && (
+            <p className="mt-1 text-sm text-accent-text">
+              Senza classifica finale: verrà eliminata {formatDateTime(s.deleteAt)}, a meno che non la assegni a un torneo.
+            </p>
+          )}
         </div>
         <div className="flex gap-2">
           <Button size="sm" onClick={onAssign}>{s.race ? 'Cambia torneo' : 'Assegna a torneo'}</Button>

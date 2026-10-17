@@ -172,3 +172,33 @@ func TestDeleteSessionInProgress(t *testing.T) {
 		t.Fatalf("eliminazione della sessione in corso: %v", err)
 	}
 }
+
+func TestDeleteUnfinished(t *testing.T) {
+	s, dir := recordedService(t)
+	tournament := insertID(t, s, "INSERT INTO tournaments (name) VALUES ('Test')")
+	race := insertID(t, s, "INSERT INTO races (tournament_id, track, type) VALUES (?, 'Monza', 'race')", tournament)
+
+	records, _ := s.Sessions()
+	// La prima (più recente) è l'unica terminata; una di quelle non terminate viene assegnata al torneo.
+	if records[0].DeleteAt != nil || records[1].DeleteAt == nil {
+		t.Fatalf("deleteAt: %v, %v", records[0].DeleteAt, records[1].DeleteAt)
+	}
+	if err := s.SetSessionRace(records[1].ID, &race); err != nil {
+		t.Fatal(err)
+	}
+
+	end := time.Date(2026, 10, 16, 13, 45, 0, 0, time.UTC) // dopo la fine di tutte le sessioni
+	s.deleteUnfinished(end.Add(47 * time.Hour))
+	if after, _ := s.Sessions(); len(after) != 5 {
+		t.Fatalf("prima delle 48 ore restano %d sessioni", len(after))
+	}
+
+	s.deleteUnfinished(end.Add(49 * time.Hour))
+	after, _ := s.Sessions()
+	if len(after) != 2 || after[0].ID != records[0].ID || after[1].ID != records[1].ID {
+		t.Fatalf("restano %+v", after)
+	}
+	if files, _ := os.ReadDir(dir); len(files) != 2 {
+		t.Errorf("%d file rimasti", len(files))
+	}
+}

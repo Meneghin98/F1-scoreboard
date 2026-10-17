@@ -23,6 +23,11 @@ const (
 	sessionTimeout = 60 * time.Second
 	// Frequenza massima degli aggiornamenti inviati ai browser.
 	broadcastEvery = 250 * time.Millisecond
+	// Le sessioni senza classifica finale (abbandonate o interrotte) vengono
+	// eliminate dopo questo tempo, a meno che non siano state assegnate a un torneo.
+	unfinishedRetention = 48 * time.Hour
+	// Ogni quanto si cercano le sessioni non terminate da eliminare.
+	cleanupEvery = time.Hour
 )
 
 // Options configura il servizio.
@@ -82,6 +87,7 @@ func (s *Service) Done() <-chan struct{} { return s.done }
 func (s *Service) Run(ctx context.Context, addr string) {
 	defer close(s.done)
 	s.closeOrphans()
+	s.deleteUnfinished(time.Now()) // prima dell'analisi, così non si leggono file da eliminare
 	go s.analyzePending()
 
 	listener := &Listener{Addr: addr, Handle: s.Handle}
@@ -89,6 +95,8 @@ func (s *Service) Run(ctx context.Context, addr string) {
 
 	ticker := time.NewTicker(broadcastEvery)
 	defer ticker.Stop()
+	cleanup := time.NewTicker(cleanupEvery)
+	defer cleanup.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -97,6 +105,8 @@ func (s *Service) Run(ctx context.Context, addr string) {
 			s.endSession(time.Now())
 			s.mu.Unlock()
 			return
+		case now := <-cleanup.C:
+			s.deleteUnfinished(now)
 		case now := <-ticker.C:
 			s.tick(now)
 		}

@@ -42,6 +42,8 @@ type SessionRecord struct {
 	// ProvidesResults è vero per le gare con la classifica finale: se collegate
 	// a una gara del torneo, i risultati vengono presi da qui.
 	ProvidesResults bool `json:"providesResults"`
+	// DeleteAt è quando la sessione verrà eliminata perché non terminata (UTC), nil se resta.
+	DeleteAt *string `json:"deleteAt"`
 
 	file string
 }
@@ -132,6 +134,12 @@ func (s *Service) Sessions() ([]SessionRecord, error) {
 			r.Type, r.IsRace = st.String(), st.IsRace()
 		}
 		r.ProvidesResults = r.IsRace && r.HasClassification
+		if !r.HasClassification && r.Race == nil && r.EndedAt != nil {
+			if end, err := time.Parse("2006-01-02 15:04:05", *r.EndedAt); err == nil {
+				at := end.Add(unfinishedRetention).Format("2006-01-02 15:04:05")
+				r.DeleteAt = &at
+			}
+		}
 		if info, err := os.Stat(filepath.Join(s.opts.Dir, r.file)); err == nil {
 			r.Downloadable = true
 			r.SizeBytes = info.Size()

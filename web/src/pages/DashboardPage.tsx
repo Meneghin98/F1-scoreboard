@@ -16,7 +16,11 @@ export function DashboardPage({ tournamentId }: { tournamentId: number | null })
     [tournamentId],
   );
   const { data: players } = useLoad(() => api.players(), []);
-  const { data: sessions } = useLoad(() => api.sessions(), []);
+  // Come nella pagina delle registrazioni, le sessioni non terminate non si contano.
+  const { data: sessions } = useLoad(
+    async () => (await api.sessions()).filter((s) => s.hasClassification || s.recording),
+    [],
+  );
 
   const races = standings?.races ?? [];
   const sprints = races.filter((r) => r.type === 'sprint').length;

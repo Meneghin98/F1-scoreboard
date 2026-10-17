@@ -494,9 +494,52 @@ func (s *Service) DeleteSession(sessionID int64) error {
 	if err != nil {
 		return err
 	}
+	return s.removeSession(sessionID, file)
+}
+
+func (s *Service) removeSession(sessionID int64, file string) error {
 	if err := os.Remove(filepath.Join(s.opts.Dir, file)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	_, err = s.db.Exec("DELETE FROM telemetry_sessions WHERE id = ?", sessionID)
+	_, err := s.db.Exec("DELETE FROM telemetry_sessions WHERE id = ?", sessionID)
 	return err
+}
+
+// unfinishedSQL seleziona le sessioni finite senza classifica finale e non
+// assegnate a un torneo: non servono alla classifica e vengono eliminate.
+const unfinishedSQL = "has_classification = 0 AND race_id IS NULL AND ended_at IS NOT NULL"
+
+// deleteUnfinished elimina le sessioni non terminate più vecchie di unfinishedRetention.
+func (s *Service) deleteUnfinished(now time.Time) {
+	// Gli orari sono testi nello stesso formato: il confronto alfabetico è anche cronologico.
+	rows, err := s.db.Query("SELECT id, file FROM telemetry_sessions WHERE "+unfinishedSQL+" AND ended_at < ?",
+		dbTime(now.Add(-unfinishedRetention)))
+	if err != nil {
+		log.Printf("telemetria: %v", err)
+		return
+	}
+	type old struct {
+		id   int64
+		file string
+	}
+	var list []old
+	for rows.Next() {
+		var o old
+		if rows.Scan(&o.id, &o.file) == nil {
+			list = append(list, o)
+		}
+	}
+	rows.Close()
+
+	deleted := 0
+	for _, o := range list {
+		if err := s.removeSession(o.id, o.file); err != nil {
+			log.Printf("telemetria: eliminazione della sessione %d: %v", o.id, err)
+			continue
+		}
+		deleted++
+	}
+	if deleted > 0 {
+		log.Printf("telemetria: eliminate %d sessioni non terminate", deleted)
+	}
 }
