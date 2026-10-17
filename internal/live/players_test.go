@@ -1,6 +1,7 @@
 package live
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -76,11 +77,20 @@ func TestSessionPlayersAndRaceResults(t *testing.T) {
 		t.Fatalf("giocatore %+v", p)
 	}
 
-	// Collegata a una nuova gara: senza piloti associati non ci sono risultati.
+	// Finita, la gara è stata salvata in "Nessun torneo"; spostata in un torneo
+	// in una nuova gara, quella rimasta vuota in "Nessun torneo" sparisce.
+	if last.Race == nil {
+		t.Fatal("gara non salvata in automatico")
+	}
+	freeRace := last.Race.ID
 	raceID, err := s.LinkNewRace(last.ID, tournament, "race")
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := s.db.QueryRow("SELECT id FROM races WHERE id = ?", freeRace).Scan(new(int64)); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("gara vuota rimasta in \"Nessun torneo\": %v", err)
+	}
+	// Senza piloti associati non ci sono risultati.
 	var track string
 	s.db.QueryRow("SELECT track FROM races WHERE id = ?", raceID).Scan(&track)
 	if track != "Italia – Monza" {
@@ -135,12 +145,24 @@ func TestSessionPlayersAndRaceResults(t *testing.T) {
 		t.Fatalf("associazione automatica: %+v", pl)
 	}
 
-	// Scollegando la registrazione, i risultati che venivano da lei spariscono.
-	if err := s.SetSessionRace(last.ID, nil); err != nil {
+	// Una sessione finita non si può togliere dal torneo, solo spostare: i
+	// risultati che venivano da lei passano alla nuova gara.
+	if err := s.SetSessionRace(last.ID, nil); !errors.As(err, &invalidErr) {
+		t.Fatalf("scollegamento di una sessione finita: %v", err)
+	}
+	other, err := s.LinkNewRace(last.ID, tournament, "")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if res := resultsOf(t, s, raceID); len(res) != 0 {
-		t.Fatalf("risultati dopo lo scollegamento: %+v", res)
+		t.Fatalf("risultati della gara di prima dopo lo spostamento: %+v", res)
+	}
+	if res := resultsOf(t, s, other); len(res) != 1 {
+		t.Fatalf("risultati della nuova gara: %+v", res)
+	}
+	// La gara di prima non è in "Nessun torneo": resta, anche se vuota.
+	if err := s.db.QueryRow("SELECT id FROM races WHERE id = ?", raceID).Scan(new(int64)); err != nil {
+		t.Fatalf("gara di prima: %v", err)
 	}
 
 	// Eliminando una registrazione spariscono riga e file, ma non i risultati della gara.

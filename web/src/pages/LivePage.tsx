@@ -4,6 +4,7 @@ import { isLive, SAFETY_CAR, teamColor, TYRE_CLASS, WEATHER } from '../lib/live'
 import type { LiveDriver, LiveSession, LiveSnapshot, PlayerCar } from '../lib/types';
 import { useLive } from '../lib/useLive';
 import { LiveDot } from '../components/LiveBadge';
+import { LineupCard } from '../components/LineupCard';
 import { PlayerCarCard } from '../components/PlayerCarCard';
 import { TrackMapCard } from '../components/TrackMapCard';
 import { Button, Card, cx, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
@@ -24,6 +25,7 @@ export function LivePage() {
   return (
     <>
       <SessionCard live={live} session={live.session} />
+      {live.lineup && <LineupCard lineup={live.lineup} />}
       {live.drivers.length ? (
         <LiveBoard session={live.session} drivers={live.drivers} player={live.player} />
       ) : (
@@ -140,7 +142,7 @@ function CompactStandings({ session, drivers }: { session: LiveSession; drivers:
                 <span className="flex items-center gap-2">
                   <span className="h-4 w-1 shrink-0 rounded-full" style={{ background: teamColor(d.team) }} />
                   <span className="truncate" title={d.team}>{d.name}</span>
-                  {d.isPlayer && <span className="text-xs font-bold text-accent-text uppercase">Tu</span>}
+                  {d.isPlayer && <PlayerTag driver={d} />}
                   {d.inPit && <span className="text-xs font-bold text-sprint">PIT</span>}
                 </span>
               </Td>
@@ -183,7 +185,7 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
               <Td className={cx(d.isPlayer && 'font-bold')}>
                 <span className="mr-2 inline-block w-6 text-right text-sm text-muted tabular-nums">{d.raceNumber || ''}</span>
                 {d.name} <TeamTag team={d.team || null} />
-                {d.isPlayer && <span className="ml-2 text-xs font-bold text-accent-text uppercase">Tu</span>}
+                {d.isPlayer && <PlayerTag driver={d} className="ml-2" />}
               </Td>
               {session.isRace && <Td num>{d.lap}</Td>}
               <Td num>{toLeader}</Td>
@@ -200,6 +202,15 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
         })}
       </tbody>
     </Table>
+  );
+}
+
+// Etichetta del giocatore: il pilota scelto in "Chi guida?", altrimenti "Tu".
+function PlayerTag({ driver, className }: { driver: LiveDriver; className?: string }) {
+  return (
+    <span className={cx('shrink-0 text-xs font-bold text-accent-text uppercase', className)}>
+      {driver.playerName || 'Tu'}
+    </span>
   );
 }
 

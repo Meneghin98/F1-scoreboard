@@ -7,28 +7,30 @@ import { Button, cx, Dialog, fieldClass } from './ui';
 interface Props {
   open: boolean;
   defaultName: string;
+  canStart: boolean; // falso se c'è già un torneo in corso
   onClose: () => void;
   onCreated: (tournament: Tournament) => Promise<void>;
 }
 
-export function NewTournamentDialog({ open, defaultName, onClose, onCreated }: Props) {
+export function NewTournamentDialog({ open, ...props }: Props) {
   return (
-    <Dialog open={open} title="Nuovo torneo" onClose={onClose}>
-      <NewTournamentForm defaultName={defaultName} onClose={onClose} onCreated={onCreated} />
+    <Dialog open={open} title="Nuovo torneo" onClose={props.onClose}>
+      <NewTournamentForm {...props} />
     </Dialog>
   );
 }
 
-function NewTournamentForm({ defaultName, onClose, onCreated }: Omit<Props, 'open'>) {
+function NewTournamentForm({ defaultName, canStart, onClose, onCreated }: Omit<Props, 'open'>) {
   const { run } = useToast();
   const [saving, setSaving] = useState(false);
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const name = String(new FormData(e.currentTarget).get('name')).trim();
+    const form = new FormData(e.currentTarget);
+    const name = String(form.get('name')).trim();
     setSaving(true);
     run(async () => {
-      const tournament = await api.createTournament(name);
+      const tournament = await api.createTournament(name, form.has('start'));
       onClose();
       await onCreated(tournament);
     }).finally(() => setSaving(false));
@@ -48,6 +50,13 @@ function NewTournamentForm({ defaultName, onClose, onCreated }: Omit<Props, 'ope
         onFocus={(e) => e.target.select()}
         className={cx(fieldClass, 'w-full')}
       />
+      <label className={cx('mt-4 flex items-start gap-2 text-sm', !canStart && 'text-muted')}>
+        <input type="checkbox" name="start" defaultChecked={canStart} disabled={!canStart} className="mt-0.5 size-4 accent-accent" />
+        <span>
+          Inizia subito: le prossime gare verranno salvate in questo torneo
+          {!canStart && ' (c\'è già un torneo in corso)'}
+        </span>
+      </label>
       <div className="mt-6 flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onClose}>Annulla</Button>
         <Button disabled={saving}>Crea torneo</Button>

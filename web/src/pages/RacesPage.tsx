@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useConfirm } from '../lib/confirm';
+import { countsForPoints, RACE_TYPES, raceTypeLabel } from '../lib/f1';
 import { formatDate, raceLabels } from '../lib/format';
 import type { Player, RaceType, RaceWithResults } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
@@ -54,8 +55,7 @@ export function RacesPage({ tournamentId }: { tournamentId: number }) {
         <form className="flex flex-wrap gap-2" onSubmit={handleAdd}>
           <input name="track" list="tracks" placeholder="Circuito" required className={cx(fieldClass, 'flex-[1_1_200px]')} />
           <select name="type" className={fieldClass}>
-            <option value="race">Gran Premio</option>
-            <option value="sprint">Sprint</option>
+            {RACE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
           <input name="date" type="date" className={fieldClass} />
           <Button>Aggiungi gara</Button>
@@ -98,7 +98,7 @@ function RaceList({ races, players, editingRaceId, onEdit, onDelete, onSaved }: 
         <div className="flex flex-wrap items-center justify-between gap-4">
           <h3 className="text-lg font-bold">
             <span className="text-muted">{labels.get(race.id)}</span> {race.track}
-            {race.type === 'sprint' && <> <SprintBadge /></>}
+            {race.type !== 'race' && <> <TypeBadge type={race.type} /></>}
             {race.date && <> <span className="text-muted">· {formatDate(race.date)}</span></>}
           </h3>
           <div className="flex gap-2">
@@ -114,13 +114,13 @@ function RaceList({ races, players, editingRaceId, onEdit, onDelete, onSaved }: 
           <ResultsEditor race={race} players={players} onCancel={() => onEdit(null)} onSaved={onSaved} />
         ) : race.results.length ? (
           <Table>
-            <thead><tr><Th>Pos</Th><Th>Pilota</Th><Th num>Punti</Th></tr></thead>
+            <thead><tr><Th>Pos</Th><Th>Pilota</Th>{countsForPoints(race.type) && <Th num>Punti</Th>}</tr></thead>
             <tbody>
               {race.results.map((r) => (
                 <Tr key={r.player_id}>
                   <Td className={r.dnf ? dnfClass : rankClass(r.position)}>{r.dnf ? 'DNF' : r.position}</Td>
                   <Td>{playerName(r.player_id)}</Td>
-                  <Td num>{r.points}</Td>
+                  {countsForPoints(race.type) && <Td num>{r.points}</Td>}
                 </Tr>
               ))}
             </tbody>
@@ -131,10 +131,18 @@ function RaceList({ races, players, editingRaceId, onEdit, onDelete, onSaved }: 
   });
 }
 
-function SprintBadge() {
+// Etichetta del tipo per tutto ciò che non è un Gran Premio; prove libere e
+// qualifiche in grigio, perché non danno punti.
+function TypeBadge({ type }: { type: RaceType }) {
   return (
-    <span className="inline-block rounded bg-sprint-bg px-2 py-0.5 align-middle text-xs font-bold text-sprint uppercase">
-      Sprint
+    <span
+      className={cx(
+        'inline-block rounded px-2 py-0.5 align-middle text-xs font-bold uppercase',
+        countsForPoints(type) ? 'bg-sprint-bg text-sprint' : 'bg-surface-2 text-muted',
+      )}
+      title={countsForPoints(type) ? undefined : 'Non assegna punti'}
+    >
+      {raceTypeLabel(type)}
     </span>
   );
 }

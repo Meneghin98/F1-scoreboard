@@ -31,6 +31,8 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service) http.Handler {
 	mux.Handle("GET /api/tournaments", s.handle(s.listTournaments))
 	mux.Handle("POST /api/tournaments", s.handle(s.createTournament))
 	mux.Handle("DELETE /api/tournaments/{id}", s.handle(s.deleteTournament))
+	mux.Handle("POST /api/tournaments/{id}/start", s.handle(s.startTournament))
+	mux.Handle("POST /api/tournaments/{id}/end", s.handle(s.endTournament))
 
 	mux.Handle("GET /api/players", s.handle(s.listPlayers))
 	mux.Handle("POST /api/players", s.handle(s.createPlayer))
@@ -46,6 +48,7 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service) http.Handler {
 	mux.Handle("GET /api/live", s.handle(s.getLive))
 	mux.Handle("GET /api/live/stream", s.handle(s.streamLive))
 	mux.Handle("GET /api/live/track", s.handle(s.getLiveTrack))
+	mux.Handle("PUT /api/live/lineup", s.handle(s.setLiveLineup))
 	mux.Handle("GET /api/telemetry/sessions", s.handle(s.listTelemetrySessions))
 	mux.Handle("GET /api/telemetry/sessions/{id}/download", s.handle(s.downloadTelemetrySession))
 	mux.Handle("DELETE /api/telemetry/sessions/{id}", s.handle(s.deleteTelemetrySession))

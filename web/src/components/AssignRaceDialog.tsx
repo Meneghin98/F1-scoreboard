@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
+import { RACE_TYPES } from '../lib/f1';
 import { formatDate, raceLabels } from '../lib/format';
 import { useToast } from '../lib/toast';
 import type { RaceType, SessionRecord, Tournament } from '../lib/types';
@@ -33,7 +34,8 @@ function AssignRaceForm({ session, tournaments, onClose, onSaved }: Omit<Props, 
   });
   // 'new' crea una nuova gara sul circuito della registrazione.
   const [raceId, setRaceId] = useState<number | 'new'>(session.race?.id ?? 'new');
-  const [type, setType] = useState<RaceType>('race');
+  // Il tipo proposto viene dalla sessione; le sprint il frontend non le riconosce.
+  const [type, setType] = useState<RaceType>(session.kind || 'race');
   const { data: races } = useLoad(
     () => (tournamentId ? api.races(tournamentId) : Promise.resolve([])),
     [tournamentId],
@@ -106,26 +108,25 @@ function AssignRaceForm({ session, tournaments, onClose, onSaved }: Omit<Props, 
         <label className="flex flex-col gap-1">
           <span className="text-sm text-muted">Tipo</span>
           <select className={fieldClass} value={type} onChange={(e) => setType(e.target.value as RaceType)}>
-            <option value="race">Gran Premio</option>
-            <option value="sprint">Sprint</option>
+            {RACE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </label>
       )}
 
       <p className={cx('text-sm', session.providesResults ? 'text-fg' : 'text-muted')}>
         {session.providesResults
-          ? 'I risultati della gara verranno presi dalla classifica finale di questa registrazione e sostituiranno quelli già inseriti.'
-          : 'Questa registrazione non ha la classifica finale di una gara: i risultati non cambiano.'}
+          ? 'I risultati verranno presi dalla classifica finale di questa registrazione e sostituiranno quelli già inseriti.'
+          : 'Questa registrazione non ha la classifica finale: i risultati non cambiano.'}
       </p>
 
       <div className="mt-2 flex flex-wrap justify-end gap-2">
-        {session.race && (
+        {/* Le sessioni finite stanno sempre in un torneo: si possono spostare, non togliere. */}
+        {session.race && !session.providesResults && (
           <Button
             type="button"
             variant="ghost"
             className="mr-auto"
             disabled={saving}
-            title={session.providesResults ? 'I risultati presi da questa registrazione vengono tolti dalla gara' : undefined}
             onClick={() => save(() => api.setSessionRace(session.id, { raceId: null }))}
           >
             Togli dal torneo

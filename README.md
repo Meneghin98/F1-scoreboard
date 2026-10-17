@@ -95,8 +95,31 @@ comunque e riprova ogni 10 secondi.
 |-------------------------------------------|----------------------------------------------------------|
 | `GET /api/live`                           | Stato della sessione in corso: circuito, giro, piloti, distacchi, gomme |
 | `GET /api/live/stream`                    | Lo stesso stato in tempo reale (Server-Sent Events, max 4 aggiornamenti/s) |
+| `PUT /api/live/lineup`                    | Sceglie chi guida le auto dei controller nella gara in corso, o conferma |
 | `GET /api/telemetry/sessions`             | Sessioni registrate                                      |
 | `GET /api/telemetry/sessions/{id}/download` | Scarica la registrazione di una sessione (`.f1rec.gz`) |
+
+### Chi guida? (split-screen) e salvataggio delle sessioni
+
+Il gioco dice quale auto guida ciascun controller, ma non chi lo tiene in mano. In ogni
+sessione del weekend (prove libere, qualifiche, gara) la pagina Live mostra **Chi guida?** con
+i piloti già proposti (quelli che avevano lo stesso controller nella sessione precedente):
+
+1. **Prima della partenza** si possono cambiare; senza interventi la scelta si conferma da sola
+   allo spegnimento del semaforo (fuori dalla gara, al secondo giro) o dopo 5 minuti. Cambiare un
+   pilota ferma il conto alla rovescia.
+2. **A fine sessione** compare la classifica dei giocatori da confermare; senza interventi viene
+   salvata dopo 5 minuti (e comunque quando finisce la sessione).
+3. La sessione diventa una gara del **torneo in corso** o, se nessun torneo è in corso, di
+   **Nessun torneo**. Un torneo si inizia e si termina dai pulsanti nell'header; terminato, le
+   gare tornano in Nessun torneo, che non si può iniziare né eliminare.
+
+Ogni sessione del weekend finita (con la classifica finale) appartiene sempre a un torneo: dalla
+pagina Registrazioni si può spostare in un altro, non togliere. Quando la si sposta, la gara
+rimasta vuota in Nessun torneo viene eliminata. Prove libere (FP) e qualifiche (Q, anche lo
+Sprint Shootout) compaiono tra le gare con i piazzamenti, ma non danno punti e non entrano in
+classifica. Le sessioni finite registrate prima di questa regola sono state spostate in Nessun
+torneo al primo avvio.
 
 Se il gioco gira su un altro dispositivo (console o altro PC), su Windows serve una regola del
 firewall per la porta UDP 20777 (vedi sotto per l'IP da impostare nel gioco).

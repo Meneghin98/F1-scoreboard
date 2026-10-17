@@ -70,8 +70,9 @@ func main() {
 	}
 	defer db.Close()
 
+	// Il torneo libero c'è sempre, anche nei database nuovi.
 	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM tournaments").Scan(&count); err != nil {
+	if err := db.QueryRow("SELECT COUNT(*) FROM tournaments WHERE free = 0").Scan(&count); err != nil {
 		log.Fatal(err)
 	}
 	if count > 0 {

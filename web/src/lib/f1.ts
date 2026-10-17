@@ -1,4 +1,5 @@
-// Suggerimenti per i campi circuito e scuderia (calendario e team F1 2025).
+// Dati di F1: suggerimenti per i campi circuito e scuderia (calendario e team F1 2025) e tipi di gara.
+import type { RaceType } from './types';
 
 export const TRACKS = [
   'Australia – Melbourne',
@@ -39,3 +40,15 @@ export const TEAMS = [
   'Williams',
   'Kick Sauber',
 ];
+
+// Tipi di gara del torneo. Prove libere e qualifiche mostrano i piazzamenti ma non danno punti.
+export const RACE_TYPES: { value: RaceType; label: string }[] = [
+  { value: 'race', label: 'Gran Premio' },
+  { value: 'sprint', label: 'Sprint' },
+  { value: 'qualifying', label: 'Qualifica' },
+  { value: 'practice', label: 'Prove libere' },
+];
+
+export const raceTypeLabel = (type: RaceType) => RACE_TYPES.find((t) => t.value === type)?.label ?? type;
+
+export const countsForPoints = (type: RaceType) => type === 'race' || type === 'sprint';

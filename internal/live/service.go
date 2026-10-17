@@ -50,6 +50,11 @@ type Service struct {
 	lastSent    []byte
 	stopped     bool // dopo lo spegnimento i pacchetti in ritardo vengono ignorati
 
+	// Torneo in cui finiscono le gare, mostrato nella pagina Live; si rilegge
+	// dal database quando targetLoaded è falso.
+	target       *LineupTournament
+	targetLoaded bool
+
 	done chan struct{}
 }
 
@@ -66,7 +71,9 @@ type session struct {
 	bytes          int64
 	infoSaved      bool
 	classification bool
-	mapSaved       int // punti della pianta già salvati nel database
+	mapSaved       int     // punti della pianta già salvati nel database
+	lineup         *lineup // scelta dei piloti, solo per le gare
+	playersSaved   bool    // giocatori già salvati con i piloti scelti: alla fine non si rifà
 }
 
 func NewService(db *sql.DB, opts Options) *Service {
@@ -167,6 +174,7 @@ func (s *Service) Handle(at time.Time, data []byte) {
 		s.exec("UPDATE telemetry_sessions SET has_classification = 1 WHERE id = ?", cur.id)
 		log.Printf("telemetria: sessione %016x: classifica finale ricevuta", cur.uid)
 	}
+	s.updateLineup(at)
 }
 
 func (s *Service) startSession(at time.Time, h telemetry.Header) {
@@ -230,9 +238,20 @@ func (s *Service) endSession(at time.Time) {
 	s.exec("UPDATE telemetry_sessions SET ended_at = ?, packets = ?, size_bytes = ? WHERE id = ?",
 		dbTime(end), cur.packets, s.fileSize(cur), cur.id)
 	// Il tracker ha ancora i dati di questa sessione: la successiva non è ancora iniziata.
-	d := sessionData{header: s.tracker.header, participants: s.tracker.Participants(), classification: s.tracker.Classification()}
-	if err := s.savePlayers(cur.id, d); err != nil {
-		log.Printf("telemetria: salvataggio dei giocatori: %v", err)
+	// Se i risultati aspettavano ancora la conferma, si salvano con i piloti scelti finora.
+	if l := cur.lineup; l != nil && l.stage == StageResults {
+		if err := s.saveLineup(cur); err != nil {
+			log.Printf("telemetria: salvataggio della gara: %v", err)
+		}
+	}
+	if !cur.playersSaved {
+		d := s.sessionData()
+		if cur.lineup != nil {
+			d.assigned = cur.lineup.assigned()
+		}
+		if err := s.savePlayers(cur.id, d); err != nil {
+			log.Printf("telemetria: salvataggio dei giocatori: %v", err)
+		}
 	}
 	log.Printf("telemetria: sessione %016x terminata (%d pacchetti)", cur.uid, cur.packets)
 }
@@ -254,10 +273,14 @@ func (s *Service) tick(now time.Time) {
 	if cur := s.current; cur != nil {
 		if now.Sub(s.lastPacket) > sessionTimeout {
 			s.endSession(now)
-		} else if cur.writer != nil && now.Sub(cur.lastFlush) >= time.Second {
-			cur.lastFlush = now
-			if err := cur.writer.Flush(); err != nil {
-				log.Printf("telemetria: scrittura della registrazione: %v", err)
+		} else {
+			// Le scadenze della scelta dei piloti valgono anche se il gioco è in pausa.
+			s.updateLineup(now)
+			if cur.writer != nil && now.Sub(cur.lastFlush) >= time.Second {
+				cur.lastFlush = now
+				if err := cur.writer.Flush(); err != nil {
+					log.Printf("telemetria: scrittura della registrazione: %v", err)
+				}
 			}
 		}
 	}
@@ -282,6 +305,7 @@ func (s *Service) snapshotJSON(now time.Time) []byte {
 	var snap Snapshot
 	if s.current != nil {
 		snap = s.tracker.Snapshot(status)
+		s.lineupView(&snap, now)
 	} else {
 		snap = Snapshot{Status: status, Drivers: []Driver{}}
 	}

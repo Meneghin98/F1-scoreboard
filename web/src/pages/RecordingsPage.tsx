@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, sessionDownloadUrl } from '../lib/api';
 import { useConfirm } from '../lib/confirm';
+import { raceTypeLabel } from '../lib/f1';
 import { formatBytes, formatDate, formatDateTime, formatDuration } from '../lib/format';
 import { href } from '../lib/route';
 import { useToast } from '../lib/toast';
@@ -209,7 +210,7 @@ function RecordingCard({ session: s, players, onAssign, onDelete, onPlayerChange
               <>
                 <span className="font-semibold">{s.race.tournamentName}</span>
                 <span className="text-muted">
-                  {' · '}{s.race.track}{s.race.type === 'sprint' && ' (Sprint)'}
+                  {' · '}{s.race.track}{s.race.type !== 'race' && ` (${raceTypeLabel(s.race.type)})`}
                   {s.race.date && ` · ${formatDate(s.race.date)}`}
                   {s.providesResults && ' · risultati presi da questa registrazione'}
                 </span>

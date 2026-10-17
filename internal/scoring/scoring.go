@@ -13,6 +13,13 @@ var Points = map[string][]int{
 	"sprint": {8, 7, 6, 5, 4, 3, 2, 1},
 }
 
+// Counts dice se un tipo di gara conta per la classifica: prove libere
+// ("practice") e qualifiche ("qualifying") mostrano i piazzamenti ma non danno punti.
+func Counts(raceType string) bool {
+	_, ok := Points[raceType]
+	return ok
+}
+
 // PointsFor restituisce i punti per un piazzamento. position è nil se il pilota non è classificato.
 func PointsFor(raceType string, position *int, dnf bool) int {
 	if dnf || position == nil || *position < 1 {
@@ -60,9 +67,13 @@ type Standing struct {
 }
 
 // Standings calcola la classifica a partire da tutti i risultati di un torneo.
+// Le sessioni che non danno punti (prove libere e qualifiche) non contano.
 func Standings(results []Result) []Standing {
 	byPlayer := map[int64]*Standing{}
 	for _, r := range results {
+		if !Counts(r.RaceType) {
+			continue
+		}
 		s, ok := byPlayer[r.PlayerID]
 		if !ok {
 			s = &Standing{PlayerID: r.PlayerID, Name: r.Name, Team: r.Team, PerRace: map[int64]RaceScore{}}

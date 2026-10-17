@@ -1,11 +1,15 @@
 // Tipi delle risposte delle API: rispecchiano le struct in internal/api e internal/scoring.
 
-export type RaceType = 'race' | 'sprint';
+export type RaceType = 'race' | 'sprint' | 'qualifying' | 'practice';
 
 export interface Tournament {
   id: number;
   name: string;
   created_at: string;
+  free: boolean; // "Nessun torneo": raccoglie le gare quando nessun torneo è in corso
+  started_at: string | null; // UTC
+  ended_at: string | null; // UTC
+  active: boolean; // in corso: le gare finite vengono salvate qui
 }
 
 export interface Player {
@@ -92,6 +96,7 @@ export interface LiveDriver {
   team: string;
   raceNumber: number;
   isPlayer: boolean;
+  playerName: string; // pilota del segnapunti alla guida, vuoto se non scelto
   ai: boolean;
   lap: number;
   lastLapMs: number;
@@ -157,6 +162,36 @@ export interface LiveSnapshot {
   drivers: LiveDriver[];
   player: PlayerCar | null;
   finished: boolean;
+  lineup: Lineup | null;
+}
+
+// Chi guida le auto dei giocatori in gara (vedi internal/live/lineup.go).
+// drivers: scelta prima della partenza; racing: gara in corso; results: conferma
+// dei risultati; saved: gara salvata nel torneo.
+export type LineupStage = 'drivers' | 'racing' | 'results' | 'saved';
+
+export interface LineupCar {
+  controller: number; // 1 o 2
+  carIndex: number;
+  name: string; // nome mostrato dal gioco
+  team: string;
+  raceNumber: number;
+  playerId: number | null;
+  playerName: string;
+  position: number | null; // dalla classifica finale
+  dnf: boolean;
+}
+
+// Gruppo del tipo di sessione: 'race' comprende le sprint, 'qualifying' lo Sprint Shootout.
+export type SessionKind = 'race' | 'qualifying' | 'practice' | '';
+
+export interface Lineup {
+  stage: LineupStage;
+  kind: SessionKind;
+  secondsLeft: number | null; // al salvataggio automatico, null se non previsto
+  cars: LineupCar[];
+  tournament: { id: number; name: string; free: boolean } | null; // dove finisce (o è finita) la gara
+  raceId: number | null;
 }
 
 // Pianta del circuito ricostruita dalle posizioni delle auto (metri, X e Z del gioco).
@@ -208,7 +243,8 @@ export interface SessionRecord {
   analyzed: boolean;
   players: SessionPlayer[];
   race: SessionRace | null;
-  providesResults: boolean; // gara con classifica finale: i risultati del torneo vengono da qui
+  kind: SessionKind; // '' per le sessioni fuori dai tornei (prova a tempo)
+  providesResults: boolean; // sessione del weekend con classifica finale: i risultati del torneo vengono da qui
   deleteAt: string | null; // UTC: eliminata perché non terminata (senza classifica finale e senza torneo)
 }
 

@@ -28,6 +28,27 @@ func (s *Server) getLiveTrack(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, http.StatusOK, m)
 }
 
+// setLiveLineup sceglie chi guida le auto dei giocatori nella gara in corso.
+// Body: { "players": [{ "carIndex": 3, "playerId": 1 }], "confirm": true }
+func (s *Server) setLiveLineup(w http.ResponseWriter, r *http.Request) error {
+	var body struct {
+		Players []live.LineupChoice `json:"players"`
+		Confirm bool                `json:"confirm"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		return err
+	}
+	err := s.live.SetLineup(body.Players, body.Confirm)
+	if errors.Is(err, live.ErrNoLineup) {
+		return errorf(http.StatusConflict, "Nessuna gara in corso")
+	}
+	if err := sessionError(err); err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
 // streamLive invia lo stato della sessione con Server-Sent Events: un messaggio
 // a ogni cambiamento (al massimo 4 al secondo). Il browser lo riceve con
 // EventSource, che si riconnette da solo se la connessione cade.

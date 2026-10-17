@@ -17,8 +17,10 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
 
 export const api = {
   tournaments: () => request<Tournament[]>('/tournaments'),
-  createTournament: (name: string) => request<Tournament>('/tournaments', 'POST', { name }),
+  createTournament: (name: string, start: boolean) => request<Tournament>('/tournaments', 'POST', { name, start }),
   deleteTournament: (id: number) => request<void>(`/tournaments/${id}`, 'DELETE'),
+  startTournament: (id: number) => request<Tournament>(`/tournaments/${id}/start`, 'POST'),
+  endTournament: (id: number) => request<Tournament>(`/tournaments/${id}/end`, 'POST'),
 
   players: () => request<Player[]>('/players'),
   createPlayer: (name: string, team: string) => request<Player>('/players', 'POST', { name, team }),
@@ -34,6 +36,8 @@ export const api = {
   standings: (tournamentId: number) => request<StandingsResponse>(`/tournaments/${tournamentId}/standings`),
 
   liveTrack: () => request<TrackMap>('/live/track'),
+  setLineup: (players: { carIndex: number; playerId: number | null }[], confirm: boolean) =>
+    request<void>('/live/lineup', 'PUT', { players, confirm }),
 
   sessions: () => request<SessionRecord[]>('/telemetry/sessions'),
   deleteSession: (id: number) => request<void>(`/telemetry/sessions/${id}`, 'DELETE'),

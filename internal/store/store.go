@@ -2,8 +2,10 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -41,9 +43,27 @@ func Open(path string) (*sql.DB, error) {
 // La versione corrente è salvata in PRAGMA user_version: il file N-esimo
 // (in ordine alfabetico) porta il database alla versione N, quindi i file
 // vanno numerati in sequenza e mai modificati dopo il rilascio.
+//
+// Le migrazioni girano senza controllo delle chiavi esterne, come richiede
+// SQLite per ricreare una tabella (l'unico modo per cambiarne un CHECK):
+// altrimenti DROP TABLE cancellerebbe a cascata le righe collegate. Prima di
+// confermare si verifica che i riferimenti siano ancora tutti validi.
 func migrate(db *sql.DB) error {
+	ctx := context.Background()
+	// foreign_keys vale per connessione e non cambia dentro una transazione:
+	// serve una connessione dedicata, a cui va rimesso a posto prima di restituirla.
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "PRAGMA foreign_keys = OFF"); err != nil {
+		return err
+	}
+	defer conn.ExecContext(ctx, "PRAGMA foreign_keys = ON")
+
 	var version int
-	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+	if err := conn.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
 
@@ -62,13 +82,23 @@ func migrate(db *sql.DB) error {
 			return err
 		}
 
-		tx, err := db.Begin()
+		tx, err := conn.BeginTx(ctx, nil)
 		if err != nil {
 			return err
 		}
 		if _, err := tx.Exec(string(script)); err != nil {
 			tx.Rollback()
 			return fmt.Errorf("%s: %w", name, err)
+		}
+		var table string
+		err = tx.QueryRow("PRAGMA foreign_key_check").Scan(&table, new(any), new(any), new(any))
+		if err == nil {
+			tx.Rollback()
+			return fmt.Errorf("%s: riferimenti non validi nella tabella %s", name, table)
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			tx.Rollback()
+			return err
 		}
 		if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", target)); err != nil {
 			tx.Rollback()

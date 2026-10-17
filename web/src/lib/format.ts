@@ -1,4 +1,4 @@
-import type { Race } from './types';
+import type { Race, RaceType } from './types';
 
 export function formatDate(iso: string | null): string {
   return iso ? new Date(`${iso}T00:00:00`).toLocaleDateString('it-IT') : '';
@@ -22,11 +22,16 @@ export function formatClock(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-// Etichette brevi per le colonne: R1, R2… per i GP, S1, S2… per le sprint.
+// Etichette brevi per le colonne: R1, R2… per i GP, S1… per le sprint, Q1… per
+// le qualifiche, FP1… per le prove libere. Ogni tipo ha la sua numerazione.
+const LABEL_PREFIX: Record<RaceType, string> = { race: 'R', sprint: 'S', qualifying: 'Q', practice: 'FP' };
+
 export function raceLabels(races: Race[]): Map<number, string> {
-  let r = 0;
-  let s = 0;
-  return new Map(races.map((race) => [race.id, race.type === 'sprint' ? `S${++s}` : `R${++r}`]));
+  const counts: Partial<Record<RaceType, number>> = {};
+  return new Map(races.map((race) => {
+    counts[race.type] = (counts[race.type] ?? 0) + 1;
+    return [race.id, `${LABEL_PREFIX[race.type]}${counts[race.type]}`];
+  }));
 }
 
 // Orario salvato dal server in UTC ("2026-10-16 13:31:38") → data e ora locali.

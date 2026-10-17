@@ -40,6 +40,20 @@ type sessionData struct {
 	header         telemetry.Header // l'ultimo: contiene gli indici delle auto dei giocatori
 	participants   *telemetry.Participants
 	classification *telemetry.FinalClassification
+	// assigned sono i piloti scelti dalla pagina Live (indice dell'auto → pilota,
+	// nil se nessuno): per queste auto non si tira a indovinare.
+	assigned map[int]*int64
+}
+
+// controllerOf restituisce il controller (1 o 2) che guida l'auto i, 0 se nessuno.
+func controllerOf(h telemetry.Header, i int) int {
+	switch i {
+	case int(h.PlayerCarIndex):
+		return 1
+	case int(h.SecondaryPlayerCarIndex):
+		return 2
+	}
+	return 0
 }
 
 // analyzeFile legge da una registrazione i pacchetti della sessione uid.
@@ -125,6 +139,56 @@ func (s *Service) analyzePending() {
 	if len(list) > 0 {
 		log.Printf("telemetria: estratti i giocatori di %d sessioni registrate", len(list))
 	}
+	// Dopo l'analisi, così le gare create hanno subito i risultati.
+	s.adoptPending()
+}
+
+// adoptPending mette in "Nessun torneo" le sessioni finite registrate prima
+// che ogni sessione finita avesse un torneo (segnate dalla migrazione 006).
+// Succede una volta sola: una gara eliminata a mano dopo non ricompare.
+func (s *Service) adoptPending() {
+	rows, err := s.db.Query("SELECT id FROM telemetry_sessions WHERE needs_tournament = 1 ORDER BY id")
+	if err != nil {
+		log.Printf("telemetria: %v", err)
+		return
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	if len(ids) == 0 {
+		return
+	}
+
+	var free int64
+	if err := s.db.QueryRow("SELECT id FROM tournaments WHERE free = 1").Scan(&free); err != nil {
+		log.Printf("telemetria: torneo \"Nessun torneo\" non trovato: %v", err)
+		return
+	}
+	adopted := 0
+	for _, id := range ids {
+		// Nel frattempo la sessione potrebbe essere stata assegnata a mano.
+		var raceID *int64
+		if err := s.db.QueryRow("SELECT race_id FROM telemetry_sessions WHERE id = ?", id).Scan(&raceID); err != nil {
+			log.Printf("telemetria: sessione %d: %v", id, err)
+			continue
+		}
+		if raceID == nil {
+			if _, err := s.LinkNewRace(id, free, ""); err != nil {
+				log.Printf("telemetria: sessione %d in \"Nessun torneo\": %v", id, err)
+				continue
+			}
+			adopted++
+		}
+		s.exec("UPDATE telemetry_sessions SET needs_tournament = 0 WHERE id = ?", id)
+	}
+	if adopted > 0 {
+		log.Printf("telemetria: %d sessioni finite senza torneo spostate in \"Nessun torneo\"", adopted)
+	}
 }
 
 // savePlayers salva i giocatori umani della sessione, associandoli quando
@@ -144,6 +208,11 @@ func (s *Service) savePlayers(sessionID int64, d sessionData) error {
 		n := int(p.NumActiveCars)
 		cars = &n
 		taken := map[int64]bool{} // un pilota non può guidare due auto nella stessa gara
+		for _, id := range d.assigned {
+			if id != nil {
+				taken[*id] = true
+			}
+		}
 		for i, car := range p.Cars {
 			if i >= n {
 				break
@@ -162,14 +231,21 @@ func (s *Service) savePlayers(sessionID int64, d sessionData) error {
 				}
 				status = &st
 			}
-			playerID, err := guessPlayer(tx, car.Name, taken)
-			if err != nil {
-				return err
+			c := controllerOf(d.header, i)
+			var controller *int
+			if c > 0 {
+				controller = &c
+			}
+			playerID, ok := d.assigned[i]
+			if !ok {
+				if playerID, err = guessPlayer(tx, sessionID, c, car.Name, taken); err != nil {
+					return err
+				}
 			}
 			_, err = tx.Exec(`
-				INSERT INTO telemetry_players (session_id, car_index, name, team, race_number, position, result_status, player_id)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-				sessionID, i, car.Name, car.TeamID.String(), int(car.RaceNumber), position, status, playerID)
+				INSERT INTO telemetry_players (session_id, car_index, name, team, race_number, position, result_status, player_id, controller)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				sessionID, i, car.Name, car.TeamID.String(), int(car.RaceNumber), position, status, playerID, controller)
 			if err != nil {
 				return err
 			}
@@ -192,17 +268,32 @@ func (s *Service) savePlayers(sessionID int64, d sessionData) error {
 }
 
 // guessPlayer propone il pilota per un giocatore del gioco: quello con lo
-// stesso nome, oppure quello associato l'ultima volta allo stesso nome.
-// Restituisce nil se non trova nessuno di libero.
-func guessPlayer(db dbtx, name string, taken map[int64]bool) (*int64, error) {
-	queries := []string{
-		"SELECT id FROM players WHERE name = ?", // la colonna è COLLATE NOCASE
-		`SELECT player_id FROM telemetry_players WHERE name = ? COLLATE NOCASE AND player_id IS NOT NULL
-		 ORDER BY session_id DESC LIMIT 1`,
+// stesso nome, poi quello che nella sessione precedente aveva lo stesso
+// controller (in split-screen il nome del gioco non dice chi guida), infine
+// quello associato l'ultima volta allo stesso nome. controller è 0 per i
+// giocatori senza controller. Restituisce nil se non trova nessuno di libero.
+func guessPlayer(db dbtx, sessionID int64, controller int, name string, taken map[int64]bool) (*int64, error) {
+	type query struct {
+		sql  string
+		args []any
+	}
+	var queries []query
+	if name != "" {
+		queries = append(queries, query{"SELECT id FROM players WHERE name = ?", []any{name}}) // la colonna è COLLATE NOCASE
+	}
+	if controller > 0 {
+		queries = append(queries, query{`
+			SELECT player_id FROM telemetry_players WHERE controller = ? AND player_id IS NOT NULL AND session_id < ?
+			ORDER BY session_id DESC LIMIT 1`, []any{controller, sessionID}})
+	}
+	if name != "" {
+		queries = append(queries, query{`
+			SELECT player_id FROM telemetry_players WHERE name = ? COLLATE NOCASE AND player_id IS NOT NULL
+			ORDER BY session_id DESC LIMIT 1`, []any{name}})
 	}
 	for _, q := range queries {
 		var id int64
-		err := db.QueryRow(q, name).Scan(&id)
+		err := db.QueryRow(q.sql, q.args...).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}
@@ -217,22 +308,62 @@ func guessPlayer(db dbtx, name string, taken map[int64]bool) (*int64, error) {
 	return nil, nil
 }
 
-// raceSessionTypes sono i tipi di sessione che danno punti (vedi telemetry.SessionType.IsRace).
-var raceSessionTypes = []any{int(telemetry.SessionRace), int(telemetry.SessionRace2), int(telemetry.SessionRace3)}
+// sessionKind raggruppa i tipi di sessione del weekend: "race" (anche le
+// sprint), "qualifying" (anche lo Sprint Shootout) e "practice". Per le
+// altre sessioni (prova a tempo) restituisce "": non finiscono nei tornei.
+// sessionKindSQL fa lo stesso in SQL e va tenuta allineata.
+func sessionKind(st telemetry.SessionType) string {
+	switch {
+	case st.IsRace():
+		return "race"
+	case st >= telemetry.SessionQualifying1 && st <= telemetry.SessionOneShotSprintShootout:
+		return "qualifying"
+	case st >= telemetry.SessionPractice1 && st <= telemetry.SessionShortPractice:
+		return "practice"
+	}
+	return ""
+}
 
-// resultsSourceSQL seleziona le sessioni da cui si possono ricavare i risultati di una gara.
-const resultsSourceSQL = "has_classification = 1 AND analyzed = 1 AND session_type IN (?, ?, ?)"
+const sessionKindSQL = `CASE WHEN s.session_type BETWEEN 15 AND 17 THEN 'race'
+	WHEN s.session_type BETWEEN 5 AND 14 THEN 'qualifying'
+	WHEN s.session_type BETWEEN 1 AND 4 THEN 'practice' END`
+
+// raceKindSQL è il gruppo del tipo di una gara del torneo: GP e sprint sono entrambe "race".
+const raceKindSQL = "CASE WHEN r.type IN ('race', 'sprint') THEN 'race' ELSE r.type END"
+
+// sourceSQL seleziona le sessioni s da cui si possono ricavare i risultati della
+// gara r: finite, analizzate e dello stesso tipo (una qualifica non dà i risultati di un GP).
+const sourceSQL = "s.has_classification = 1 AND s.analyzed = 1 AND " + sessionKindSQL + " = " + raceKindSQL
 
 // resultsSource restituisce la registrazione da cui derivano i risultati della gara, o 0.
 func resultsSource(db dbtx, raceID int64) (int64, error) {
 	var id int64
-	args := append([]any{raceID}, raceSessionTypes...) // nuova slice: raceSessionTypes non cambia
-	err := db.QueryRow("SELECT id FROM telemetry_sessions WHERE race_id = ? AND "+resultsSourceSQL+" ORDER BY id DESC LIMIT 1", args...).
-		Scan(&id)
+	err := db.QueryRow(`
+		SELECT s.id FROM telemetry_sessions s JOIN races r ON r.id = s.race_id
+		WHERE r.id = ? AND `+sourceSQL+" ORDER BY s.id DESC LIMIT 1", raceID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
 	return id, err
+}
+
+// isSourceFor dice se la sessione può dare i risultati della gara.
+func isSourceFor(db dbtx, sessionID, raceID int64) (bool, error) {
+	var ok bool
+	// Per le sessioni fuori dai tornei il confronto dei tipi vale NULL.
+	err := db.QueryRow("SELECT COALESCE("+sourceSQL+", 0) FROM telemetry_sessions s, races r WHERE s.id = ? AND r.id = ?",
+		sessionID, raceID).Scan(&ok)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return ok, err
+}
+
+// raceTypeFor restituisce il tipo della gara del torneo per una sessione del
+// tipo st, "" se la sessione non va nei tornei. Le sprint si riconoscono solo
+// dalla struttura del weekend, che qui non c'è: vedi isSprint.
+func raceTypeFor(st telemetry.SessionType) string {
+	return sessionKind(st) // "race", "qualifying", "practice" sono anche tipi di gara
 }
 
 // syncRaceResults riscrive i risultati della gara a partire dalla sua
@@ -365,6 +496,19 @@ func (s *Service) SetSessionRace(sessionID int64, raceID *int64) error {
 		if err != nil {
 			return err
 		}
+	} else {
+		var finished bool
+		err := tx.QueryRow("SELECT COALESCE(s.has_classification = 1 AND "+sessionKindSQL+" IS NOT NULL, 0) FROM telemetry_sessions s WHERE s.id = ?",
+			sessionID).Scan(&finished)
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrSessionNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if finished {
+			return invalid("Le sessioni finite stanno sempre in un torneo: per toglierla da qui spostala in \"Nessun torneo\"")
+		}
 	}
 	if err := linkRace(tx, sessionID, raceID); err != nil {
 		return err
@@ -373,7 +517,8 @@ func (s *Service) SetSessionRace(sessionID int64, raceID *int64) error {
 }
 
 // LinkNewRace crea nel torneo una gara sul circuito della sessione e la collega.
-// raceType è "race" o "sprint".
+// raceType è "race", "sprint", "qualifying" o "practice"; vuoto per ricavarlo
+// dal tipo di sessione.
 func (s *Service) LinkNewRace(sessionID, tournamentID int64, raceType string) (int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -382,10 +527,11 @@ func (s *Service) LinkNewRace(sessionID, tournamentID int64, raceType string) (i
 	defer tx.Rollback()
 
 	var (
-		trackID   *int
-		startedAt string
+		trackID, sessionType *int
+		startedAt            string
 	)
-	err = tx.QueryRow("SELECT track_id, started_at FROM telemetry_sessions WHERE id = ?", sessionID).Scan(&trackID, &startedAt)
+	err = tx.QueryRow("SELECT track_id, session_type, started_at FROM telemetry_sessions WHERE id = ?", sessionID).
+		Scan(&trackID, &sessionType, &startedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, ErrSessionNotFound
 	}
@@ -400,8 +546,13 @@ func (s *Service) LinkNewRace(sessionID, tournamentID int64, raceType string) (i
 	if err != nil {
 		return 0, err
 	}
-	if raceType != "sprint" {
+	switch raceType {
+	case "race", "sprint", "qualifying", "practice":
+	default:
 		raceType = "race"
+		if sessionType != nil && raceTypeFor(telemetry.SessionType(*sessionType)) != "" {
+			raceType = raceTypeFor(telemetry.SessionType(*sessionType))
+		}
 	}
 	track := "Circuito sconosciuto"
 	if trackID != nil {
@@ -433,30 +584,47 @@ func linkRace(tx dbtx, sessionID int64, raceID *int64) error {
 	if err != nil {
 		return err
 	}
-	// Si copia la slice: append su raceSessionTypes potrebbe scriverci dentro.
-	args := append(append([]any{}, raceSessionTypes...), sessionID)
-	var isSource bool
-	if err := tx.QueryRow("SELECT "+resultsSourceSQL+" FROM telemetry_sessions WHERE id = ?", args...).
-		Scan(&isSource); err != nil {
-		return err
-	}
-
-	if raceID != nil && isSource {
-		source, err := resultsSource(tx, *raceID)
+	if raceID != nil {
+		source, err := isSourceFor(tx, sessionID, *raceID)
 		if err != nil {
 			return err
 		}
-		if source != 0 && source != sessionID {
-			return invalid("La gara ha già una registrazione con la classifica finale: scollegala prima di collegarne un'altra")
+		if source {
+			current, err := resultsSource(tx, *raceID)
+			if err != nil {
+				return err
+			}
+			if current != 0 && current != sessionID {
+				return invalid("La gara ha già una registrazione con la classifica finale: spostala prima in un'altra gara")
+			}
+		}
+	}
+	wasSource := false
+	if oldRace != nil && (raceID == nil || *raceID != *oldRace) {
+		if wasSource, err = isSourceFor(tx, sessionID, *oldRace); err != nil {
+			return err
 		}
 	}
 
 	if _, err := tx.Exec("UPDATE telemetry_sessions SET race_id = ? WHERE id = ?", raceID, sessionID); err != nil {
 		return err
 	}
-	// I risultati della gara di prima venivano da questa registrazione: non valgono più.
-	if oldRace != nil && (raceID == nil || *raceID != *oldRace) && isSource {
+	if wasSource {
+		// I risultati della gara di prima venivano da questa registrazione: non valgono più.
 		if _, err := tx.Exec("DELETE FROM results WHERE race_id = ?", *oldRace); err != nil {
+			return err
+		}
+		if err := syncRaceResults(tx, *oldRace); err != nil {
+			return err
+		}
+		// La gara di prima, se è in "Nessun torneo" ed è rimasta vuota, non serve più:
+		// di solito è quella creata in automatico prima di spostare la sessione nel torneo giusto.
+		_, err := tx.Exec(`
+			DELETE FROM races WHERE id = ?
+			AND tournament_id IN (SELECT id FROM tournaments WHERE free = 1)
+			AND NOT EXISTS (SELECT 1 FROM telemetry_sessions WHERE race_id = races.id)
+			AND NOT EXISTS (SELECT 1 FROM results WHERE race_id = races.id)`, *oldRace)
+		if err != nil {
 			return err
 		}
 	}

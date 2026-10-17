@@ -15,6 +15,7 @@ type Snapshot struct {
 	Drivers  []Driver     `json:"drivers"`
 	Player   *PlayerCar   `json:"player"`   // auto del giocatore, nil se non ci sono dati
 	Finished bool         `json:"finished"` // classifica finale ricevuta
+	Lineup   *Lineup      `json:"lineup"`   // chi guida le auto dei giocatori, solo in gara
 }
 
 type SessionInfo struct {
@@ -43,6 +44,7 @@ type Driver struct {
 	Team          string  `json:"team"`
 	RaceNumber    uint8   `json:"raceNumber"`
 	IsPlayer      bool    `json:"isPlayer"`
+	PlayerName    string  `json:"playerName"` // pilota del segnapunti alla guida, se scelto
 	AI            bool    `json:"ai"`
 	Lap           uint8   `json:"lap"`
 	LastLapMS     uint32  `json:"lastLapMs"`
@@ -74,6 +76,7 @@ type Tracker struct {
 	motion         *telemetry.Motion
 	outline        *outline
 	bestLaps       map[uint8]uint32 // miglior giro per auto, dagli storici SessionHistory
+	lightsOut      bool             // semaforo spento: la gara è partita
 }
 
 // relevant sono i pacchetti usati dal tracker: gli altri non vengono nemmeno decodificati.
@@ -87,6 +90,7 @@ var relevant = map[telemetry.PacketID]bool{
 	telemetry.PacketFinalClassification: true,
 	telemetry.PacketSessionHistory:      true,
 	telemetry.PacketMotion:              true,
+	telemetry.PacketEvent:               true,
 }
 
 // Handle aggiorna lo stato con un pacchetto. Se il pacchetto appartiene a una
@@ -126,6 +130,10 @@ func (t *Tracker) Handle(h telemetry.Header, data []byte) {
 		if t.outline != nil && t.laps != nil {
 			t.outline.add(t.laps, p)
 		}
+	case *telemetry.Event:
+		if p.Code == telemetry.EventLightsOut {
+			t.lightsOut = true
+		}
 	case *telemetry.SessionHistory:
 		if t.bestLaps == nil {
 			t.bestLaps = map[uint8]uint32{}
@@ -144,6 +152,22 @@ func (t *Tracker) Participants() *telemetry.Participants { return t.participants
 
 // Classification restituisce la classifica finale, se è già arrivata.
 func (t *Tracker) Classification() *telemetry.FinalClassification { return t.classification }
+
+// RaceStarted dice se la gara è partita. Se il server è stato avviato a gara
+// in corso il semaforo non si è visto: basta che qualcuno sia al secondo giro.
+func (t *Tracker) RaceStarted() bool {
+	if t.lightsOut || t.classification != nil {
+		return true
+	}
+	if t.laps != nil {
+		for _, lap := range t.laps.Cars {
+			if lap.CurrentLapNum >= 2 {
+				return true
+			}
+		}
+	}
+	return false
+}
 
 // seedOutline parte da una pianta già nota (salvata in una sessione
 // precedente sullo stesso circuito); i tratti mancanti si completano dal vivo.

@@ -2,6 +2,8 @@ package api
 
 import (
 	"cmp"
+	"database/sql"
+	"errors"
 	"math"
 	"net/http"
 	"slices"
@@ -10,9 +12,20 @@ import (
 )
 
 type Tournament struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	CreatedAt string `json:"created_at"`
+	ID        int64   `json:"id"`
+	Name      string  `json:"name"`
+	CreatedAt string  `json:"created_at"`
+	Free      bool    `json:"free"`       // "Nessun torneo": raccoglie le gare fuori dai tornei
+	StartedAt *string `json:"started_at"` // UTC, nil se mai iniziato
+	EndedAt   *string `json:"ended_at"`   // UTC, nil se non terminato
+	Active    bool    `json:"active"`     // in corso: le gare finite vengono salvate qui
+}
+
+const tournamentColumns = "id, name, created_at, free, started_at, ended_at, started_at IS NOT NULL AND ended_at IS NULL"
+
+// scanTournament legge una riga selezionata con tournamentColumns.
+func scanTournament(row interface{ Scan(...any) error }, t *Tournament) error {
+	return row.Scan(&t.ID, &t.Name, &t.CreatedAt, &t.Free, &t.StartedAt, &t.EndedAt, &t.Active)
 }
 
 type Player struct {
@@ -50,7 +63,9 @@ func (s *Server) getPoints(w http.ResponseWriter, r *http.Request) error {
 // --- Tornei ---------------------------------------------------------------
 
 func (s *Server) listTournaments(w http.ResponseWriter, r *http.Request) error {
-	rows, err := s.db.Query("SELECT id, name, created_at FROM tournaments ORDER BY id DESC")
+	// Prima quello in corso, poi "Nessun torneo", poi gli altri dal più recente.
+	rows, err := s.db.Query("SELECT " + tournamentColumns + ` FROM tournaments
+		ORDER BY started_at IS NOT NULL AND ended_at IS NULL DESC, free DESC, id DESC`)
 	if err != nil {
 		return err
 	}
@@ -59,7 +74,7 @@ func (s *Server) listTournaments(w http.ResponseWriter, r *http.Request) error {
 	tournaments := []Tournament{}
 	for rows.Next() {
 		var t Tournament
-		if err := rows.Scan(&t.ID, &t.Name, &t.CreatedAt); err != nil {
+		if err := scanTournament(rows, &t); err != nil {
 			return err
 		}
 		tournaments = append(tournaments, t)
@@ -70,9 +85,11 @@ func (s *Server) listTournaments(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, http.StatusOK, tournaments)
 }
 
+// createTournament crea un torneo. Body: { "name": "...", "start": true } per iniziarlo subito.
 func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error {
 	var body struct {
-		Name string `json:"name"`
+		Name  string `json:"name"`
+		Start bool   `json:"start"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		return err
@@ -82,13 +99,99 @@ func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error 
 		return err
 	}
 
-	var t Tournament
-	err = s.db.QueryRow("INSERT INTO tournaments (name) VALUES (?) RETURNING id, name, created_at", name).
-		Scan(&t.ID, &t.Name, &t.CreatedAt)
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
+	if body.Start {
+		if err := checkNoneActive(tx); err != nil {
+			return err
+		}
+	}
+	var t Tournament
+	err = scanTournament(tx.QueryRow(`
+		INSERT INTO tournaments (name, started_at) VALUES (?, CASE WHEN ? THEN datetime('now') END)
+		RETURNING `+tournamentColumns, name, body.Start), &t)
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.live.TournamentsChanged()
 	return writeJSON(w, http.StatusCreated, t)
+}
+
+// checkNoneActive restituisce un errore se c'è già un torneo in corso.
+func checkNoneActive(tx *sql.Tx) error {
+	var name string
+	err := tx.QueryRow("SELECT name FROM tournaments WHERE started_at IS NOT NULL AND ended_at IS NULL").Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return errorf(http.StatusConflict, "È già in corso il torneo \"%s\": terminalo prima di iniziarne un altro", name)
+}
+
+// startTournament inizia un torneo (o riprende uno terminato): da qui in poi
+// le gare finite vengono salvate lì invece che in "Nessun torneo".
+func (s *Server) startTournament(w http.ResponseWriter, r *http.Request) error {
+	id, err := s.pathID(r, "tournaments", "Torneo")
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var t Tournament
+	if err := scanTournament(tx.QueryRow("SELECT "+tournamentColumns+" FROM tournaments WHERE id = ?", id), &t); err != nil {
+		return err
+	}
+	if t.Free {
+		return errorf(http.StatusBadRequest, "\"Nessun torneo\" non si può iniziare: raccoglie le gare quando nessun torneo è in corso")
+	}
+	if !t.Active {
+		if err := checkNoneActive(tx); err != nil {
+			return err
+		}
+		err = scanTournament(tx.QueryRow(`
+			UPDATE tournaments SET started_at = COALESCE(started_at, datetime('now')), ended_at = NULL WHERE id = ?
+			RETURNING `+tournamentColumns, id), &t)
+		if err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.live.TournamentsChanged()
+	return writeJSON(w, http.StatusOK, t)
+}
+
+// endTournament termina il torneo in corso: le gare tornano in "Nessun torneo".
+func (s *Server) endTournament(w http.ResponseWriter, r *http.Request) error {
+	id, err := s.pathID(r, "tournaments", "Torneo")
+	if err != nil {
+		return err
+	}
+	var t Tournament
+	err = scanTournament(s.db.QueryRow(`
+		UPDATE tournaments SET ended_at = datetime('now') WHERE id = ? AND started_at IS NOT NULL AND ended_at IS NULL
+		RETURNING `+tournamentColumns, id), &t)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errorf(http.StatusConflict, "Il torneo non è in corso")
+	}
+	if err != nil {
+		return err
+	}
+	s.live.TournamentsChanged()
+	return writeJSON(w, http.StatusOK, t)
 }
 
 func (s *Server) deleteTournament(w http.ResponseWriter, r *http.Request) error {
@@ -96,9 +199,17 @@ func (s *Server) deleteTournament(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
+	free, err := s.exists("SELECT 1 FROM tournaments WHERE id = ? AND free = 1", id)
+	if err != nil {
+		return err
+	}
+	if free {
+		return errorf(http.StatusConflict, "\"Nessun torneo\" non si può eliminare")
+	}
 	if _, err := s.db.Exec("DELETE FROM tournaments WHERE id = ?", id); err != nil {
 		return err
 	}
+	s.live.TournamentsChanged()
 	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
@@ -273,8 +384,9 @@ func (s *Server) createRace(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	raceType := "race"
-	if body.Type == "sprint" {
-		raceType = "sprint"
+	switch body.Type {
+	case "sprint", "qualifying", "practice":
+		raceType = body.Type
 	}
 
 	var race Race
@@ -391,8 +503,7 @@ func (s *Server) getStandings(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	var tournament Tournament
-	err = s.db.QueryRow("SELECT id, name, created_at FROM tournaments WHERE id = ?", tournamentID).
-		Scan(&tournament.ID, &tournament.Name, &tournament.CreatedAt)
+	err = scanTournament(s.db.QueryRow("SELECT "+tournamentColumns+" FROM tournaments WHERE id = ?", tournamentID), &tournament)
 	if err != nil {
 		return err
 	}
@@ -400,6 +511,8 @@ func (s *Server) getStandings(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	// In classifica solo le gare che danno punti, non prove libere e qualifiche.
+	races = slices.DeleteFunc(races, func(r Race) bool { return !scoring.Counts(r.Type) })
 	results, err := s.resultsOf(tournamentID)
 	if err != nil {
 		return err

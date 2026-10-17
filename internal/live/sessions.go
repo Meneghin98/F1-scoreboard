@@ -39,8 +39,10 @@ type SessionRecord struct {
 	Analyzed bool            `json:"analyzed"`
 	Players  []SessionPlayer `json:"players"`
 	Race     *SessionRace    `json:"race"` // gara del torneo a cui appartiene, nil se nessuna
-	// ProvidesResults è vero per le gare con la classifica finale: se collegate
-	// a una gara del torneo, i risultati vengono presi da qui.
+	// Kind è "race", "qualifying" o "practice" per le sessioni del weekend, "" per le altre.
+	Kind string `json:"kind"`
+	// ProvidesResults è vero per le sessioni del weekend con la classifica finale:
+	// i risultati della gara del torneo a cui sono collegate vengono presi da qui.
 	ProvidesResults bool `json:"providesResults"`
 	// DeleteAt è quando la sessione verrà eliminata perché non terminata (UTC), nil se resta.
 	DeleteAt *string `json:"deleteAt"`
@@ -131,9 +133,9 @@ func (s *Service) Sessions() ([]SessionRecord, error) {
 		}
 		if r.SessionType != nil {
 			st := telemetry.SessionType(*r.SessionType)
-			r.Type, r.IsRace = st.String(), st.IsRace()
+			r.Type, r.IsRace, r.Kind = st.String(), st.IsRace(), sessionKind(st)
 		}
-		r.ProvidesResults = r.IsRace && r.HasClassification
+		r.ProvidesResults = r.Kind != "" && r.HasClassification
 		if !r.HasClassification && r.Race == nil && r.EndedAt != nil {
 			if end, err := time.Parse("2006-01-02 15:04:05", *r.EndedAt); err == nil {
 				at := end.Add(unfinishedRetention).Format("2006-01-02 15:04:05")

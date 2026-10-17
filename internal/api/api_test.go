@@ -235,3 +235,52 @@ func TestTelemetrySessionEndpoints(t *testing.T) {
 		http.StatusNotFound, "gara")
 	expectStatus(t, call(t, srv, "PUT", "/telemetry/sessions/abc/race", nil, &errBody), http.StatusNotFound, "id non valido")
 }
+
+func TestTournamentLifecycle(t *testing.T) {
+	srv := newTestServer(t)
+	type tournament struct {
+		ID     int    `json:"id"`
+		Name   string `json:"name"`
+		Free   bool   `json:"free"`
+		Active bool   `json:"active"`
+	}
+	list := func() []tournament {
+		var out []tournament
+		expectStatus(t, call(t, srv, "GET", "/tournaments", nil, &out), 200, "elenco tornei")
+		return out
+	}
+
+	// "Nessun torneo" c'è sempre e non si può eliminare né iniziare.
+	all := list()
+	if len(all) != 1 || !all[0].Free {
+		t.Fatalf("tornei iniziali %+v", all)
+	}
+	free := all[0].ID
+	expectStatus(t, call(t, srv, "DELETE", fmt.Sprintf("/tournaments/%d", free), nil, nil), 409, "elimina torneo libero")
+	expectStatus(t, call(t, srv, "POST", fmt.Sprintf("/tournaments/%d/start", free), nil, nil), 400, "inizia torneo libero")
+
+	var a, b tournament
+	expectStatus(t, call(t, srv, "POST", "/tournaments", map[string]any{"name": "A", "start": true}, &a), 201, "crea e inizia A")
+	expectStatus(t, call(t, srv, "POST", "/tournaments", map[string]any{"name": "B"}, &b), 201, "crea B")
+	if !a.Active || b.Active {
+		t.Fatalf("A %+v, B %+v", a, b)
+	}
+	// Il torneo in corso è il primo dell'elenco, poi quello libero.
+	if all := list(); all[0].ID != a.ID || all[1].ID != free {
+		t.Fatalf("ordine %+v", all)
+	}
+	expectStatus(t, call(t, srv, "POST", fmt.Sprintf("/tournaments/%d/start", b.ID), nil, nil), 409, "due tornei in corso")
+	expectStatus(t, call(t, srv, "POST", "/tournaments", map[string]any{"name": "C", "start": true}, nil), 409, "crea con un torneo in corso")
+
+	expectStatus(t, call(t, srv, "POST", fmt.Sprintf("/tournaments/%d/end", a.ID), nil, &a), 200, "termina A")
+	expectStatus(t, call(t, srv, "POST", fmt.Sprintf("/tournaments/%d/end", a.ID), nil, nil), 409, "termina due volte")
+	expectStatus(t, call(t, srv, "POST", fmt.Sprintf("/tournaments/%d/start", b.ID), nil, &b), 200, "inizia B")
+	if a.Active || !b.Active {
+		t.Fatalf("A %+v, B %+v", a, b)
+	}
+}
+
+func TestLiveLineupWithoutRace(t *testing.T) {
+	srv := newTestServer(t)
+	expectStatus(t, call(t, srv, "PUT", "/live/lineup", map[string]any{"confirm": true}, nil), 409, "nessuna gara")
+}

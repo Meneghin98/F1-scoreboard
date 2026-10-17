@@ -15,8 +15,14 @@ import { RacesPage } from './pages/RacesPage';
 import { RecordingsPage } from './pages/RecordingsPage';
 import { StandingsPage } from './pages/StandingsPage';
 
+function tournamentLabel(t: Tournament): string {
+  if (t.active) return `${t.name} (in corso)`;
+  if (t.ended_at) return `${t.name} (terminato)`;
+  return t.name;
+}
+
 export function App() {
-  const { run } = useToast();
+  const { run, toast } = useToast();
   const confirm = useConfirm();
   const view = useView();
   const [tournaments, setTournaments] = useState<Tournament[] | null>(null);
@@ -41,8 +47,35 @@ export function App() {
     localStorage.setItem('tournamentId', String(tournamentId ?? ''));
   }, [tournamentId]);
 
+  const current = tournaments?.find((x) => x.id === tournamentId);
+  const active = tournaments?.find((x) => x.active);
+
+  // Iniziato un torneo, le gare finite vengono salvate lì; terminato, si torna a "Nessun torneo".
+  function handleStart() {
+    if (!current) return;
+    run(async () => {
+      await api.startTournament(current.id);
+      await loadTournaments(current.id);
+      toast(`"${current.name}" è in corso: le prossime gare verranno salvate qui`);
+    });
+  }
+
+  async function handleEnd() {
+    if (!current) return;
+    const ok = await confirm({
+      title: 'Terminare il torneo?',
+      message: `Le prossime gare verranno salvate in "Nessun torneo" invece che in "${current.name}". Potrai riprenderlo più avanti.`,
+      confirmLabel: 'Termina torneo',
+    });
+    if (!ok) return;
+    run(async () => {
+      await api.endTournament(current.id);
+      await loadTournaments(current.id);
+    });
+  }
+
   async function handleDelete() {
-    const t = tournaments?.find((x) => x.id === tournamentId);
+    const t = current;
     if (!t) return;
     const ok = await confirm({
       title: 'Eliminare il torneo?',
@@ -78,13 +111,28 @@ export function App() {
             onChange={(e) => setTournamentId(Number(e.target.value))}
           >
             {tournaments?.length
-              ? tournaments.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)
+              ? tournaments.map((t) => <option key={t.id} value={t.id}>{tournamentLabel(t)}</option>)
               : <option value="">Nessun torneo</option>}
           </select>
+          {current?.active ? (
+            <Button variant="ghost" size="sm" onClick={handleEnd}>Termina torneo</Button>
+          ) : current && !current.free && (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!!active}
+              title={active ? `Termina prima "${active.name}"` : 'Le prossime gare verranno salvate in questo torneo'}
+              onClick={handleStart}
+            >
+              {current.ended_at ? 'Riprendi torneo' : 'Inizia torneo'}
+            </Button>
+          )}
           <Button size="sm" onClick={() => setCreating(true)}>+ Torneo</Button>
-          <Button variant="ghost" size="sm" title="Elimina torneo" disabled={!tournamentId} onClick={handleDelete}>
-            Elimina
-          </Button>
+          {!current?.free && (
+            <Button variant="ghost" size="sm" title="Elimina torneo" disabled={!tournamentId} onClick={handleDelete}>
+              Elimina
+            </Button>
+          )}
         </div>
       </header>
 
@@ -116,7 +164,8 @@ export function App() {
 
       <NewTournamentDialog
         open={creating}
-        defaultName={`Torneo F1 2025 #${(tournaments?.length ?? 0) + 1}`}
+        defaultName={`Torneo F1 2025 #${(tournaments?.filter((t) => !t.free).length ?? 0) + 1}`}
+        canStart={!active}
         onClose={() => setCreating(false)}
         onCreated={(t) => loadTournaments(t.id)}
       />

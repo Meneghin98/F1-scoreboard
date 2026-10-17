@@ -77,3 +77,19 @@ func TestStandingsStats(t *testing.T) {
 		t.Fatalf("perRace inatteso: %+v", s.PerRace)
 	}
 }
+
+func TestStandingsIgnoreSessionsWithoutPoints(t *testing.T) {
+	results := []Result{
+		{RaceID: 1, RaceType: "qualifying", PlayerID: 1, Name: "A", Position: pos(1)},
+		{RaceID: 2, RaceType: "race", PlayerID: 1, Name: "A", Position: pos(2)},
+		{RaceID: 3, RaceType: "practice", PlayerID: 2, Name: "B", Position: pos(1)},
+	}
+	standings := Standings(results)
+	// B ha solo le prove libere: non compare in classifica.
+	if len(standings) != 1 || standings[0].Points != 18 || standings[0].Races != 1 || len(standings[0].PerRace) != 1 {
+		t.Fatalf("classifica %+v", standings)
+	}
+	if Counts("practice") || Counts("qualifying") || !Counts("race") || !Counts("sprint") {
+		t.Error("Counts")
+	}
+}
