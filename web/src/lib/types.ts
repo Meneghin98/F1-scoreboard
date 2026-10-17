@@ -250,3 +250,29 @@ export interface SessionRecord {
 
 // Collegamento a una gara: esistente, nessuna (null) o nuova nel torneo indicato.
 export type SessionRaceInput = { raceId: number | null } | { tournamentId: number; type: RaceType };
+
+// --- Replay (vedi internal/live/replay.go) ----------------------------------
+
+export interface ReplayLap {
+  lap: number;
+  atMs: number; // quando il primo in classifica inizia il giro
+}
+
+export interface ReplayInfo {
+  durationMs: number;
+  mapPoints: number; // punti della pianta completa, 0 se non c'è
+  laps: ReplayLap[];
+}
+
+// Acceleratore e freno (0..1) all'istante t, in ms dall'inizio del replay.
+export interface ReplayPedal {
+  t: number;
+  throttle: number;
+  brake: number;
+}
+
+export interface ReplayFrame {
+  t: number;
+  snapshot: LiveSnapshot;
+  pedals: ReplayPedal[];
+}

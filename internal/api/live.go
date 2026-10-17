@@ -206,3 +206,57 @@ func (s *Server) setTelemetryRace(w http.ResponseWriter, r *http.Request) error 
 	w.WriteHeader(http.StatusNoContent)
 	return nil
 }
+
+// replayOf prepara (o riprende dalla memoria) il replay della sessione {id}.
+func (s *Server) replayOf(r *http.Request) (*live.Replay, error) {
+	id, err := sessionID(r)
+	if err != nil {
+		return nil, err
+	}
+	replay, err := s.live.Replay(id)
+	if err := sessionError(err); err != nil {
+		return nil, err
+	}
+	return replay, nil
+}
+
+// getReplay descrive il replay di una sessione: durata, giri e pianta.
+// La prima richiesta legge tutta la registrazione e può richiedere qualche secondo.
+func (s *Server) getReplay(w http.ResponseWriter, r *http.Request) error {
+	replay, err := s.replayOf(r)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, replay.Info())
+}
+
+// getReplayFrame restituisce lo stato della sessione all'istante ?t= (millisecondi dall'inizio).
+func (s *Server) getReplayFrame(w http.ResponseWriter, r *http.Request) error {
+	replay, err := s.replayOf(r)
+	if err != nil {
+		return err
+	}
+	ms, err := strconv.ParseInt(r.URL.Query().Get("t"), 10, 64)
+	if err != nil {
+		return errorf(http.StatusBadRequest, "Parametro t non valido")
+	}
+	frame, err := replay.Frame(time.Duration(ms) * time.Millisecond)
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	return writeJSON(w, http.StatusOK, frame)
+}
+
+// getReplayTrack restituisce la pianta del circuito del replay.
+func (s *Server) getReplayTrack(w http.ResponseWriter, r *http.Request) error {
+	replay, err := s.replayOf(r)
+	if err != nil {
+		return err
+	}
+	m := replay.TrackMap()
+	if m == nil {
+		return errorf(http.StatusNotFound, "Nessuna mappa disponibile")
+	}
+	return writeJSON(w, http.StatusOK, m)
+}

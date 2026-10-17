@@ -1,14 +1,15 @@
 import { useState, type ReactNode } from 'react';
 import { ERS_MODE, FUEL_MIX, severity } from '../lib/live';
 import type { PlayerCar } from '../lib/types';
-import { usePedalHistory } from '../lib/useLive';
+import type { PedalSample } from '../lib/useLive';
 import { CarDiagram } from './CarDiagram';
 import { PedalChart } from './PedalChart';
 import { Card, cx } from './ui';
 
 // Statistiche dell'auto del giocatore. Ridotta mostra solo i dati principali;
 // un clic la apre a tutta larghezza (sotto la mappa) con tutti i dettagli.
-export function PlayerCarCard({ car, className }: { car: PlayerCar; className?: string }) {
+// pedals è lo storico di acceleratore e freno per il grafico.
+export function PlayerCarCard({ car, pedals, className }: { car: PlayerCar; pedals: PedalSample[]; className?: string }) {
   const [detailed, setDetailed] = useState(false);
   const toggle = () => setDetailed(!detailed);
 
@@ -44,7 +45,7 @@ export function PlayerCarCard({ car, className }: { car: PlayerCar; className?: 
           <span className="text-xs text-muted">{detailed ? 'Riduci ▴' : 'Dettagli ▾'}</span>
         </div>
       </div>
-      {detailed ? <Details car={car} /> : <Summary car={car} />}
+      {detailed ? <Details car={car} pedals={pedals} /> : <Summary car={car} />}
     </Card>
   );
 }
@@ -72,9 +73,8 @@ function Summary({ car }: { car: PlayerCar }) {
 }
 
 // Vista dettagliata: il disegno dell'auto con gomme e danni, accanto guida, carburante ed ERS.
-function Details({ car }: { car: PlayerCar }) {
+function Details({ car, pedals }: { car: PlayerCar; pedals: PedalSample[] }) {
   const d = car.damage;
-  const pedals = usePedalHistory();
 
   return (
     <div className="grid gap-6 md:grid-cols-2">

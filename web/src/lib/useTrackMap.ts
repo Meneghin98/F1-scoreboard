@@ -8,16 +8,17 @@ const REFRESH_MS = 2000;
 
 // Scarica la pianta del circuito della sessione uid e la riscarica quando il
 // server ne ha ricostruiti altri punti. Restituisce null finché non c'è.
-export function useTrackMap(uid: string, points: number): TrackMap | null {
+// load scarica la pianta: di default quella della sessione live.
+export function useTrackMap(uid: string, points: number, load: () => Promise<TrackMap> = api.liveTrack): TrackMap | null {
   const [map, setMap] = useState<{ uid: string; data: TrackMap } | null>(null);
   const last = useRef({ uid: '', points: 0, at: 0 });
 
   useEffect(() => {
     if (!points || (last.current.uid === uid && last.current.points === points)) return;
-    const load = async () => {
+    const fetchMap = async () => {
       last.current = { uid, points, at: Date.now() };
       try {
-        const data = await api.liveTrack();
+        const data = await load();
         setMap({ uid, data });
       } catch {
         // Si riprova al prossimo cambiamento: la mappa non è indispensabile.
@@ -25,11 +26,12 @@ export function useTrackMap(uid: string, points: number): TrackMap | null {
     };
     const wait = last.current.uid === uid ? last.current.at + REFRESH_MS - Date.now() : 0;
     if (wait <= 0) {
-      void load();
+      void fetchMap();
       return;
     }
-    const timer = setTimeout(load, wait);
+    const timer = setTimeout(fetchMap, wait);
     return () => clearTimeout(timer);
+    // load non è tra le dipendenze: di solito è una funzione nuova a ogni render, la pianta dipende da uid e points.
   }, [uid, points]);
 
   return map?.uid === uid ? map.data : null;

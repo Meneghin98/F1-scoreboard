@@ -477,7 +477,12 @@ func (s *Service) SetSessionPlayers(sessionID int64, players map[int]*int64) err
 			return err
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	// Il replay mostra i nomi dei piloti: va ripreparato.
+	s.forgetReplay(sessionID)
+	return nil
 }
 
 // SetSessionRace collega la sessione a una gara (nil la scollega).
@@ -666,6 +671,7 @@ func (s *Service) DeleteSession(sessionID int64) error {
 }
 
 func (s *Service) removeSession(sessionID int64, file string) error {
+	s.forgetReplay(sessionID)
 	if err := os.Remove(filepath.Join(s.opts.Dir, file)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

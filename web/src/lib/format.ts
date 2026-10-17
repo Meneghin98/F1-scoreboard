@@ -44,7 +44,12 @@ export function formatDateTime(utc: string): string {
 // Durata tra due orari UTC del server: "12:34" o "1:02:03".
 export function formatDuration(fromUtc: string, toUtc: string): string {
   const parse = (s: string) => Date.parse(`${s.replace(' ', 'T')}Z`);
-  const total = Math.max(0, Math.round((parse(toUtc) - parse(fromUtc)) / 1000));
+  return formatElapsed(Math.max(0, Math.round((parse(toUtc) - parse(fromUtc)) / 1000)));
+}
+
+// Tempo trascorso in secondi: 754 → "12:34", 3723 → "1:02:03".
+export function formatElapsed(seconds: number): string {
+  const total = Math.floor(seconds);
   const h = Math.floor(total / 3600);
   const clock = formatClock(total % 3600);
   return h ? `${h}:${clock.padStart(5, '0')}` : clock;

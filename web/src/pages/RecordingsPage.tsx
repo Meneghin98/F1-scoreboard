@@ -226,6 +226,15 @@ function RecordingCard({ session: s, players, onAssign, onDelete, onPlayerChange
           )}
         </div>
         <div className="flex gap-2">
+          {s.downloadable && !s.recording ? (
+            <a href={href('replay', s.id)} className={buttonClass('ghost', 'sm')} title="Rivedi la sessione come nella pagina Live">
+              ▶ Replay
+            </a>
+          ) : (
+            <Button variant="ghost" size="sm" disabled title={s.recording ? 'Registrazione in corso' : 'File non disponibile'}>
+              ▶ Replay
+            </Button>
+          )}
           <Button size="sm" onClick={onAssign}>{s.race ? 'Cambia torneo' : 'Assegna a torneo'}</Button>
           {s.downloadable && !s.recording ? (
             <a href={sessionDownloadUrl(s.id)} download className={buttonClass('ghost', 'sm')}>Scarica</a>

@@ -55,6 +55,10 @@ type Service struct {
 	target       *LineupTournament
 	targetLoaded bool
 
+	// Replay preparati dalle registrazioni, per sessione (vedi replay.go).
+	replayMu sync.Mutex
+	replays  map[int64]*replayEntry
+
 	done chan struct{}
 }
 
@@ -82,6 +86,7 @@ func NewService(db *sql.DB, opts Options) *Service {
 		opts:        opts,
 		warnedFmt:   map[uint16]bool{},
 		subscribers: map[chan []byte]struct{}{},
+		replays:     map[int64]*replayEntry{},
 		done:        make(chan struct{}),
 	}
 }

@@ -5,7 +5,7 @@ import { Button, Empty, fieldSmClass } from './components/ui';
 import { api } from './lib/api';
 import { useConfirm } from './lib/confirm';
 import { TEAMS, TRACKS } from './lib/f1';
-import { href, useView, VIEW_LABELS } from './lib/route';
+import { href, useView, useViewParam, VIEW_LABELS, VIEW_PARENT } from './lib/route';
 import { useToast } from './lib/toast';
 import type { Tournament } from './lib/types';
 import { DashboardPage } from './pages/DashboardPage';
@@ -13,6 +13,7 @@ import { LivePage } from './pages/LivePage';
 import { PlayersPage } from './pages/PlayersPage';
 import { RacesPage } from './pages/RacesPage';
 import { RecordingsPage } from './pages/RecordingsPage';
+import { ReplayPage } from './pages/ReplayPage';
 import { StandingsPage } from './pages/StandingsPage';
 
 function tournamentLabel(t: Tournament): string {
@@ -25,6 +26,8 @@ export function App() {
   const { run, toast } = useToast();
   const confirm = useConfirm();
   const view = useView();
+  const viewParam = useViewParam();
+  const parent = VIEW_PARENT[view];
   const [tournaments, setTournaments] = useState<Tournament[] | null>(null);
   const [tournamentId, setTournamentId] = useState<number | null>(
     () => Number(localStorage.getItem('tournamentId')) || null,
@@ -143,6 +146,12 @@ export function App() {
             <nav aria-label="Percorso" className="mb-4 flex items-center gap-2 text-sm">
               <a href={href('dashboard')} className="text-muted hover:text-fg">{VIEW_LABELS.dashboard}</a>
               <span className="text-muted">/</span>
+              {parent && (
+                <>
+                  <a href={href(parent)} className="text-muted hover:text-fg">{VIEW_LABELS[parent]}</a>
+                  <span className="text-muted">/</span>
+                </>
+              )}
               <span aria-current="page" className="font-semibold">{VIEW_LABELS[view]}</span>
             </nav>
           )}
@@ -157,6 +166,9 @@ export function App() {
               {view === 'players' && <PlayersPage />}
               {view === 'live' && <LivePage />}
               {view === 'recordings' && <RecordingsPage tournaments={tournaments} />}
+              {view === 'replay' && (
+                viewParam ? <ReplayPage key={viewParam} sessionId={viewParam} /> : <Empty>Registrazione non trovata.</Empty>
+              )}
             </section>
           )}
         </main>

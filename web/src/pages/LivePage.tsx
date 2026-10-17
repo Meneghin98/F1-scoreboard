@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { formatClock, formatGap, formatLapTime } from '../lib/format';
 import { isLive, SAFETY_CAR, teamColor, TYRE_CLASS, WEATHER } from '../lib/live';
-import type { LiveDriver, LiveSession, LiveSnapshot, PlayerCar } from '../lib/types';
-import { useLive } from '../lib/useLive';
+import type { LiveDriver, LiveSession, LiveSnapshot, PlayerCar, TrackMap } from '../lib/types';
+import { useLive, usePedalHistory, type PedalSample } from '../lib/useLive';
 import { LiveDot } from '../components/LiveBadge';
 import { LineupCard } from '../components/LineupCard';
 import { PlayerCarCard } from '../components/PlayerCarCard';
@@ -12,6 +12,7 @@ import { Button, Card, cx, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from '
 // Classifica della sessione in corso, aggiornata in tempo reale dalla telemetria.
 export function LivePage() {
   const live = useLive();
+  const pedals = usePedalHistory();
 
   if (!live) return <Empty>Connessione al server in corso…</Empty>;
   if (!isLive(live)) {
@@ -27,7 +28,7 @@ export function LivePage() {
       <SessionCard live={live} session={live.session} />
       {live.lineup && <LineupCard lineup={live.lineup} />}
       {live.drivers.length ? (
-        <LiveBoard session={live.session} drivers={live.drivers} player={live.player} />
+        <LiveBoard session={live.session} drivers={live.drivers} player={live.player} pedals={pedals} />
       ) : (
         <Empty>In attesa dei dati dei piloti…</Empty>
       )}
@@ -35,9 +36,19 @@ export function LivePage() {
   );
 }
 
+interface LiveBoardProps {
+  session: LiveSession;
+  drivers: LiveDriver[];
+  player: PlayerCar | null;
+  pedals: PedalSample[];
+  loadMap?: () => Promise<TrackMap>;
+  mapPoints?: number; // punti della pianta, se diversi da quelli della sessione
+}
+
 // Classifica ridotta a sinistra di mappa e auto del giocatore; estesa mostra
-// tutti i dati e nasconde la mappa.
-function LiveBoard({ session, drivers, player }: { session: LiveSession; drivers: LiveDriver[]; player: PlayerCar | null }) {
+// tutti i dati e nasconde la mappa. È usata anche dal replay, che passa la sua
+// pianta (loadMap) e il suo storico dei pedali.
+export function LiveBoard({ session, drivers, player, pedals, loadMap, mapPoints }: LiveBoardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -62,16 +73,18 @@ function LiveBoard({ session, drivers, player }: { session: LiveSession; drivers
         <TrackMapCard
           className={cx('mb-0 h-80 w-full md:size-88', expanded && 'hidden')}
           uid={session.uid}
-          mapPoints={session.mapPoints}
+          mapPoints={mapPoints ?? session.mapPoints}
           drivers={drivers}
+          loadMap={loadMap}
         />
-        {player && <PlayerCarCard car={player} className="mb-0" />}
+        {player && <PlayerCarCard car={player} pedals={pedals} className="mb-0" />}
       </div>
     </div>
   );
 }
 
-function SessionCard({ live, session: s }: { live: LiveSnapshot; session: LiveSession }) {
+// indicator sostituisce il pallino verde della diretta (il replay mostra il suo).
+export function SessionCard({ live, session: s, indicator }: { live: LiveSnapshot; session: LiveSession; indicator?: ReactNode }) {
   let progress = '';
   if (live.finished) progress = 'Finita';
   else if (s.isRace && s.totalLaps > 0) progress = `Giro ${Math.max(s.currentLap, 1)}/${s.totalLaps}`;
@@ -86,7 +99,7 @@ function SessionCard({ live, session: s }: { live: LiveSnapshot; session: LiveSe
   return (
     <Card className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-3">
-        <LiveDot active />
+        {indicator ?? <LiveDot active />}
         <div>
           <div className="text-xl font-bold">{s.track || 'Circuito sconosciuto'}</div>
           <div className="text-sm text-muted">{s.type}</div>

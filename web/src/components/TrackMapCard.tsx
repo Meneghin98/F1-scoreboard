@@ -9,18 +9,21 @@ const MAX_GAP = 40;
 
 // Pianta del circuito con la posizione delle auto in tempo reale.
 // La mappa riempie la card: le dimensioni le decide chi la usa tramite className.
+// loadMap scarica la pianta: di default quella della sessione live.
 export function TrackMapCard({
   uid,
   mapPoints,
   drivers,
   className,
+  loadMap,
 }: {
   uid: string;
   mapPoints: number;
   drivers: LiveDriver[];
   className?: string;
+  loadMap?: () => Promise<TrackMap>;
 }) {
-  const map = useTrackMap(uid, mapPoints);
+  const map = useTrackMap(uid, mapPoints, loadMap);
 
   return (
     <Card className={cx('flex items-center justify-center p-2', className)}>

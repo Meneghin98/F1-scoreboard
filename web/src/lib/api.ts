@@ -1,6 +1,6 @@
 import type {
   Player, Race, RaceType, RaceWithResults, ResultInput, SessionRaceInput, SessionRecord, StandingsResponse, Tournament,
-  TrackMap,
+  ReplayFrame, ReplayInfo, TrackMap,
 } from './types';
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -45,6 +45,11 @@ export const api = {
     request<void>(`/telemetry/sessions/${id}/players`, 'PUT', { players }),
   setSessionRace: (id: number, race: SessionRaceInput) =>
     request<void>(`/telemetry/sessions/${id}/race`, 'PUT', race),
+
+  replay: (sessionId: number) => request<ReplayInfo>(`/telemetry/sessions/${sessionId}/replay`),
+  replayFrame: (sessionId: number, ms: number) =>
+    request<ReplayFrame>(`/telemetry/sessions/${sessionId}/replay/frame?t=${Math.round(ms)}`),
+  replayTrack: (sessionId: number) => request<TrackMap>(`/telemetry/sessions/${sessionId}/replay/track`),
 };
 
 // Indirizzo per scaricare il file di una registrazione.
