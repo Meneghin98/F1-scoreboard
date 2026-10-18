@@ -87,6 +87,30 @@ export interface LiveSession {
   trackTemp: number;
   airTemp: number;
   mapPoints: number;
+  forecast: LiveForecast[]; // previsioni per il resto della sessione
+  pitWindowIdeal: number; // giro ideale per la sosta, 0 se non previsto
+  pitWindowLatest: number;
+  pitRejoin: number; // posizione prevista al rientro dai box del giocatore principale
+  marshalZones: MarshalZone[];
+}
+
+export interface LiveForecast {
+  offset: number; // minuti da adesso
+  weather: number;
+  rain: number; // probabilità di pioggia, %
+  trackTemp: number;
+  airTemp: number;
+}
+
+// Settore dei commissari: va da start all'inizio del successivo (frazioni del giro).
+export interface MarshalZone {
+  start: number;
+  flag: number; // -1 sconosciuta, 0 nessuna, 1 verde, 2 blu, 3 gialla
+}
+
+export interface Stint {
+  tyre: string; // S, M, H, I, W
+  endLap: number; // ultimo giro, 0 se ancora in uso
 }
 
 export interface LiveDriver {
@@ -111,6 +135,15 @@ export interface LiveDriver {
   tyreAge: number;
   x: number;
   z: number;
+  gridPosition: number;
+  lapInvalid: boolean; // giro in corso annullato
+  warnings: number;
+  cornerCuts: number; // avvertimenti per taglio di curva
+  unserved: number; // drive through e stop & go da scontare
+  speedTrap: number; // km/h, 0 se non rilevata
+  lastSectors: number[]; // settori dell'ultimo giro completato, ms
+  bestSectors: number[]; // migliori settori personali, ms
+  stints: Stint[];
 }
 export interface LiveWheel {
   surfaceTemp: number;
@@ -155,6 +188,52 @@ export interface PlayerCar {
     drsFault: boolean;
     ersFault: boolean;
   };
+  tyreSets: TyreSet[]; // set ancora disponibili, quello montato per primo
+  setup: CarSetup | null;
+}
+
+export interface TyreSet {
+  tyre: string;
+  wear: number; // %
+  lifeSpan: number; // giri rimanenti
+  deltaMs: number; // differenza sul giro rispetto al set montato
+  fitted: boolean;
+}
+
+export interface CarSetup {
+  frontWing: number;
+  rearWing: number;
+  onThrottle: number; // differenziale in accelerazione, %
+  offThrottle: number;
+  frontCamber: number;
+  rearCamber: number;
+  frontToe: number;
+  rearToe: number;
+  frontSuspension: number;
+  rearSuspension: number;
+  frontAntiRollBar: number;
+  rearAntiRollBar: number;
+  frontHeight: number;
+  rearHeight: number;
+  brakePressure: number; // %
+  brakeBias: number; // %
+  engineBraking: number; // %
+  tyrePressures: number[]; // PSI: ant. sx, ant. dx, post. sx, post. dx
+  fuelLoad: number; // kg
+}
+
+// Tipi dei messaggi della direzione gara (vedi internal/live/events.go).
+export type RaceEventKind =
+  | 'penalty' | 'collision' | 'overtake' | 'fastestLap' | 'retirement' | 'safetyCar' | 'redFlag' | 'flag' | 'drs'
+  | 'flashback';
+
+export interface RaceEvent {
+  id: number;
+  time: number; // secondi dall'inizio della sessione
+  lap: number; // giro del primo in classifica
+  kind: RaceEventKind;
+  text: string;
+  cars: number[]; // auto coinvolte
 }
 
 export interface LiveSnapshot {
@@ -165,6 +244,7 @@ export interface LiveSnapshot {
   players: PlayerCar[]; // auto dei giocatori, in ordine di controller
   finished: boolean;
   lineup: Lineup | null;
+  events: RaceEvent[]; // ultimi messaggi della direzione gara, dal più vecchio
 }
 
 // Chi guida le auto dei giocatori in gara (vedi internal/live/lineup.go).
@@ -199,7 +279,7 @@ export interface Lineup {
 // Pianta del circuito ricostruita dalle posizioni delle auto (metri, X e Z del gioco).
 export interface TrackMap {
   length: number;
-  points: { x: number; z: number }[];
+  points: { x: number; z: number; d: number }[]; // d: metri dall'inizio del giro
 }
 
 // --- Registrazioni (vedi internal/live/sessions.go) -----------------------
@@ -260,10 +340,36 @@ export interface ReplayLap {
   atMs: number; // quando il primo in classifica inizia il giro
 }
 
+export interface ReplayEvent extends RaceEvent {
+  atMs: number; // istante del replay
+}
+
 export interface ReplayInfo {
   durationMs: number;
   mapPoints: number; // punti della pianta completa, 0 se non c'è
   laps: ReplayLap[];
+  events: ReplayEvent[];
+  analysis: Analysis | null; // riassunto della sessione alla fine della registrazione
+}
+
+// Riassunto di una sessione (vedi internal/live/analysis.go).
+export interface Analysis {
+  laps: number; // giri con le posizioni: il primo (0) è la griglia
+  cars: AnalysisCar[]; // in ordine di classifica
+}
+
+export interface AnalysisCar {
+  carIndex: number;
+  position: number;
+  name: string;
+  team: string;
+  controller: number;
+  playerName: string;
+  human: boolean;
+  status: string;
+  positions: number[]; // posizione all'inizio di ogni giro, 0 se manca
+  stints: Stint[];
+  laps: { timeMs: number; sectors: number[]; valid: boolean }[];
 }
 
 // Acceleratore e freno (0..1) del controller indicato all'istante t, in ms dall'inizio del replay.

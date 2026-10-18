@@ -1,8 +1,10 @@
 import { memo, useCallback, useEffect, useRef, useState, type PointerEvent } from 'react';
 import { api } from '../lib/api';
 import { formatElapsed } from '../lib/format';
-import type { ReplayFrame, ReplayInfo, ReplayLap } from '../lib/types';
+import type { RaceEventKind, ReplayEvent, ReplayFrame, ReplayInfo, ReplayLap } from '../lib/types';
 import { Button, Card, cx, Empty } from '../components/ui';
+import { RaceAnalysis } from '../components/RaceAnalysis';
+import { EVENT_KIND } from '../components/RaceControlCard';
 import { LiveBoard, SessionCard } from './LivePage';
 
 // Velocità di riproduzione proposte.
@@ -47,6 +49,11 @@ function ReplayPlayer({ sessionId, info }: { sessionId: number; info: ReplayInfo
   const dragging = useRef(false); // mentre si trascina la timeline il cursore non avanza da solo
 
   const seek = useCallback((ms: number) => setPos(Math.min(Math.max(ms, 0), duration)), [duration]);
+  // Fine del giro indicato (0 = partenza): quando il primo inizia il successivo.
+  const seekLap = useCallback(
+    (lap: number) => seek(info.laps.find((l) => l.lap === lap + 1)?.atMs ?? duration),
+    [info.laps, seek, duration],
+  );
 
   function togglePlay() {
     if (playing) {
@@ -185,6 +192,7 @@ function ReplayPlayer({ sessionId, info }: { sessionId: number; info: ReplayInfo
           pos={pos}
           duration={duration}
           laps={info.laps}
+          events={info.events}
           onSeek={seek}
           onDrag={(active) => (dragging.current = active)}
         />
@@ -192,9 +200,26 @@ function ReplayPlayer({ sessionId, info }: { sessionId: number; info: ReplayInfo
       </Card>
 
       <ReplayBoard frame={frame} sessionId={sessionId} mapPoints={info.mapPoints} />
+      {info.analysis && <MemoAnalysis analysis={info.analysis} onSeekLap={seekLap} />}
     </>
   );
 }
+
+// Messaggi segnati sulla timeline e loro colore (come l'etichetta nella direzione
+// gara). Sorpassi e DRS sono troppo frequenti: restano solo nell'elenco.
+const MARKER_CLASS: Partial<Record<RaceEventKind, string>> = {
+  penalty: 'bg-accent-text',
+  collision: 'bg-orange-400',
+  fastestLap: 'bg-purple-400',
+  retirement: 'bg-accent-text',
+  safetyCar: 'bg-sprint',
+  redFlag: 'bg-accent-text',
+  flag: 'bg-fg',
+  flashback: 'bg-muted',
+};
+
+// L'analisi non dipende dal cursore: non va ridisegnata 10 volte al secondo.
+const MemoAnalysis = memo(RaceAnalysis);
 
 // Giro del primo in classifica all'istante ms, null prima della partenza o fuori dalle gare.
 function lapAt(laps: ReplayLap[], ms: number): ReplayLap | null {
@@ -210,13 +235,14 @@ interface TimelineProps {
   pos: number;
   duration: number;
   laps: ReplayLap[];
+  events: ReplayEvent[];
   onSeek: (ms: number) => void;
   onDrag: (active: boolean) => void;
 }
 
 // Barra del tempo: un clic sposta il replay, trascinando si scorre. Le tacche
 // segnano l'inizio dei giri del primo in classifica.
-function Timeline({ pos, duration, laps, onSeek, onDrag }: TimelineProps) {
+function Timeline({ pos, duration, laps, events, onSeek, onDrag }: TimelineProps) {
   const [hover, setHover] = useState<number | null>(null);
   const ratio = (ms: number) => (duration ? Math.min(Math.max(ms / duration, 0), 1) : 0);
   const timeAt = (e: PointerEvent<HTMLDivElement>) => {
@@ -226,6 +252,9 @@ function Timeline({ pos, duration, laps, onSeek, onDrag }: TimelineProps) {
   // Con tanti giri le etichette si toccherebbero: se ne mostra una ogni 5.
   const labelEvery = laps.length > 20 ? 5 : 1;
   const hoverLap = hover === null ? null : lapAt(laps, hover);
+  const markers = events.filter((e) => MARKER_CLASS[e.kind]);
+  // Passando sopra la barra si leggono i messaggi vicini al cursore.
+  const nearby = hover === null ? [] : markers.filter((e) => Math.abs(e.atMs - hover) <= duration * 0.01).slice(0, 4);
 
   return (
     <div className="pt-1 pb-4">
@@ -263,6 +292,14 @@ function Timeline({ pos, duration, laps, onSeek, onDrag }: TimelineProps) {
             )}
           </div>
         ))}
+        {/* Sopra la barra i messaggi della direzione gara (penalità, contatti, safety car…). */}
+        {markers.map((e) => (
+          <div
+            key={e.id}
+            className={cx('pointer-events-none absolute top-0 size-1.5 -translate-x-1/2 rounded-full', MARKER_CLASS[e.kind])}
+            style={{ left: `${ratio(e.atMs) * 100}%` }}
+          />
+        ))}
         <div
           className="pointer-events-none absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-bg bg-fg"
           style={{ left: `${ratio(pos) * 100}%` }}
@@ -274,6 +311,11 @@ function Timeline({ pos, duration, laps, onSeek, onDrag }: TimelineProps) {
           >
             {formatElapsed(hover / 1000)}
             {hoverLap && <span className="text-muted"> · Giro {hoverLap.lap}</span>}
+            {nearby.map((e) => (
+              <div key={e.id}>
+                <span className={cx('font-bold', EVENT_KIND[e.kind]?.className)}>{EVENT_KIND[e.kind]?.label}</span> {e.text}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -319,9 +361,11 @@ const ReplayBoard = memo(function ReplayBoard({
           session={snap.session}
           drivers={snap.drivers}
           players={snap.players}
+          events={snap.events}
           pedals={frame.pedals}
           loadMap={loadMap}
           mapPoints={mapPoints}
+          finished={snap.finished}
         />
       ) : (
         <Empty>In attesa dei dati dei piloti…</Empty>

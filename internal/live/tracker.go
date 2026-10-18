@@ -3,6 +3,7 @@ package live
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"slices"
 
 	"f1-scoreboard/internal/telemetry"
@@ -16,6 +17,7 @@ type Snapshot struct {
 	Players  []PlayerCar  `json:"players"`  // auto dei giocatori (due in split-screen), in ordine di controller
 	Finished bool         `json:"finished"` // classifica finale ricevuta
 	Lineup   *Lineup      `json:"lineup"`   // chi guida le auto dei giocatori, solo in gara
+	Events   []RaceEvent  `json:"events"`   // ultimi messaggi della direzione gara, dal più vecchio
 }
 
 type SessionInfo struct {
@@ -35,6 +37,33 @@ type SessionInfo struct {
 	TrackTemp   int8   `json:"trackTemp"`
 	AirTemp     int8   `json:"airTemp"`
 	MapPoints   int    `json:"mapPoints"` // punti della pianta ricostruiti finora: quando cambia, il frontend la riscarica
+
+	Forecast        []Forecast    `json:"forecast"`        // previsioni per il resto della sessione
+	PitWindowIdeal  uint8         `json:"pitWindowIdeal"`  // giro ideale per la sosta, 0 se non previsto
+	PitWindowLatest uint8         `json:"pitWindowLatest"` // ultimo giro utile per la sosta
+	PitRejoin       uint8         `json:"pitRejoin"`       // posizione prevista al rientro dai box del giocatore principale
+	MarshalZones    []MarshalZone `json:"marshalZones"`
+}
+
+// Forecast è il meteo previsto tra Offset minuti.
+type Forecast struct {
+	Offset    uint8 `json:"offset"` // minuti
+	Weather   uint8 `json:"weather"`
+	Rain      uint8 `json:"rain"` // probabilità di pioggia, %
+	TrackTemp int8  `json:"trackTemp"`
+	AirTemp   int8  `json:"airTemp"`
+}
+
+// MarshalZone è un settore dei commissari: va da Start all'inizio del successivo.
+type MarshalZone struct {
+	Start float32 `json:"start"` // frazione del giro (0..1)
+	Flag  int8    `json:"flag"`  // -1 sconosciuta, 0 nessuna, 1 verde, 2 blu, 3 gialla
+}
+
+// Stint è un treno di gomme usato in gara.
+type Stint struct {
+	Tyre   string `json:"tyre"`   // S, M, H, I, W
+	EndLap uint8  `json:"endLap"` // ultimo giro, 0 se ancora in uso
 }
 
 type Driver struct {
@@ -59,6 +88,16 @@ type Driver struct {
 	TyreAge       uint8   `json:"tyreAge"`
 	X             float32 `json:"x"` // posizione sulla pianta, in metri (vedi Point)
 	Z             float32 `json:"z"`
+
+	GridPosition uint8     `json:"gridPosition"`
+	LapInvalid   bool      `json:"lapInvalid"`  // giro in corso annullato
+	Warnings     uint8     `json:"warnings"`    // avvertimenti ricevuti
+	CornerCuts   uint8     `json:"cornerCuts"`  // di cui per taglio di curva
+	Unserved     uint8     `json:"unserved"`    // drive through e stop & go ancora da scontare
+	SpeedTrap    float32   `json:"speedTrap"`   // velocità massima allo speed trap, km/h; 0 se non rilevata
+	LastSectors  [3]uint32 `json:"lastSectors"` // settori dell'ultimo giro completato, ms
+	BestSectors  [3]uint32 `json:"bestSectors"` // migliori settori personali, ms
+	Stints       []Stint   `json:"stints"`      // gomme usate, dalla prima
 }
 
 // Tracker ricostruisce lo stato di una sessione dai pacchetti che riceve.
@@ -74,13 +113,21 @@ type Tracker struct {
 	damage         *telemetry.CarDamage
 	classification *telemetry.FinalClassification
 	motion         *telemetry.Motion
+	setups         *telemetry.CarSetups
 	outline        *outline
-	bestLaps       map[uint8]uint32 // miglior giro per auto, dagli storici SessionHistory
-	lightsOut      bool             // semaforo spento: la gara è partita
+	history        map[uint8]*telemetry.SessionHistory // storico dei giri per auto
+	tyreSets       map[uint8]*telemetry.TyreSets       // set di gomme, solo delle auto dei giocatori
+	lapPositions   [][]uint8                           // posizione di ogni auto all'inizio di ogni giro: [giro][auto]
+	lightsOut      bool                                // semaforo spento: la gara è partita
+	events         []RaceEvent                         // ultimi maxEvents messaggi della direzione gara
+	nextEvent      int                                 // ID dell'ultimo messaggio
 }
 
 // relevant sono i pacchetti usati dal tracker: gli altri non vengono nemmeno decodificati.
 var relevant = map[telemetry.PacketID]bool{
+	telemetry.PacketCarSetups:           true,
+	telemetry.PacketTyreSets:            true,
+	telemetry.PacketLapPositions:        true,
 	telemetry.PacketSession:             true,
 	telemetry.PacketParticipants:        true,
 	telemetry.PacketLapData:             true,
@@ -101,6 +148,12 @@ func (t *Tracker) Handle(h telemetry.Header, data []byte) {
 	}
 	t.header = h
 	if !relevant[h.PacketID] {
+		return
+	}
+	// I set di gomme arrivano un'auto alla volta (il primo byte è l'auto):
+	// servono solo quelli dei giocatori.
+	if h.PacketID == telemetry.PacketTyreSets &&
+		(len(data) <= telemetry.HeaderSize || controllerOf(h, int(data[telemetry.HeaderSize])) == 0) {
 		return
 	}
 	p, err := telemetry.Parse(data)
@@ -131,17 +184,79 @@ func (t *Tracker) Handle(h telemetry.Header, data []byte) {
 			t.outline.add(t.laps, p)
 		}
 	case *telemetry.Event:
-		if p.Code == telemetry.EventLightsOut {
-			t.lightsOut = true
-		}
+		t.handleEvent(p)
 	case *telemetry.SessionHistory:
-		if t.bestLaps == nil {
-			t.bestLaps = map[uint8]uint32{}
+		if t.history == nil {
+			t.history = map[uint8]*telemetry.SessionHistory{}
 		}
-		if n := int(p.BestLapTimeLapNum); n >= 1 && n <= len(p.Laps) {
-			t.bestLaps[p.CarIdx] = p.Laps[n-1].LapTimeMS
+		t.history[p.CarIdx] = p
+	case *telemetry.TyreSets:
+		if t.tyreSets == nil {
+			t.tyreSets = map[uint8]*telemetry.TyreSets{}
+		}
+		t.tyreSets[p.CarIdx] = p
+	case *telemetry.CarSetups:
+		t.setups = p
+	case *telemetry.LapPositions:
+		// Le posizioni arrivano a blocchi di 50 giri.
+		for i, positions := range p.Positions {
+			lap := int(p.LapStart) + i
+			for len(t.lapPositions) <= lap {
+				t.lapPositions = append(t.lapPositions, nil)
+			}
+			t.lapPositions[lap] = positions
 		}
 	}
+}
+
+// bestLap restituisce il miglior giro dell'auto i, dallo storico.
+func (t *Tracker) bestLap(i int) uint32 {
+	h := t.history[uint8(i)]
+	if h == nil {
+		return 0
+	}
+	if n := int(h.BestLapTimeLapNum); n >= 1 && n <= len(h.Laps) {
+		return h.Laps[n-1].LapTimeMS
+	}
+	return 0
+}
+
+// sectors restituisce i settori dell'ultimo giro completato dall'auto i e i suoi migliori.
+func (t *Tracker) sectors(i int) (last, best [3]uint32) {
+	h := t.history[uint8(i)]
+	if h == nil {
+		return
+	}
+	for j := len(h.Laps) - 1; j >= 0; j-- {
+		if l := h.Laps[j]; l.LapTimeMS > 0 {
+			last = [3]uint32{l.Sector1TimeMS, l.Sector2TimeMS, l.Sector3TimeMS}
+			break
+		}
+	}
+	for s, n := range []uint8{h.BestSector1LapNum, h.BestSector2LapNum, h.BestSector3LapNum} {
+		if n >= 1 && int(n) <= len(h.Laps) {
+			l := h.Laps[n-1]
+			best[s] = [3]uint32{l.Sector1TimeMS, l.Sector2TimeMS, l.Sector3TimeMS}[s]
+		}
+	}
+	return
+}
+
+// stints restituisce le gomme usate dall'auto i, dallo storico.
+func (t *Tracker) stints(i int) []Stint {
+	stints := []Stint{}
+	h := t.history[uint8(i)]
+	if h == nil {
+		return stints
+	}
+	for _, s := range h.TyreStints {
+		end := s.EndLap
+		if end == 255 {
+			end = 0
+		}
+		stints = append(stints, Stint{Tyre: tyreLetter(s.VisualCompound), EndLap: end})
+	}
+	return stints
 }
 
 // Session restituisce l'ultimo pacchetto Session ricevuto, o nil.
@@ -192,7 +307,8 @@ func (t *Tracker) TrackMap() *TrackMap {
 // Snapshot fotografa lo stato attuale. status è deciso da chi chiama, che sa
 // da quanto tempo non arrivano pacchetti.
 func (t *Tracker) Snapshot(status string) Snapshot {
-	snap := Snapshot{Status: status, Drivers: []Driver{}, Players: []PlayerCar{}, Finished: t.classification != nil}
+	snap := emptySnapshot(status)
+	snap.Finished = t.classification != nil
 	if t.header.SessionUID == 0 {
 		return snap
 	}
@@ -211,12 +327,30 @@ func (t *Tracker) Snapshot(status string) Snapshot {
 		info.Weather = s.Weather
 		info.TrackTemp = s.TrackTemperature
 		info.AirTemp = s.AirTemperature
+		info.PitWindowIdeal = s.PitStopWindowIdealLap
+		info.PitWindowLatest = s.PitStopWindowLatestLap
+		info.PitRejoin = s.PitStopRejoinPosition
+		info.Forecast = []Forecast{}
+		for _, f := range s.WeatherForecast {
+			// Le previsioni coprono tutto il weekend: si tengono quelle di questa sessione.
+			if f.SessionType == s.SessionType && f.TimeOffset > 0 {
+				info.Forecast = append(info.Forecast, Forecast{
+					Offset: f.TimeOffset, Weather: f.Weather, Rain: f.RainPercentage,
+					TrackTemp: f.TrackTemperature, AirTemp: f.AirTemperature,
+				})
+			}
+		}
+		info.MarshalZones = make([]MarshalZone, len(s.MarshalZones))
+		for i, z := range s.MarshalZones {
+			info.MarshalZones[i] = MarshalZone{Start: round3(z.ZoneStart), Flag: z.ZoneFlag}
+		}
 	}
 	if t.outline != nil {
 		info.MapPoints = t.outline.filled
 	}
 	snap.Session = info
 	snap.Players = t.playerCars()
+	snap.Events = append(snap.Events, t.events...)
 
 	if t.laps == nil {
 		return snap
@@ -232,14 +366,24 @@ func (t *Tracker) Snapshot(status string) Snapshot {
 			Controller:    controllerOf(t.header, i),
 			Lap:           lap.CurrentLapNum,
 			LastLapMS:     lap.LastLapTimeMS,
-			BestLapMS:     t.bestLaps[uint8(i)],
+			BestLapMS:     t.bestLap(i),
 			GapToLeaderMS: lap.DeltaToRaceLeaderMS,
 			GapAheadMS:    lap.DeltaToCarInFrontMS,
 			InPit:         lap.PitStatus != 0,
 			PitStops:      lap.NumPitStops,
 			PenaltiesSec:  lap.Penalties,
 			Status:        lap.ResultStatus.String(),
+			GridPosition:  lap.GridPosition,
+			LapInvalid:    lap.CurrentLapInvalid,
+			Warnings:      lap.TotalWarnings,
+			CornerCuts:    lap.CornerCuttingWarns,
+			Unserved:      lap.UnservedDriveThrus + lap.UnservedStopGos,
+			Stints:        t.stints(i),
 		}
+		if lap.SpeedTrapFastestLap != 255 {
+			d.SpeedTrap = round1(lap.SpeedTrapFastest)
+		}
+		d.LastSectors, d.BestSectors = t.sectors(i)
 		if p := t.participants; p != nil && i < len(p.Cars) {
 			d.Name = p.Cars[i].Name
 			d.Team = p.Cars[i].TeamID.String()
@@ -261,6 +405,16 @@ func (t *Tracker) Snapshot(status string) Snapshot {
 	}
 	slices.SortFunc(snap.Drivers, func(a, b Driver) int { return cmp.Compare(a.Position, b.Position) })
 	return snap
+}
+
+// emptySnapshot è lo stato senza dati: gli elenchi sono vuoti e non null, così
+// il frontend non deve controllarli.
+func emptySnapshot(status string) Snapshot {
+	return Snapshot{Status: status, Drivers: []Driver{}, Players: []PlayerCar{}, Events: []RaceEvent{}}
+}
+
+func round3(v float32) float32 {
+	return float32(math.Round(float64(v)*1000) / 1000)
 }
 
 // tyreLetter converte la mescola visiva nella lettera mostrata a schermo.

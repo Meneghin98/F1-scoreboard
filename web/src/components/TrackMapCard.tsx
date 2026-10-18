@@ -1,5 +1,5 @@
 import { controllerLabel, teamColor } from '../lib/live';
-import type { LiveDriver, TrackMap } from '../lib/types';
+import type { LiveDriver, MarshalZone, TrackMap } from '../lib/types';
 import { useTrackMap } from '../lib/useTrackMap';
 import { Card, cx, Empty } from './ui';
 
@@ -14,12 +14,14 @@ export function TrackMapCard({
   uid,
   mapPoints,
   drivers,
+  marshalZones = [],
   className,
   loadMap,
 }: {
   uid: string;
   mapPoints: number;
   drivers: LiveDriver[];
+  marshalZones?: MarshalZone[]; // settori dei commissari: quelli con bandiera gialla si colorano
   className?: string;
   loadMap?: () => Promise<TrackMap>;
 }) {
@@ -28,7 +30,7 @@ export function TrackMapCard({
   return (
     <Card className={cx('flex items-center justify-center p-2', className)}>
       {map && map.points.length > 1 ? (
-        <TrackMapSvg map={map} drivers={drivers} />
+        <TrackMapSvg map={map} drivers={drivers} marshalZones={marshalZones} />
       ) : (
         <Empty>La mappa si disegna man mano che le auto percorrono il circuito…</Empty>
       )}
@@ -36,7 +38,7 @@ export function TrackMapCard({
   );
 }
 
-function TrackMapSvg({ map, drivers }: { map: TrackMap; drivers: LiveDriver[] }) {
+function TrackMapSvg({ map, drivers, marshalZones }: { map: TrackMap; drivers: LiveDriver[]; marshalZones: MarshalZone[] }) {
   const xs = map.points.map((p) => p.x);
   const zs = map.points.map((p) => p.z);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -48,6 +50,7 @@ function TrackMapSvg({ map, drivers }: { map: TrackMap; drivers: LiveDriver[] })
   // Le auto ferme in garage o non ancora in gioco sono a (0, 0).
   // Il primo in classifica va disegnato per ultimo, così resta sopra gli altri.
   const cars = drivers.filter((d) => d.x || d.z).reverse();
+  const yellow = yellowPath(map, marshalZones);
 
   return (
     <svg
@@ -64,6 +67,18 @@ function TrackMapSvg({ map, drivers }: { map: TrackMap; drivers: LiveDriver[] })
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+      {yellow && (
+        <path
+          d={yellow}
+          fill="none"
+          stroke="var(--color-sprint)"
+          strokeWidth={r * 0.9}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <title>Bandiera gialla</title>
+        </path>
+      )}
       {cars.map((d) => (
         <g
           key={d.carIndex}
@@ -101,6 +116,31 @@ function TrackMapSvg({ map, drivers }: { map: TrackMap; drivers: LiveDriver[] })
       ))}
     </svg>
   );
+}
+
+// Percorso SVG dei tratti in bandiera gialla, vuoto se non ce ne sono. Ogni
+// settore dei commissari va dal suo inizio a quello del successivo; l'ultimo
+// può scavalcare il traguardo.
+function yellowPath(map: TrackMap, zones: MarshalZone[]): string {
+  if (!zones.some((z) => z.flag === 3) || !map.length) return '';
+  const inYellow = (fraction: number) =>
+    zones.some((z, i) => {
+      if (z.flag !== 3) return false;
+      const end = zones[(i + 1) % zones.length].start;
+      return z.start <= end ? fraction >= z.start && fraction < end : fraction >= z.start || fraction < end;
+    });
+  let d = '';
+  let prev: TrackMap['points'][number] | null = null;
+  for (const p of map.points) {
+    if (!inYellow(p.d / map.length)) {
+      prev = null;
+      continue;
+    }
+    const jump = !prev || Math.hypot(p.x - prev.x, p.z - prev.z) > MAX_GAP;
+    d += `${jump ? 'M' : 'L'}${p.x} ${p.z}`;
+    prev = p;
+  }
+  return d;
 }
 
 // Percorso SVG del tracciato: X verso destra e Z verso il basso danno la pianta

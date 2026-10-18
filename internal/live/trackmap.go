@@ -25,8 +25,15 @@ type Point struct {
 
 // TrackMap è la pianta del circuito ricostruita finora.
 type TrackMap struct {
-	Length int     `json:"length"` // metri
-	Points []Point `json:"points"` // in ordine di percorrenza; i tratti non ancora visti mancano
+	Length int        `json:"length"` // metri
+	Points []MapPoint `json:"points"` // in ordine di percorrenza; i tratti non ancora visti mancano
+}
+
+// MapPoint è un punto della pianta con la sua distanza dal traguardo: serve
+// per colorare i settori dei commissari (bandiere gialle).
+type MapPoint struct {
+	Point
+	D int `json:"d"` // metri dall'inizio del giro
 }
 
 type outline struct {
@@ -69,10 +76,10 @@ func (o *outline) add(laps *telemetry.LapData, motion *telemetry.Motion) {
 }
 
 func (o *outline) trackMap() TrackMap {
-	m := TrackMap{Length: o.length, Points: make([]Point, 0, o.filled)}
+	m := TrackMap{Length: o.length, Points: make([]MapPoint, 0, o.filled)}
 	for i, p := range o.points {
 		if o.seen[i] {
-			m.Points = append(m.Points, p)
+			m.Points = append(m.Points, MapPoint{Point: p, D: i * outlineStep})
 		}
 	}
 	return m

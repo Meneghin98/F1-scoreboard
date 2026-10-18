@@ -335,7 +335,7 @@ func (s *Service) snapshotJSON(now time.Time) []byte {
 		snap = s.tracker.Snapshot(status)
 		s.lineupView(&snap, now)
 	} else {
-		snap = Snapshot{Status: status, Drivers: []Driver{}}
+		snap = emptySnapshot(status)
 	}
 	msg, err := json.Marshal(snap)
 	if err != nil {

@@ -1,7 +1,9 @@
 package live
 
 import (
+	"cmp"
 	"math"
+	"slices"
 
 	"f1-scoreboard/internal/telemetry"
 )
@@ -42,7 +44,46 @@ type PlayerCar struct {
 
 	// Danni in percentuale (pacchetto CarDamage)
 	Damage CarDamage `json:"damage"`
+
+	// Set di gomme ancora disponibili, quello montato per primo (pacchetto TyreSets)
+	TyreSets []TyreSet `json:"tyreSets"`
+
+	// Assetto (pacchetto CarSetups), nil se non ancora arrivato
+	Setup *Setup `json:"setup"`
 }
+
+type TyreSet struct {
+	Tyre     string `json:"tyre"`     // S, M, H, I, W
+	Wear     uint8  `json:"wear"`     // %
+	LifeSpan uint8  `json:"lifeSpan"` // giri rimanenti
+	DeltaMS  int16  `json:"deltaMs"`  // differenza sul giro rispetto al set montato
+	Fitted   bool   `json:"fitted"`
+}
+
+type Setup struct {
+	FrontWing        uint8      `json:"frontWing"`
+	RearWing         uint8      `json:"rearWing"`
+	OnThrottle       uint8      `json:"onThrottle"`  // differenziale in accelerazione, %
+	OffThrottle      uint8      `json:"offThrottle"` // in rilascio, %
+	FrontCamber      float32    `json:"frontCamber"`
+	RearCamber       float32    `json:"rearCamber"`
+	FrontToe         float32    `json:"frontToe"`
+	RearToe          float32    `json:"rearToe"`
+	FrontSuspension  uint8      `json:"frontSuspension"`
+	RearSuspension   uint8      `json:"rearSuspension"`
+	FrontAntiRollBar uint8      `json:"frontAntiRollBar"`
+	RearAntiRollBar  uint8      `json:"rearAntiRollBar"`
+	FrontHeight      uint8      `json:"frontHeight"`
+	RearHeight       uint8      `json:"rearHeight"`
+	BrakePressure    uint8      `json:"brakePressure"` // %
+	BrakeBias        uint8      `json:"brakeBias"`     // %
+	EngineBraking    uint8      `json:"engineBraking"` // %
+	TyrePressures    [4]float32 `json:"tyrePressures"` // PSI, nell'ordine delle ruote di Wheels
+	FuelLoad         float32    `json:"fuelLoad"`      // kg alla partenza
+}
+
+// tyreOrder ordina le mescole dei set di gomme: da asciutto dalla più morbida, poi da bagnato.
+var tyreOrder = map[string]int{"S": 0, "M": 1, "H": 2, "I": 3, "W": 4}
 
 type Wheel struct {
 	SurfaceTemp uint8   `json:"surfaceTemp"` // °C
@@ -140,7 +181,50 @@ func (t *Tracker) playerCar(i int) *PlayerCar {
 			Gearbox: dmg.GearBox, Engine: dmg.Engine, DRSFault: dmg.DRSFault, ERSFault: dmg.ERSFault,
 		}
 	}
+	p.TyreSets = t.playerTyreSets(i)
+	if t.setups != nil && i < len(t.setups.Cars) {
+		s := t.setups.Cars[i]
+		p.Setup = &Setup{
+			FrontWing: s.FrontWing, RearWing: s.RearWing, OnThrottle: s.OnThrottle, OffThrottle: s.OffThrottle,
+			FrontCamber: round2(s.FrontCamber), RearCamber: round2(s.RearCamber),
+			FrontToe: round2(s.FrontToe), RearToe: round2(s.RearToe),
+			FrontSuspension: s.FrontSuspension, RearSuspension: s.RearSuspension,
+			FrontAntiRollBar: s.FrontAntiRollBar, RearAntiRollBar: s.RearAntiRollBar,
+			FrontHeight: s.FrontSuspensionHeight, RearHeight: s.RearSuspensionHeight,
+			BrakePressure: s.BrakePressure, BrakeBias: s.BrakeBias, EngineBraking: s.EngineBraking,
+			FuelLoad: round1(s.FuelLoad),
+		}
+		for to, from := range wheelOrder {
+			p.Setup.TyrePressures[to] = round1(s.TyrePressures[from])
+		}
+	}
 	return p
+}
+
+// playerTyreSets restituisce i set di gomme ancora disponibili dell'auto i.
+func (t *Tracker) playerTyreSets(i int) []TyreSet {
+	sets := []TyreSet{}
+	ts := t.tyreSets[uint8(i)]
+	if ts == nil {
+		return sets
+	}
+	for _, s := range ts.Sets {
+		tyre := tyreLetter(s.VisualCompound)
+		if !s.Available || tyre == "" {
+			continue
+		}
+		sets = append(sets, TyreSet{Tyre: tyre, Wear: s.Wear, LifeSpan: s.LifeSpan, DeltaMS: s.LapDeltaTimeMS, Fitted: s.Fitted})
+	}
+	slices.SortStableFunc(sets, func(a, b TyreSet) int {
+		if a.Fitted != b.Fitted {
+			if a.Fitted {
+				return -1
+			}
+			return 1
+		}
+		return cmp.Or(cmp.Compare(tyreOrder[a.Tyre], tyreOrder[b.Tyre]), cmp.Compare(a.Wear, b.Wear))
+	})
+	return sets
 }
 
 func round2(v float32) float32 {

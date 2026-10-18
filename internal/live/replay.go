@@ -37,6 +37,8 @@ type Replay struct {
 	frames   []replayFrame // in ordine di tempo; si aggiunge un fotogramma solo quando lo stato cambia
 	pedals   []PedalSample
 	laps     []ReplayLap
+	events   []ReplayEvent
+	analysis *Analysis
 	trackMap *TrackMap
 }
 
@@ -60,11 +62,19 @@ type ReplayLap struct {
 	AtMS int64 `json:"atMs"`
 }
 
+// ReplayEvent è un messaggio della direzione gara con l'istante del replay in cui arriva.
+type ReplayEvent struct {
+	AtMS int64 `json:"atMs"`
+	RaceEvent
+}
+
 // ReplayInfo descrive un replay al frontend.
 type ReplayInfo struct {
-	DurationMS int64       `json:"durationMs"`
-	MapPoints  int         `json:"mapPoints"` // punti della pianta completa, 0 se non c'è
-	Laps       []ReplayLap `json:"laps"`
+	DurationMS int64         `json:"durationMs"`
+	MapPoints  int           `json:"mapPoints"` // punti della pianta completa, 0 se non c'è
+	Laps       []ReplayLap   `json:"laps"`
+	Events     []ReplayEvent `json:"events"`   // messaggi della direzione gara, per la timeline
+	Analysis   *Analysis     `json:"analysis"` // riassunto della sessione alla fine della registrazione, nil se mancano i dati
 }
 
 // ReplayFrame è lo stato della sessione a un certo istante del replay.
@@ -75,7 +85,7 @@ type ReplayFrame struct {
 }
 
 func (r *Replay) Info() ReplayInfo {
-	info := ReplayInfo{DurationMS: r.Duration.Milliseconds(), Laps: r.laps}
+	info := ReplayInfo{DurationMS: r.Duration.Milliseconds(), Laps: r.laps, Events: r.events, Analysis: r.analysis}
 	if r.trackMap != nil {
 		info.MapPoints = len(r.trackMap.Points)
 	}
@@ -89,7 +99,7 @@ func (r *Replay) TrackMap() *TrackMap { return r.trackMap }
 // Frame restituisce lo stato all'istante at (limitato alla durata del replay).
 func (r *Replay) Frame(at time.Duration) (ReplayFrame, error) {
 	at = min(max(at, 0), r.Duration)
-	f := ReplayFrame{T: at.Milliseconds(), Snapshot: json.RawMessage(`{"status":"waiting","session":null,"drivers":[],"players":[]}`), Pedals: []PedalSample{}}
+	f := ReplayFrame{T: at.Milliseconds(), Snapshot: json.RawMessage(`{"status":"waiting","session":null,"drivers":[],"players":[],"events":[]}`), Pedals: []PedalSample{}}
 	// Ultimo fotogramma non successivo ad at.
 	if i := sort.Search(len(r.frames), func(i int) bool { return r.frames[i].at > at }); i > 0 {
 		data, err := io.ReadAll(flate.NewReader(bytes.NewReader(r.frames[i-1].data)))
@@ -114,17 +124,18 @@ func (r *Replay) Frame(at time.Duration) (ReplayFrame, error) {
 func buildReplay(next func() (recording.Packet, error), uid uint64, names map[int]string,
 	seed func(*telemetry.Session) *outline) (*Replay, error) {
 	var (
-		r        = &Replay{laps: []ReplayLap{}}
-		tracker  Tracker
-		seeded   bool
-		started  bool
-		base     time.Duration // arrivo del primo pacchetto della sessione
-		last     time.Duration // arrivo dell'ultimo pacchetto, da base
-		frameAt  time.Duration // prossimo istante da fotografare
-		prev     []byte
-		lastLap  int
-		zw, _    = flate.NewWriter(nil, flate.BestSpeed)
-		snapshot = func(at time.Duration) error {
+		r         = &Replay{laps: []ReplayLap{}, events: []ReplayEvent{}}
+		tracker   Tracker
+		seeded    bool
+		started   bool
+		base      time.Duration // arrivo del primo pacchetto della sessione
+		last      time.Duration // arrivo dell'ultimo pacchetto, da base
+		frameAt   time.Duration // prossimo istante da fotografare
+		prev      []byte
+		lastLap   int
+		lastEvent int // ID dell'ultimo messaggio della direzione gara già sulla timeline
+		zw, _     = flate.NewWriter(nil, flate.BestSpeed)
+		snapshot  = func(at time.Duration) error {
 			status := "live"
 			if at-last >= waitingAfter {
 				status = "paused"
@@ -200,6 +211,10 @@ func buildReplay(next func() (recording.Packet, error), uid uint64, names map[in
 			}
 		}
 		tracker.Handle(h, p.Data)
+		for _, e := range tracker.eventsSince(lastEvent) {
+			r.events = append(r.events, ReplayEvent{AtMS: at.Milliseconds(), RaceEvent: e})
+			lastEvent = e.ID
+		}
 		last = at
 		if !seeded && tracker.Session() != nil {
 			seeded = true
@@ -215,6 +230,12 @@ func buildReplay(next func() (recording.Packet, error), uid uint64, names map[in
 		return nil, err
 	}
 	r.Duration = last
+	if a := tracker.Analysis(); a != nil {
+		for i := range a.Cars {
+			a.Cars[i].PlayerName = names[a.Cars[i].CarIndex]
+		}
+		r.analysis = a
+	}
 	r.trackMap = tracker.TrackMap()
 	if r.trackMap != nil && len(r.trackMap.Points) < 2 {
 		r.trackMap = nil

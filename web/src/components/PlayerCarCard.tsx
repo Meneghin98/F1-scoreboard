@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { controllerLabel, ERS_MODE, FUEL_MIX, severity } from '../lib/live';
-import type { PlayerCar } from '../lib/types';
+import { controllerLabel, ERS_MODE, FUEL_MIX, severity, TYRE_CLASS } from '../lib/live';
+import type { CarSetup, PlayerCar, TyreSet } from '../lib/types';
 import type { PedalSample } from '../lib/useLive';
 import { CarDiagram } from './CarDiagram';
 import { PedalChart } from './PedalChart';
@@ -14,11 +14,13 @@ export function PlayerCarCard({
   car,
   playerName,
   pedals,
+  pitRejoin = 0,
   className,
 }: {
   car: PlayerCar;
   playerName?: string;
   pedals: PedalSample[];
+  pitRejoin?: number; // posizione prevista al rientro dai box, 0 se non nota
   className?: string;
 }) {
   const [detailed, setDetailed] = useState(false);
@@ -59,13 +61,13 @@ export function PlayerCarCard({
           <span className="text-xs text-muted">{detailed ? 'Riduci ▴' : 'Dettagli ▾'}</span>
         </div>
       </div>
-      {detailed ? <Details car={car} pedals={pedals} /> : <Summary car={car} />}
+      {detailed ? <Details car={car} pedals={pedals} pitRejoin={pitRejoin} /> : <Summary car={car} pitRejoin={pitRejoin} />}
     </Card>
   );
 }
 
 // Vista ridotta: velocità, carburante, ERS, usura delle gomme e danno peggiore.
-function Summary({ car }: { car: PlayerCar }) {
+function Summary({ car, pitRejoin }: { car: PlayerCar; pitRejoin: number }) {
   const [worstPart, worstDamage] = damageList(car).reduce((a, b) => (b[1] > a[1] ? b : a));
   const worstWear = Math.max(...car.wheels.map((w) => w.wear));
 
@@ -81,13 +83,14 @@ function Summary({ car }: { car: PlayerCar }) {
           value={worstDamage ? `${worstPart} ${worstDamage}%` : 'Nessuno'}
           className={severityClass(worstDamage, 20, 50)}
         />
+        {pitRejoin > 0 && <Stat label="Rientro dai box" value={`P${pitRejoin}`} />}
       </div>
     </>
   );
 }
 
 // Vista dettagliata: il disegno dell'auto con gomme e danni, accanto guida, carburante ed ERS.
-function Details({ car, pedals }: { car: PlayerCar; pedals: PedalSample[] }) {
+function Details({ car, pedals, pitRejoin }: { car: PlayerCar; pedals: PedalSample[]; pitRejoin: number }) {
   const d = car.damage;
 
   return (
@@ -124,6 +127,104 @@ function Details({ car, pedals }: { car: PlayerCar; pedals: PedalSample[] }) {
             <Stat label="ERS recuperata nel giro" value={`${car.ersHarvestMj.toFixed(2)} MJ`} />
           </div>
         </Section>
+      </div>
+
+      {car.tyreSets.length > 0 && (
+        <Section title="Gomme disponibili">
+          <TyreSets sets={car.tyreSets} />
+          {pitRejoin > 0 && (
+            <div className="text-sm">
+              <Stat label="Posizione al rientro dai box" value={`P${pitRejoin}`} />
+            </div>
+          )}
+        </Section>
+      )}
+      {car.setup && (
+        <Section title="Assetto">
+          <SetupTable setup={car.setup} />
+        </Section>
+      )}
+    </div>
+  );
+}
+
+// Set di gomme ancora disponibili: mescola, usura e quanto si guadagna o perde
+// al giro rispetto al set montato (il primo, evidenziato).
+function TyreSets({ sets }: { sets: TyreSet[] }) {
+  return (
+    <ul className="flex flex-wrap gap-2">
+      {sets.map((s, i) => (
+        <li
+          key={i}
+          className={cx(
+            'flex items-center gap-2 rounded-md border px-2 py-1 text-sm',
+            s.fitted ? 'border-muted bg-surface-2' : 'border-line',
+          )}
+          title={`${s.lifeSpan} giri di vita rimanenti`}
+        >
+          <span
+            className={cx(
+              'inline-flex size-6 items-center justify-center rounded-full border-2 text-xs font-extrabold',
+              TYRE_CLASS[s.tyre],
+            )}
+          >
+            {s.tyre}
+          </span>
+          <span className="flex flex-col leading-tight">
+            <span className="tabular-nums">{s.fitted ? 'Montato' : s.wear ? `Usato ${s.wear}%` : 'Nuovo'}</span>
+            {s.fitted ? (
+              <span className="text-xs text-muted tabular-nums">usura {s.wear}%</span>
+            ) : (
+              <span className={cx('text-xs tabular-nums', s.deltaMs < 0 ? 'text-green-400' : 'text-muted')}>
+                {s.deltaMs > 0 ? '+' : ''}{(s.deltaMs / 1000).toFixed(1)} s/giro
+              </span>
+            )}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Assetto dell'auto: valori anteriori e posteriori affiancati.
+function SetupTable({ setup: s }: { setup: CarSetup }) {
+  const rows: [string, string, string][] = [
+    ['Ala', String(s.frontWing), String(s.rearWing)],
+    ['Campanatura', `${s.frontCamber.toFixed(2)}°`, `${s.rearCamber.toFixed(2)}°`],
+    ['Convergenza', `${s.frontToe.toFixed(2)}°`, `${s.rearToe.toFixed(2)}°`],
+    ['Sospensioni', String(s.frontSuspension), String(s.rearSuspension)],
+    ['Barra antirollio', String(s.frontAntiRollBar), String(s.rearAntiRollBar)],
+    ['Altezza da terra', String(s.frontHeight), String(s.rearHeight)],
+    ['Pressione gomme sx', `${s.tyrePressures[0]} psi`, `${s.tyrePressures[2]} psi`],
+    ['Pressione gomme dx', `${s.tyrePressures[1]} psi`, `${s.tyrePressures[3]} psi`],
+  ];
+  return (
+    <div className="flex flex-col gap-3 text-sm">
+      <table className="w-full">
+        <thead>
+          <tr className="text-xs text-muted">
+            <th className="text-left font-normal" />
+            <th className="text-right font-normal">Ant.</th>
+            <th className="text-right font-normal">Post.</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([label, front, rear]) => (
+            <tr key={label}>
+              <td className="text-muted">{label}</td>
+              <td className="text-right font-semibold tabular-nums">{front}</td>
+              <td className="text-right font-semibold tabular-nums">{rear}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="flex flex-col gap-1">
+        <Stat label="Differenziale in accelerazione" value={`${s.onThrottle}%`} />
+        <Stat label="Differenziale in rilascio" value={`${s.offThrottle}%`} />
+        <Stat label="Pressione freni" value={`${s.brakePressure}%`} />
+        <Stat label="Ripartizione freni" value={`${s.brakeBias}%`} />
+        <Stat label="Freno motore" value={`${s.engineBraking}%`} />
+        <Stat label="Carburante alla partenza" value={`${s.fuelLoad.toFixed(1)} kg`} />
       </div>
     </div>
   );
