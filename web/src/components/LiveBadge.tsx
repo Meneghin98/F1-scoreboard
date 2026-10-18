@@ -15,7 +15,7 @@ export function LiveBadge() {
       className={cx('flex items-center gap-2 text-sm hover:text-fg', active ? 'font-semibold' : 'text-muted')}
       title={active ? 'Apri la pagina Live' : 'Il server è in ascolto sulla porta UDP 20777'}
     >
-      <LiveDot active={active} />
+      <LiveDot active={live.status === 'live'} />
       {active ? sessionSummary(live) : 'Telemetria in attesa'}
     </a>
   );

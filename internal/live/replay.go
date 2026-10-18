@@ -45,11 +45,12 @@ type replayFrame struct {
 	data []byte // Snapshot in JSON, compresso con flate: in chiaro un'ora di gara occuperebbe 100 MB
 }
 
-// PedalSample è acceleratore e freno del giocatore all'istante T (millisecondi dall'inizio).
+// PedalSample è acceleratore e freno di un giocatore all'istante T (millisecondi dall'inizio).
 type PedalSample struct {
-	T        int64   `json:"t"`
-	Throttle float32 `json:"throttle"`
-	Brake    float32 `json:"brake"`
+	T          int64   `json:"t"`
+	Controller int     `json:"controller"` // 1 o 2, come PlayerCar
+	Throttle   float32 `json:"throttle"`
+	Brake      float32 `json:"brake"`
 }
 
 // ReplayLap è l'istante in cui il primo in classifica inizia un giro: sulla
@@ -70,7 +71,7 @@ type ReplayInfo struct {
 type ReplayFrame struct {
 	T        int64           `json:"t"` // millisecondi dall'inizio
 	Snapshot json.RawMessage `json:"snapshot"`
-	Pedals   []PedalSample   `json:"pedals"` // ultimi pedalWindow, dal più vecchio
+	Pedals   []PedalSample   `json:"pedals"` // ultimi pedalWindow di tutti i giocatori, dal più vecchio
 }
 
 func (r *Replay) Info() ReplayInfo {
@@ -88,7 +89,7 @@ func (r *Replay) TrackMap() *TrackMap { return r.trackMap }
 // Frame restituisce lo stato all'istante at (limitato alla durata del replay).
 func (r *Replay) Frame(at time.Duration) (ReplayFrame, error) {
 	at = min(max(at, 0), r.Duration)
-	f := ReplayFrame{T: at.Milliseconds(), Snapshot: json.RawMessage(`{"status":"waiting","session":null,"drivers":[]}`), Pedals: []PedalSample{}}
+	f := ReplayFrame{T: at.Milliseconds(), Snapshot: json.RawMessage(`{"status":"waiting","session":null,"drivers":[],"players":[]}`), Pedals: []PedalSample{}}
 	// Ultimo fotogramma non successivo ad at.
 	if i := sort.Search(len(r.frames), func(i int) bool { return r.frames[i].at > at }); i > 0 {
 		data, err := io.ReadAll(flate.NewReader(bytes.NewReader(r.frames[i-1].data)))
@@ -126,7 +127,7 @@ func buildReplay(next func() (recording.Packet, error), uid uint64, names map[in
 		snapshot = func(at time.Duration) error {
 			status := "live"
 			if at-last >= waitingAfter {
-				status = "waiting"
+				status = "paused"
 			}
 			snap := tracker.Snapshot(status)
 			for i := range snap.Drivers {
@@ -140,8 +141,10 @@ func buildReplay(next func() (recording.Packet, error), uid uint64, names map[in
 					r.laps = append(r.laps, ReplayLap{Lap: lastLap, AtMS: at.Milliseconds()})
 				}
 			}
-			if p := snap.Player; p != nil && status == "live" {
-				r.pedals = append(r.pedals, PedalSample{T: at.Milliseconds(), Throttle: p.Throttle, Brake: p.Brake})
+			if status == "live" {
+				for _, p := range snap.Players {
+					r.pedals = append(r.pedals, PedalSample{T: at.Milliseconds(), Controller: p.Controller, Throttle: p.Throttle, Brake: p.Brake})
+				}
 			}
 			msg, err := json.Marshal(snap)
 			if err != nil {

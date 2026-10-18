@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { formatClock, formatGap, formatLapTime } from '../lib/format';
-import { isLive, isLoading, SAFETY_CAR, teamColor, TYRE_CLASS, WEATHER } from '../lib/live';
+import { controllerLabel, isLive, isLoading, isPaused, SAFETY_CAR, teamColor, TYRE_CLASS, WEATHER } from '../lib/live';
 import type { LiveDriver, LiveSession, LiveSnapshot, PlayerCar, TrackMap } from '../lib/types';
 import { useLive, usePedalHistory, type PedalSample } from '../lib/useLive';
 import { LiveDot } from '../components/LiveBadge';
@@ -38,9 +38,14 @@ export function LivePage() {
   return (
     <>
       <SessionCard live={live} session={live.session} />
+      {live.status === 'paused' && (
+        <p className="mb-4 text-sm text-muted">
+          Il gioco non sta inviando dati (pausa, menù o impostazioni): si vede l'ultimo stato ricevuto.
+        </p>
+      )}
       {live.lineup && <LineupCard lineup={live.lineup} />}
       {live.drivers.length ? (
-        <LiveBoard session={live.session} drivers={live.drivers} player={live.player} pedals={pedals} />
+        <LiveBoard session={live.session} drivers={live.drivers} players={live.players} pedals={pedals} />
       ) : (
         <Empty>In attesa dei dati dei piloti…</Empty>
       )}
@@ -51,16 +56,16 @@ export function LivePage() {
 interface LiveBoardProps {
   session: LiveSession;
   drivers: LiveDriver[];
-  player: PlayerCar | null;
-  pedals: PedalSample[];
+  players: PlayerCar[];
+  pedals: PedalSample[]; // di tutti i giocatori: ogni scheda prende quelli del suo controller
   loadMap?: () => Promise<TrackMap>;
   mapPoints?: number; // punti della pianta, se diversi da quelli della sessione
 }
 
-// Classifica ridotta a sinistra di mappa e auto del giocatore; estesa mostra
+// Classifica ridotta a sinistra di mappa e auto dei giocatori; estesa mostra
 // tutti i dati e nasconde la mappa. È usata anche dal replay, che passa la sua
 // pianta (loadMap) e il suo storico dei pedali.
-export function LiveBoard({ session, drivers, player, pedals, loadMap, mapPoints }: LiveBoardProps) {
+export function LiveBoard({ session, drivers, players, pedals, loadMap, mapPoints }: LiveBoardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -79,7 +84,7 @@ export function LiveBoard({ session, drivers, player, pedals, loadMap, mapPoints
           <CompactStandings session={session} drivers={drivers} />
         )}
       </Card>
-      {/* La scheda dell'auto si affianca alla mappa se c'è spazio, altrimenti va sotto. */}
+      {/* Le schede delle auto (due in split-screen) si affiancano alla mappa se c'è spazio, altrimenti vanno sotto. */}
       <div className="flex flex-wrap items-start gap-4">
         {/* Nascosta e non smontata, così la mappa già scaricata resta pronta per quando si riduce. */}
         <TrackMapCard
@@ -89,7 +94,15 @@ export function LiveBoard({ session, drivers, player, pedals, loadMap, mapPoints
           drivers={drivers}
           loadMap={loadMap}
         />
-        {player && <PlayerCarCard car={player} pedals={pedals} className="mb-0" />}
+        {players.map((car) => (
+          <PlayerCarCard
+            key={car.controller}
+            car={car}
+            playerName={drivers.find((d) => d.carIndex === car.carIndex)?.playerName}
+            pedals={pedals.filter((p) => p.controller === car.controller)}
+            className="mb-0"
+          />
+        ))}
       </div>
     </div>
   );
@@ -111,7 +124,7 @@ export function SessionCard({ live, session: s, indicator }: { live: LiveSnapsho
   return (
     <Card className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-3">
-        {indicator ?? <LiveDot active />}
+        {indicator ?? <LiveDot active={live.status === 'live'} />}
         <div>
           <div className="text-xl font-bold">{s.track || 'Circuito sconosciuto'}</div>
           <div className="text-sm text-muted">{s.type}</div>
@@ -123,7 +136,7 @@ export function SessionCard({ live, session: s, indicator }: { live: LiveSnapsho
             {SAFETY_CAR[s.safetyCar]}
           </span>
         )}
-        {s.paused && !live.finished && <span className="text-sm font-semibold text-muted">In pausa</span>}
+        {isPaused(live) && <span className="text-sm font-semibold text-muted">In pausa</span>}
         <span className="text-sm text-muted">{facts.join(' · ')}</span>
         {progress && <span className="text-lg font-extrabold tabular-nums">{progress}</span>}
       </div>
@@ -163,11 +176,11 @@ function CompactStandings({ session, drivers }: { session: LiveSession; drivers:
           return (
             <Tr key={d.carIndex}>
               <Td className={cx(rankClass(d.position), compact, 'w-8 pl-4 text-right')}>{d.position}</Td>
-              <Td className={cx(compact, 'max-w-0 w-full', d.isPlayer && 'font-bold')}>
+              <Td className={cx(compact, 'max-w-0 w-full', d.controller > 0 && 'font-bold')}>
                 <span className="flex items-center gap-2">
                   <span className="h-4 w-1 shrink-0 rounded-full" style={{ background: teamColor(d.team) }} />
                   <span className="truncate" title={d.team}>{d.name}</span>
-                  {d.isPlayer && <PlayerTag driver={d} />}
+                  {d.controller > 0 && <PlayerTag driver={d} />}
                   {d.inPit && <span className="text-xs font-bold text-sprint">PIT</span>}
                 </span>
               </Td>
@@ -207,10 +220,10 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
           return (
             <Tr key={d.carIndex}>
               <Td className={rankClass(d.position)}>{d.position}</Td>
-              <Td className={cx(d.isPlayer && 'font-bold')}>
+              <Td className={cx(d.controller > 0 && 'font-bold')}>
                 <span className="mr-2 inline-block w-6 text-right text-sm text-muted tabular-nums">{d.raceNumber || ''}</span>
                 {d.name} <TeamTag team={d.team || null} />
-                {d.isPlayer && <PlayerTag driver={d} className="ml-2" />}
+                {d.controller > 0 && <PlayerTag driver={d} className="ml-2" />}
               </Td>
               {session.isRace && <Td num>{d.lap}</Td>}
               <Td num>{toLeader}</Td>
@@ -230,11 +243,12 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
   );
 }
 
-// Etichetta del giocatore: il pilota scelto in "Chi guida?", altrimenti "Tu".
+// Etichetta del giocatore: il controller (P1, P2) e, se scelto in "Chi guida?", il pilota.
 function PlayerTag({ driver, className }: { driver: LiveDriver; className?: string }) {
   return (
     <span className={cx('shrink-0 text-xs font-bold text-accent-text uppercase', className)}>
-      {driver.playerName || 'Tu'}
+      {controllerLabel(driver.controller)}
+      {driver.playerName && ` · ${driver.playerName}`}
     </span>
   );
 }

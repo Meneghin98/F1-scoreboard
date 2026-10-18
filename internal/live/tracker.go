@@ -10,10 +10,10 @@ import (
 
 // Snapshot è lo stato della sessione in corso, così come arriva al frontend.
 type Snapshot struct {
-	Status   string       `json:"status"` // "waiting": nessun dato recente, "live": telemetria in arrivo
+	Status   string       `json:"status"` // "live": telemetria in arrivo, "paused": sessione aperta senza dati recenti, "waiting": nessuna sessione
 	Session  *SessionInfo `json:"session"`
 	Drivers  []Driver     `json:"drivers"`
-	Player   *PlayerCar   `json:"player"`   // auto del giocatore, nil se non ci sono dati
+	Players  []PlayerCar  `json:"players"`  // auto dei giocatori (due in split-screen), in ordine di controller
 	Finished bool         `json:"finished"` // classifica finale ricevuta
 	Lineup   *Lineup      `json:"lineup"`   // chi guida le auto dei giocatori, solo in gara
 }
@@ -43,7 +43,7 @@ type Driver struct {
 	Name          string  `json:"name"`
 	Team          string  `json:"team"`
 	RaceNumber    uint8   `json:"raceNumber"`
-	IsPlayer      bool    `json:"isPlayer"`
+	Controller    int     `json:"controller"` // 1 o 2 per le auto dei giocatori, 0 per le altre
 	PlayerName    string  `json:"playerName"` // pilota del segnapunti alla guida, se scelto
 	AI            bool    `json:"ai"`
 	Lap           uint8   `json:"lap"`
@@ -192,7 +192,7 @@ func (t *Tracker) TrackMap() *TrackMap {
 // Snapshot fotografa lo stato attuale. status è deciso da chi chiama, che sa
 // da quanto tempo non arrivano pacchetti.
 func (t *Tracker) Snapshot(status string) Snapshot {
-	snap := Snapshot{Status: status, Drivers: []Driver{}, Finished: t.classification != nil}
+	snap := Snapshot{Status: status, Drivers: []Driver{}, Players: []PlayerCar{}, Finished: t.classification != nil}
 	if t.header.SessionUID == 0 {
 		return snap
 	}
@@ -216,7 +216,7 @@ func (t *Tracker) Snapshot(status string) Snapshot {
 		info.MapPoints = t.outline.filled
 	}
 	snap.Session = info
-	snap.Player = t.playerCar()
+	snap.Players = t.playerCars()
 
 	if t.laps == nil {
 		return snap
@@ -229,7 +229,7 @@ func (t *Tracker) Snapshot(status string) Snapshot {
 			CarIndex:      i,
 			Position:      lap.CarPosition,
 			Name:          fmt.Sprintf("Auto %d", i+1),
-			IsPlayer:      i == int(t.header.PlayerCarIndex) || i == int(t.header.SecondaryPlayerCarIndex),
+			Controller:    controllerOf(t.header, i),
 			Lap:           lap.CurrentLapNum,
 			LastLapMS:     lap.LastLapTimeMS,
 			BestLapMS:     t.bestLaps[uint8(i)],

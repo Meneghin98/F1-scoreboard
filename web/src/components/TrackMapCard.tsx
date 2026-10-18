@@ -1,4 +1,4 @@
-import { teamColor } from '../lib/live';
+import { controllerLabel, teamColor } from '../lib/live';
 import type { LiveDriver, TrackMap } from '../lib/types';
 import { useTrackMap } from '../lib/useTrackMap';
 import { Card, cx, Empty } from './ui';
@@ -71,7 +71,7 @@ function TrackMapSvg({ map, drivers }: { map: TrackMap; drivers: LiveDriver[] })
           style={{ transform: `translate(${d.x}px, ${d.z}px)`, transition: 'transform 250ms linear' }}
         >
           <title>{`${d.position}. ${d.name}`}</title>
-          <circle r={r} fill={teamColor(d.team)} stroke={d.isPlayer ? 'white' : 'var(--color-bg)'} strokeWidth={r * 0.25} />
+          <circle r={r} fill={teamColor(d.team)} stroke={d.controller ? 'white' : 'var(--color-bg)'} strokeWidth={r * 0.25} />
           <text
             textAnchor="middle"
             dominantBaseline="central"
@@ -81,6 +81,22 @@ function TrackMapSvg({ map, drivers }: { map: TrackMap; drivers: LiveDriver[] })
           >
             {d.position}
           </text>
+          {/* Sopra le auto dei giocatori il controller, per distinguerle in split-screen. */}
+          {d.controller > 0 && (
+            <text
+              y={-r * 1.9}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={r * 1.1}
+              fontWeight={800}
+              fill="white"
+              stroke="var(--color-bg)"
+              strokeWidth={r * 0.3}
+              paintOrder="stroke"
+            >
+              {controllerLabel(d.controller)}
+            </text>
+          )}
         </g>
       ))}
     </svg>

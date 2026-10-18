@@ -95,7 +95,7 @@ export interface LiveDriver {
   name: string;
   team: string;
   raceNumber: number;
-  isPlayer: boolean;
+  controller: number; // 1 o 2 per le auto dei giocatori (split-screen), 0 per le altre
   playerName: string; // pilota del segnapunti alla guida, vuoto se non scelto
   ai: boolean;
   lap: number;
@@ -120,9 +120,10 @@ export interface LiveWheel {
   brakeTemp: number;
   brakeDamage: number;
 }
-// Auto del giocatore. Le ruote sono in ordine: ant. sx, ant. dx, post. sx, post. dx.
+// Auto di un giocatore. Le ruote sono in ordine: ant. sx, ant. dx, post. sx, post. dx.
 export interface PlayerCar {
   carIndex: number;
+  controller: number; // 1 o 2 (split-screen)
   speed: number;
   gear: number;
   rpm: number;
@@ -157,10 +158,11 @@ export interface PlayerCar {
 }
 
 export interface LiveSnapshot {
-  status: 'waiting' | 'live';
+  // live: dati in arrivo; paused: sessione aperta ma il gioco non ne invia (pausa, menù); waiting: nessuna sessione.
+  status: 'waiting' | 'live' | 'paused';
   session: LiveSession | null;
   drivers: LiveDriver[];
-  player: PlayerCar | null;
+  players: PlayerCar[]; // auto dei giocatori, in ordine di controller
   finished: boolean;
   lineup: Lineup | null;
 }
@@ -264,9 +266,10 @@ export interface ReplayInfo {
   laps: ReplayLap[];
 }
 
-// Acceleratore e freno (0..1) all'istante t, in ms dall'inizio del replay.
+// Acceleratore e freno (0..1) del controller indicato all'istante t, in ms dall'inizio del replay.
 export interface ReplayPedal {
   t: number;
+  controller: number;
   throttle: number;
   brake: number;
 }
@@ -274,5 +277,5 @@ export interface ReplayPedal {
 export interface ReplayFrame {
   t: number;
   snapshot: LiveSnapshot;
-  pedals: ReplayPedal[];
+  pedals: ReplayPedal[]; // di tutti i giocatori, dal più vecchio
 }

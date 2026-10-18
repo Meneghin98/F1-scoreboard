@@ -309,7 +309,7 @@ const ReplayBoard = memo(function ReplayBoard({
           </span>
         }
       />
-      {snap.status === 'waiting' && (
+      {snap.status === 'paused' && (
         <p className="mb-4 text-sm text-muted">
           In questo tratto il gioco non inviava dati (menù, pausa o caricamento): si vede l'ultimo stato ricevuto.
         </p>
@@ -318,7 +318,7 @@ const ReplayBoard = memo(function ReplayBoard({
         <LiveBoard
           session={snap.session}
           drivers={snap.drivers}
-          player={snap.player}
+          players={snap.players}
           pedals={frame.pedals}
           loadMap={loadMap}
           mapPoints={mapPoints}

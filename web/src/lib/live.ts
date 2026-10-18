@@ -48,9 +48,20 @@ export function teamColor(team: string): string {
   return TEAM_COLORS[team.replace(/ '\d\d$/, '')] ?? '#9a9aae';
 }
 
-// La sessione è in corso solo se arrivano dati e il gioco ne ha già comunicato i dettagli.
+// Etichetta del giocatore che guida con il controller indicato (1 o 2): "P1", "P2".
+export function controllerLabel(controller: number): string {
+  return `P${controller}`;
+}
+
+// C'è una sessione aperta, anche in pausa, e il gioco ne ha già comunicato i dettagli.
 export function isLive(live: LiveSnapshot | null): live is LiveSnapshot & { session: NonNullable<LiveSnapshot['session']> } {
-  return live?.status === 'live' && live.session !== null;
+  return !!live && live.status !== 'waiting' && live.session !== null;
+}
+
+// In pausa: il gioco è nei menù o in pausa e non invia dati, oppure lo dice la sessione.
+// A fine gara il gioco risulta in pausa sulla schermata dei risultati: non serve dirlo.
+export function isPaused(live: LiveSnapshot): boolean {
+  return (live.status === 'paused' || !!live.session?.paused) && !live.finished;
 }
 
 // Il gioco ha già cambiato sessione ma non ne ha ancora inviato i dettagli: mentre
@@ -68,7 +79,6 @@ export function sessionSummary(live: LiveSnapshot): string {
   if (s.isRace && s.totalLaps > 0) {
     details.push(live.finished ? 'Finita' : `Giro ${Math.max(s.currentLap, 1)}/${s.totalLaps}`);
   }
-  // A fine gara il gioco risulta in pausa sulla schermata dei risultati: non serve dirlo.
-  if (s.paused && !live.finished) details.push('In pausa');
+  if (isPaused(live)) details.push('In pausa');
   return details.filter(Boolean).join(' · ') || 'Sessione in corso';
 }

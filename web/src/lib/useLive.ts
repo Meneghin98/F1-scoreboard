@@ -8,9 +8,10 @@ import type { LiveSnapshot } from './types';
 // Secondi di storico di acceleratore e freno tenuti per il grafico.
 export const PEDAL_WINDOW_MS = 20_000;
 
-// Un campione di acceleratore e freno (0..1) all'istante t (ms, Date.now()).
+// Un campione di acceleratore e freno (0..1) del controller indicato all'istante t (ms, Date.now()).
 export interface PedalSample {
   t: number;
+  controller: number;
   throttle: number;
   brake: number;
 }
@@ -22,12 +23,12 @@ const listeners = new Set<() => void>();
 
 function update(next: LiveSnapshot | null) {
   // Lo storico riparte da zero quando cambia la sessione o si perde la connessione.
-  if (!next?.player || next.session?.uid !== snapshot?.session?.uid) pedals = [];
-  if (next?.player) {
+  if (!next?.players.length || next.session?.uid !== snapshot?.session?.uid) pedals = [];
+  if (next?.players.length) {
     const now = Date.now();
     pedals = [
       ...pedals.filter((p) => p.t >= now - PEDAL_WINDOW_MS),
-      { t: now, throttle: next.player.throttle, brake: next.player.brake },
+      ...next.players.map((car) => ({ t: now, controller: car.controller, throttle: car.throttle, brake: car.brake })),
     ];
   }
   snapshot = next;
@@ -58,7 +59,7 @@ export function useLive(): LiveSnapshot | null {
   return useSyncExternalStore(subscribe, () => snapshot);
 }
 
-// Acceleratore e freno del giocatore negli ultimi PEDAL_WINDOW_MS, dal più vecchio.
+// Acceleratore e freno dei giocatori negli ultimi PEDAL_WINDOW_MS, dal più vecchio.
 export function usePedalHistory(): PedalSample[] {
   return useSyncExternalStore(subscribe, () => pedals);
 }

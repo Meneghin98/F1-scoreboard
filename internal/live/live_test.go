@@ -75,9 +75,9 @@ func TestTrackerOnRecording(t *testing.T) {
 		if d.Name == "" || d.Team == "" || d.Tyre == "" {
 			t.Errorf("dati mancanti: %+v", d)
 		}
-		if d.IsPlayer {
+		if d.Controller > 0 {
 			players++
-			if d.Name != "HAMILTON" || d.BestLapMS != 86_432 {
+			if d.Controller != 1 || d.Name != "HAMILTON" || d.BestLapMS != 86_432 {
 				t.Errorf("giocatore %+v", d)
 			}
 		}
@@ -86,10 +86,10 @@ func TestTrackerOnRecording(t *testing.T) {
 		t.Errorf("%d giocatori, primo %s", players, snap.Drivers[0].Name)
 	}
 
-	car := snap.Player
-	if car == nil {
-		t.Fatal("dati dell'auto del giocatore mancanti")
+	if len(snap.Players) != 1 || snap.Players[0].Controller != 1 {
+		t.Fatalf("auto dei giocatori %+v", snap.Players)
 	}
+	car := snap.Players[0]
 	if car.MaxRPM == 0 || car.BrakeBias == 0 || car.FuelKg <= 0 || car.EngineTemp == 0 {
 		t.Errorf("auto del giocatore %+v", car)
 	}
@@ -97,6 +97,47 @@ func TestTrackerOnRecording(t *testing.T) {
 		if w.SurfaceTemp == 0 || w.Pressure == 0 || w.Wear == 0 {
 			t.Errorf("ruota %d: %+v", i, w)
 		}
+	}
+}
+
+// La registrazione è di un solo giocatore: per lo split-screen si finge che
+// l'auto in testa sia guidata dal secondo controller.
+func TestTrackerSplitScreen(t *testing.T) {
+	packets := loadRecording(t)
+	const secondaryOffset = telemetry.HeaderSize - 1 // SecondaryPlayerCarIndex è l'ultimo byte dell'header
+
+	var single Tracker
+	for _, p := range packets {
+		if h, err := telemetry.ParseHeader(p.Data); err == nil && h.SessionUID != 0 {
+			single.Handle(h, p.Data)
+		}
+	}
+	leader := single.Snapshot("live").Drivers[0]
+
+	var tr Tracker
+	for _, p := range packets {
+		data := bytes.Clone(p.Data)
+		if len(data) >= telemetry.HeaderSize {
+			data[secondaryOffset] = uint8(leader.CarIndex)
+		}
+		if h, err := telemetry.ParseHeader(data); err == nil && h.SessionUID != 0 {
+			tr.Handle(h, data)
+		}
+	}
+	snap := tr.Snapshot("live")
+
+	controllers := map[string]int{}
+	for _, d := range snap.Drivers {
+		if d.Controller > 0 {
+			controllers[d.Name] = d.Controller
+		}
+	}
+	if len(controllers) != 2 || controllers["HAMILTON"] != 1 || controllers[leader.Name] != 2 {
+		t.Errorf("controller dei piloti %v", controllers)
+	}
+	if len(snap.Players) != 2 || snap.Players[0].Controller != 1 || snap.Players[1].Controller != 2 ||
+		snap.Players[1].CarIndex != leader.CarIndex || snap.Players[1].FuelKg <= 0 {
+		t.Errorf("auto dei giocatori %+v", snap.Players)
 	}
 }
 
@@ -254,6 +295,64 @@ func TestSubscribe(t *testing.T) {
 	case msg := <-updates:
 		t.Fatalf("aggiornamento inatteso: %s", msg)
 	default:
+	}
+}
+
+// In pausa o nei menù la sessione resta aperta finché il gioco manda pacchetti,
+// anche senza sessione; dopo la fine (SEND) non più.
+func TestServicePauseInMenus(t *testing.T) {
+	s, _ := newTestService(t, false)
+	status := func(at time.Time) string {
+		var snap Snapshot
+		json.Unmarshal(s.snapshotJSON(at), &snap)
+		return snap.Status
+	}
+	menu := telemetryPacket(t, telemetry.PacketEvent, 0, "BUTN")
+	start := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+
+	s.Handle(start, telemetryPacket(t, telemetry.PacketEvent, 42, "SSTA"))
+	if got := status(start); got != "live" {
+		t.Fatalf("stato all'inizio %q", got)
+	}
+	// Due minuti nei menù: la sessione è in pausa, non chiusa.
+	at := start
+	for range 120 {
+		at = at.Add(time.Second)
+		s.Handle(at, menu)
+		s.tick(at)
+	}
+	if s.current == nil || status(at) != "paused" {
+		t.Fatalf("dopo due minuti nei menù: sessione %v, stato %q", s.current != nil, status(at))
+	}
+	// Tornati in pista con la stessa sessione non se ne apre un'altra.
+	s.Handle(at, telemetryPacket(t, telemetry.PacketEvent, 42, "BUTN"))
+	if records, _ := s.Sessions(); len(records) != 1 || status(at) != "live" {
+		t.Fatalf("dopo la ripresa: %d sessioni, stato %q", len(records), status(at))
+	}
+
+	// Senza pacchetti della sessione, i menù la tengono aperta solo fino a menuTimeout.
+	s.Handle(at.Add(menuTimeout-time.Second), menu)
+	s.tick(at.Add(menuTimeout - time.Second))
+	if s.current == nil {
+		t.Fatal("sessione chiusa prima di menuTimeout")
+	}
+	s.Handle(at.Add(menuTimeout+time.Second), menu)
+	s.tick(at.Add(menuTimeout + time.Second))
+	if s.current != nil {
+		t.Fatal("sessione ancora aperta dopo menuTimeout")
+	}
+
+	// Dopo SEND i menù non contano più: la sessione si chiude dopo sessionTimeout.
+	at = at.Add(time.Hour)
+	s.Handle(at, telemetryPacket(t, telemetry.PacketEvent, 43, "SEND"))
+	end := at
+	for range 61 {
+		at = at.Add(time.Second)
+		s.Handle(at, menu)
+		s.tick(at)
+	}
+	if s.current != nil {
+		t.Fatalf("sessione ancora aperta %v dopo SEND", at.Sub(end))
 	}
 }
 

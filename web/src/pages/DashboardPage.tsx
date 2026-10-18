@@ -33,7 +33,7 @@ export function DashboardPage({ tournamentId }: { tournamentId: number | null })
       {/* Live su tutta la larghezza; sotto, la classifica a sinistra e gare e piloti impilati a destra. */}
       <DashboardCard view="live" highlight={active} className="sm:col-span-2">
         <div className="flex items-center gap-2 text-lg font-bold">
-          <LiveDot active={active} />
+          <LiveDot active={live?.status === 'live'} />
           {active ? sessionSummary(live) : 'Nessuna sessione in corso'}
         </div>
         {active ? (

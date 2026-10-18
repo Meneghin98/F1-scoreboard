@@ -9,9 +9,10 @@ import (
 // Capacità della batteria ERS nel gioco: serve per mostrare la carica in percentuale.
 const ersCapacityJ = 4_000_000
 
-// PlayerCar è lo stato dell'auto del giocatore: guida, carburante, ERS, gomme e danni.
+// PlayerCar è lo stato dell'auto di un giocatore: guida, carburante, ERS, gomme e danni.
 type PlayerCar struct {
-	CarIndex int `json:"carIndex"`
+	CarIndex   int `json:"carIndex"`
+	Controller int `json:"controller"` // 1 o 2 (split-screen)
 
 	// Guida (pacchetto CarTelemetry)
 	Speed      uint16  `json:"speed"` // km/h
@@ -68,10 +69,24 @@ type CarDamage struct {
 // wheelOrder converte l'ordine del gioco (RL, RR, FL, FR) in FL, FR, RL, RR.
 var wheelOrder = [4]int{2, 3, 0, 1}
 
-// playerCar raccoglie i dati dell'auto del giocatore, o nil se non ce ne sono.
-func (t *Tracker) playerCar() *PlayerCar {
-	// I pacchetti potrebbero non essere ancora arrivati; l'indice vale 255 quando si è spettatori.
-	i := int(t.header.PlayerCarIndex)
+// playerCars raccoglie i dati delle auto dei giocatori: una, o due in split-screen.
+func (t *Tracker) playerCars() []PlayerCar {
+	cars := []PlayerCar{}
+	for c, idx := range []uint8{t.header.PlayerCarIndex, t.header.SecondaryPlayerCarIndex} {
+		// L'indice vale 255 quando si è spettatori o non c'è un secondo giocatore.
+		if idx == 255 {
+			continue
+		}
+		if p := t.playerCar(int(idx)); p != nil {
+			p.Controller = c + 1
+			cars = append(cars, *p)
+		}
+	}
+	return cars
+}
+
+// playerCar raccoglie i dati dell'auto i, o nil se non ce ne sono ancora.
+func (t *Tracker) playerCar(i int) *PlayerCar {
 	var (
 		tel *telemetry.CarTelemetryData
 		st  *telemetry.CarStatusData

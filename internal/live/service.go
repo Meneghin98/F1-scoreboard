@@ -17,10 +17,15 @@ import (
 )
 
 const (
-	// Senza pacchetti per questo tempo lo stato torna "in attesa" (menù, pausa, gioco chiuso).
+	// Senza pacchetti della sessione per questo tempo lo stato diventa "in pausa"
+	// (pausa, menù, impostazioni): si continua a mostrare l'ultimo stato ricevuto.
 	waitingAfter = 5 * time.Second
-	// Senza pacchetti per questo tempo la registrazione della sessione viene chiusa.
+	// Senza pacchetti per questo tempo la sessione viene chiusa. Prima della fine
+	// della sessione (SEND) contano anche quelli di menù: il gioco è ancora aperto.
 	sessionTimeout = 60 * time.Second
+	// Neanche i pacchetti di menù tengono aperta una sessione oltre questo tempo
+	// senza pacchetti suoi (per esempio se si esce senza finirla).
+	menuTimeout = 15 * time.Minute
 	// Frequenza massima degli aggiornamenti inviati ai browser.
 	broadcastEvery = 250 * time.Millisecond
 	// Le sessioni senza classifica finale (abbandonate o interrotte) vengono
@@ -43,8 +48,9 @@ type Service struct {
 
 	mu          sync.Mutex
 	tracker     Tracker
-	current     *session // sessione in corso, nil se nessuna
-	lastPacket  time.Time
+	current     *session  // sessione in corso, nil se nessuna
+	lastPacket  time.Time // ultimo pacchetto della sessione in corso
+	lastAlive   time.Time // ultimo pacchetto qualsiasi, anche di menù: il gioco è aperto
 	warnedFmt   map[uint16]bool
 	subscribers map[chan []byte]struct{}
 	lastSent    []byte
@@ -78,6 +84,7 @@ type session struct {
 	mapSaved       int     // punti della pianta già salvati nel database
 	lineup         *lineup // scelta dei piloti, solo per le gare
 	playersSaved   bool    // giocatori già salvati con i piloti scelti: alla fine non si rifà
+	ended          bool    // ricevuto l'evento SEND (fine sessione)
 }
 
 func NewService(db *sql.DB, opts Options) *Service {
@@ -145,7 +152,9 @@ func (s *Service) Handle(at time.Time, data []byte) {
 		}
 		return
 	}
-	// SessionUID 0 arriva da menù e caricamenti: non appartiene a nessuna sessione.
+	s.lastAlive = at
+	// SessionUID 0 arriva da menù e caricamenti: non appartiene a nessuna sessione,
+	// ma dice che il gioco è ancora aperto.
 	if h.SessionUID == 0 {
 		return
 	}
@@ -180,6 +189,12 @@ func (s *Service) Handle(at time.Time, data []byte) {
 		log.Printf("telemetria: sessione %016x: classifica finale ricevuta", cur.uid)
 	}
 	s.updateLineup(at)
+
+	// SEND arriva alla bandiera a scacchi, prima della classifica finale: la
+	// sessione resta aperta, ma da qui i pacchetti di menù non la tengono più in vita.
+	if code, ok := telemetry.EventCode(data); ok && code == telemetry.EventSessionEnded {
+		cur.ended = true
+	}
 }
 
 func (s *Service) startSession(at time.Time, h telemetry.Header) {
@@ -276,7 +291,12 @@ func (s *Service) tick(now time.Time) {
 	defer s.mu.Unlock()
 
 	if cur := s.current; cur != nil {
-		if now.Sub(s.lastPacket) > sessionTimeout {
+		// Il gioco ancora aperto (anche solo nei menù) tiene aperta la sessione, finché non è finita.
+		alive := s.lastAlive
+		if cur.ended {
+			alive = s.lastPacket
+		}
+		if now.Sub(alive) > sessionTimeout || now.Sub(s.lastPacket) > menuTimeout {
 			s.endSession(now)
 		} else {
 			// Le scadenze della scelta dei piloti valgono anche se il gioco è in pausa.
@@ -304,8 +324,11 @@ func (s *Service) tick(now time.Time) {
 
 func (s *Service) snapshotJSON(now time.Time) []byte {
 	status := "waiting"
-	if s.current != nil && now.Sub(s.lastPacket) < waitingAfter {
-		status = "live"
+	if s.current != nil {
+		status = "paused"
+		if now.Sub(s.lastPacket) < waitingAfter {
+			status = "live"
+		}
 	}
 	var snap Snapshot
 	if s.current != nil {

@@ -1,15 +1,26 @@
 import { useState, type ReactNode } from 'react';
-import { ERS_MODE, FUEL_MIX, severity } from '../lib/live';
+import { controllerLabel, ERS_MODE, FUEL_MIX, severity } from '../lib/live';
 import type { PlayerCar } from '../lib/types';
 import type { PedalSample } from '../lib/useLive';
 import { CarDiagram } from './CarDiagram';
 import { PedalChart } from './PedalChart';
 import { Card, cx } from './ui';
 
-// Statistiche dell'auto del giocatore. Ridotta mostra solo i dati principali;
+// Statistiche dell'auto di un giocatore. Ridotta mostra solo i dati principali;
 // un clic la apre a tutta larghezza (sotto la mappa) con tutti i dettagli.
-// pedals è lo storico di acceleratore e freno per il grafico.
-export function PlayerCarCard({ car, pedals, className }: { car: PlayerCar; pedals: PedalSample[]; className?: string }) {
+// pedals è lo storico di acceleratore e freno di questa auto per il grafico;
+// playerName è il pilota scelto in "Chi guida?", se c'è.
+export function PlayerCarCard({
+  car,
+  playerName,
+  pedals,
+  className,
+}: {
+  car: PlayerCar;
+  playerName?: string;
+  pedals: PedalSample[];
+  className?: string;
+}) {
   const [detailed, setDetailed] = useState(false);
   const toggle = () => setDetailed(!detailed);
 
@@ -34,7 +45,10 @@ export function PlayerCarCard({ car, pedals, className }: { car: PlayerCar; peda
       )}
     >
       <div className="flex items-center justify-between gap-3">
-        <h2 className="font-bold">La tua auto</h2>
+        <h2 className="font-bold">
+          <span className="text-accent-text">{controllerLabel(car.controller)}</span>
+          {playerName && ` · ${playerName}`}
+        </h2>
         <div className="flex items-center gap-2">
           {car.pitLimiter && <Badge className="bg-sprint-bg text-sprint">Limitatore</Badge>}
           {car.drs ? (

@@ -97,6 +97,9 @@ func TestReplayOnRecording(t *testing.T) {
 	if last.T > mid.T || mid.T-first.T > pedalWindow.Milliseconds() {
 		t.Errorf("pedali da %d a %d per t = %d", first.T, last.T, mid.T)
 	}
+	if first.Controller != 1 {
+		t.Errorf("pedali del controller %d, atteso 1", first.Controller)
+	}
 
 	// Una tacca per giro, in ordine.
 	if len(r.laps) < 5 {
@@ -125,7 +128,7 @@ func TestReplayOnRecording(t *testing.T) {
 func TestReplayShowsPlayerNames(t *testing.T) {
 	var player int
 	for _, d := range frameSnapshot(t, frameAt(t, replayOf(t, nil), time.Hour)).Drivers {
-		if d.IsPlayer {
+		if d.Controller > 0 {
 			player = d.CarIndex
 		}
 	}
