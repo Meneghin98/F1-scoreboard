@@ -1,6 +1,6 @@
 import type {
   Player, Race, RaceType, RaceWithResults, ResultInput, SessionRaceInput, SessionRecord, StandingsResponse, Tournament,
-  ReplayFrame, ReplayInfo, TrackMap,
+  ReplayFrame, ReplayInfo, Track, TrackMap,
 } from './types';
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -15,23 +15,39 @@ async function request<T>(path: string, method = 'GET', body?: unknown): Promise
   return data as T;
 }
 
+// Eliminando una gara o un torneo le sue registrazioni passano in "Nessun torneo".
+interface Deleted {
+  movedRecordings: number;
+}
+
+export interface RaceInput {
+  track: string;
+  type: RaceType;
+  date: string;
+}
+
 export const api = {
+  tracks: () => request<Track[]>('/tracks'),
+
   tournaments: () => request<Tournament[]>('/tournaments'),
   createTournament: (name: string, start: boolean) => request<Tournament>('/tournaments', 'POST', { name, start }),
-  deleteTournament: (id: number) => request<void>(`/tournaments/${id}`, 'DELETE'),
+  updateTournament: (id: number, name: string) => request<Tournament>(`/tournaments/${id}`, 'PUT', { name }),
+  deleteTournament: (id: number) => request<Deleted>(`/tournaments/${id}`, 'DELETE'),
   startTournament: (id: number) => request<Tournament>(`/tournaments/${id}/start`, 'POST'),
   endTournament: (id: number) => request<Tournament>(`/tournaments/${id}/end`, 'POST'),
 
   players: () => request<Player[]>('/players'),
   createPlayer: (name: string, team: string) => request<Player>('/players', 'POST', { name, team }),
+  updatePlayer: (id: number, name: string, team: string) => request<Player>(`/players/${id}`, 'PUT', { name, team }),
   deletePlayer: (id: number) => request<void>(`/players/${id}`, 'DELETE'),
 
   races: (tournamentId: number) => request<RaceWithResults[]>(`/tournaments/${tournamentId}/races`),
-  createRace: (tournamentId: number, race: { track: string; type: RaceType; date: string }) =>
-    request<Race>(`/tournaments/${tournamentId}/races`, 'POST', race),
-  deleteRace: (id: number) => request<void>(`/races/${id}`, 'DELETE'),
+  createRace: (tournamentId: number, race: RaceInput) => request<Race>(`/tournaments/${tournamentId}/races`, 'POST', race),
+  updateRace: (id: number, race: RaceInput) => request<Race>(`/races/${id}`, 'PUT', race),
+  deleteRace: (id: number) => request<Deleted>(`/races/${id}`, 'DELETE'),
   saveResults: (raceId: number, results: ResultInput[]) =>
     request<void>(`/races/${raceId}/results`, 'PUT', { results }),
+  resyncRace: (raceId: number) => request<void>(`/races/${raceId}/resync`, 'POST'),
 
   standings: (tournamentId: number) => request<StandingsResponse>(`/tournaments/${tournamentId}/standings`),
 

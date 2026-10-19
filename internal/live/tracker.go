@@ -21,6 +21,9 @@ type Snapshot struct {
 	// Telemetry dice se il server riceve la telemetria (porta, errori, indirizzi
 	// da impostare nel gioco). Solo nello stato live, non nei replay.
 	Telemetry *TelemetryStatus `json:"telemetry,omitempty"`
+	// DataVersion cambia a ogni modifica dei dati salvati: le pagine si
+	// ricaricano quando la vedono cambiare (vedi Service.DataChanged).
+	DataVersion int64 `json:"dataVersion,omitempty"`
 }
 
 type SessionInfo struct {

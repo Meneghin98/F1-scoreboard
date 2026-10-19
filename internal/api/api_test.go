@@ -288,3 +288,103 @@ func TestLiveLineupWithoutRace(t *testing.T) {
 	srv := newTestServer(t)
 	expectStatus(t, call(t, srv, "PUT", "/live/lineup", map[string]any{"confirm": true}, nil), 409, "nessuna gara")
 }
+
+// Piloti, tornei e gare si possono modificare; i circuiti noti hanno il loro identificativo.
+func TestEditEndpoints(t *testing.T) {
+	srv := newTestServer(t)
+	type player struct {
+		ID   int     `json:"id"`
+		Name string  `json:"name"`
+		Team *string `json:"team"`
+	}
+	var simone, luca player
+	call(t, srv, "POST", "/players", map[string]string{"name": "Simone"}, &simone)
+	call(t, srv, "POST", "/players", map[string]string{"name": "Luca"}, &luca)
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/players/%d", luca.ID), map[string]string{"name": "SIMONE"}, nil), 409, "nome già usato")
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/players/%d", simone.ID), map[string]string{"name": "simone", "team": "Ferrari"}, &simone),
+		200, "stesso nome con altre maiuscole")
+	if simone.Name != "simone" || simone.Team == nil || *simone.Team != "Ferrari" {
+		t.Fatalf("pilota modificato %+v", simone)
+	}
+	expectStatus(t, call(t, srv, "PUT", "/players/99", map[string]string{"name": "X"}, nil), 404, "pilota inesistente")
+
+	type tournament struct {
+		ID    int    `json:"id"`
+		Name  string `json:"name"`
+		Free  bool   `json:"free"`
+		Races int    `json:"races"`
+	}
+	var cup tournament
+	call(t, srv, "POST", "/tournaments", map[string]any{"name": "Test"}, &cup)
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", cup.ID), map[string]string{"name": " Campionato "}, &cup), 200, "rinomina")
+	if cup.Name != "Campionato" {
+		t.Fatalf("torneo rinominato %+v", cup)
+	}
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", cup.ID), map[string]string{"name": " "}, nil), 400, "nome vuoto")
+	var all []tournament
+	call(t, srv, "GET", "/tournaments", nil, &all)
+	for _, t2 := range all {
+		if t2.Free {
+			expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", t2.ID), map[string]string{"name": "X"}, nil), 400, "rinomina Nessun torneo")
+		}
+	}
+
+	type race struct {
+		ID      int    `json:"id"`
+		Track   string `json:"track"`
+		TrackID *int   `json:"track_id"`
+		Type    string `json:"type"`
+	}
+	races := fmt.Sprintf("/tournaments/%d/races", cup.ID)
+	expectStatus(t, call(t, srv, "POST", races, map[string]string{"track": "Monza", "type": "altro"}, nil), 400, "tipo sconosciuto")
+	var monza race
+	expectStatus(t, call(t, srv, "POST", races, map[string]string{"track": "italia – monza"}, &monza), 201, "gara")
+	if monza.TrackID == nil || *monza.TrackID != 11 || monza.Type != "race" {
+		t.Fatalf("gara creata %+v", monza)
+	}
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/races/%d", monza.ID),
+		map[string]string{"track": "Miami", "type": "sprint", "date": "2026-05-03"}, &monza), 200, "modifica gara")
+	if monza.Track != "Miami" || monza.TrackID == nil || *monza.TrackID != 30 || monza.Type != "sprint" {
+		t.Fatalf("gara modificata %+v", monza)
+	}
+	call(t, srv, "GET", "/tournaments", nil, &all)
+	if all[1].ID != cup.ID || all[1].Races != 1 {
+		t.Fatalf("conteggio delle gare %+v", all)
+	}
+	var deleted map[string]int
+	expectStatus(t, call(t, srv, "DELETE", fmt.Sprintf("/races/%d", monza.ID), nil, &deleted), 200, "elimina gara")
+	if moved, ok := deleted["movedRecordings"]; !ok || moved != 0 {
+		t.Fatalf("risposta all'eliminazione %v", deleted)
+	}
+	expectStatus(t, call(t, srv, "POST", fmt.Sprintf("/races/%d/resync", monza.ID), nil, nil), 404, "ripristino di una gara eliminata")
+
+	var tracks []struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	expectStatus(t, call(t, srv, "GET", "/tracks", nil, &tracks), 200, "circuiti")
+	if len(tracks) < 24 || tracks[0].Name != "Australia – Melbourne" {
+		t.Fatalf("circuiti %+v", tracks)
+	}
+}
+
+// Dopo ogni modifica cambia la versione dei dati dello stato live: le pagine aperte si ricaricano.
+func TestDataVersionChanges(t *testing.T) {
+	srv := newTestServer(t)
+	version := func() int64 {
+		var snap struct {
+			DataVersion int64 `json:"dataVersion"`
+		}
+		call(t, srv, "GET", "/live", nil, &snap)
+		return snap.DataVersion
+	}
+	before := version()
+	call(t, srv, "GET", "/players", nil, nil)
+	if version() != before {
+		t.Fatal("una lettura ha cambiato la versione")
+	}
+	call(t, srv, "POST", "/players", map[string]string{"name": "Simone"}, nil)
+	if version() == before {
+		t.Fatal("la versione non cambia dopo una modifica")
+	}
+}

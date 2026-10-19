@@ -118,15 +118,24 @@ i piloti già proposti (quelli che avevano lo stesso controller nella sessione p
    la pagina Live mostra l'errore e il server riprova da solo dopo 30 secondi; se si spegne di
    colpo prima di salvare, la sessione viene salvata al riavvio.
 3. La sessione diventa una gara del **torneo in corso** o, se nessun torneo è in corso, di
-   **Nessun torneo**. Un torneo si inizia e si termina dai pulsanti nell'header; terminato, le
-   gare tornano in Nessun torneo, che non si può iniziare né eliminare.
+   **Nessun torneo**. Se nel torneo c'è già la gara in calendario (stesso circuito e tipo, ancora
+   senza risultati) la sessione va lì, altrimenti ne viene creata una nuova. Un torneo si inizia
+   e si termina dai pulsanti nell'header; terminato, le gare tornano in Nessun torneo, che non si
+   può iniziare né eliminare.
 
 Ogni sessione del weekend finita (con la classifica finale) appartiene sempre a un torneo: dalla
 pagina Registrazioni si può spostare in un altro, non togliere. Quando la si sposta, la gara
-rimasta vuota in Nessun torneo viene eliminata. Prove libere (FP) e qualifiche (Q, anche lo
-Sprint Shootout) compaiono tra le gare con i piazzamenti, ma non danno punti e non entrano in
-classifica. Le sessioni finite registrate prima di questa regola sono state spostate in Nessun
-torneo al primo avvio.
+rimasta vuota in Nessun torneo viene eliminata. Eliminando una gara o un torneo, le sue
+registrazioni passano in Nessun torneo; eliminando la gara da Nessun torneo, la registrazione
+resta senza torneo. Prove libere (FP) e qualifiche (Q, anche lo Sprint Shootout) compaiono tra
+le gare con i piazzamenti, ma non danno punti e non entrano in classifica. Le sessioni finite
+registrate prima di questa regola sono state spostate in Nessun torneo al primo avvio.
+
+Nella pagina Gare le gare con i risultati presi da una registrazione hanno l'etichetta "Dalla
+telemetria" e il link al replay. I risultati si possono correggere a mano: da quel momento
+cambiare i piloti della registrazione non li aggiorna più, finché non si ripristinano con
+"Ripristina risultati". Le pagine si aggiornano da sole quando i dati cambiano (una gara salvata
+dalla telemetria, una modifica fatta da un altro PC).
 
 Se il gioco gira su un altro dispositivo (console o altro PC), su Windows serve una regola del
 firewall per la porta UDP 20777 (vedi sotto per l'IP da impostare nel gioco).

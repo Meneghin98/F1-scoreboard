@@ -8,24 +8,31 @@ import (
 	"net/http"
 	"slices"
 
+	"f1-scoreboard/internal/live"
 	"f1-scoreboard/internal/scoring"
 )
 
 type Tournament struct {
-	ID        int64   `json:"id"`
-	Name      string  `json:"name"`
-	CreatedAt string  `json:"created_at"`
-	Free      bool    `json:"free"`       // "Nessun torneo": raccoglie le gare fuori dai tornei
-	StartedAt *string `json:"started_at"` // UTC, nil se mai iniziato
-	EndedAt   *string `json:"ended_at"`   // UTC, nil se non terminato
-	Active    bool    `json:"active"`     // in corso: le gare finite vengono salvate qui
+	ID         int64   `json:"id"`
+	Name       string  `json:"name"`
+	CreatedAt  string  `json:"created_at"`
+	Free       bool    `json:"free"`       // "Nessun torneo": raccoglie le gare fuori dai tornei
+	StartedAt  *string `json:"started_at"` // UTC, nil se mai iniziato
+	EndedAt    *string `json:"ended_at"`   // UTC, nil se non terminato
+	Active     bool    `json:"active"`     // in corso: le gare finite vengono salvate qui
+	Races      int     `json:"races"`      // gare del torneo
+	Recordings int     `json:"recordings"` // registrazioni collegate alle sue gare
 }
 
-const tournamentColumns = "id, name, created_at, free, started_at, ended_at, started_at IS NOT NULL AND ended_at IS NULL"
+// tournamentColumns si usa anche dopo RETURNING: per questo le sottoquery
+// indicano la tabella per nome invece che con un alias.
+const tournamentColumns = "id, name, created_at, free, started_at, ended_at, started_at IS NOT NULL AND ended_at IS NULL, " +
+	"(SELECT COUNT(*) FROM races WHERE races.tournament_id = tournaments.id), " +
+	"(SELECT COUNT(*) FROM telemetry_sessions s JOIN races r ON r.id = s.race_id WHERE r.tournament_id = tournaments.id)"
 
 // scanTournament legge una riga selezionata con tournamentColumns.
 func scanTournament(row interface{ Scan(...any) error }, t *Tournament) error {
-	return row.Scan(&t.ID, &t.Name, &t.CreatedAt, &t.Free, &t.StartedAt, &t.EndedAt, &t.Active)
+	return row.Scan(&t.ID, &t.Name, &t.CreatedAt, &t.Free, &t.StartedAt, &t.EndedAt, &t.Active, &t.Races, &t.Recordings)
 }
 
 type Player struct {
@@ -38,8 +45,18 @@ type Race struct {
 	ID           int64   `json:"id"`
 	TournamentID int64   `json:"tournament_id"`
 	Track        string  `json:"track"`
+	TrackID      *int    `json:"track_id"` // circuito del gioco, nil se il nome non è tra quelli noti
 	Type         string  `json:"type"`
 	Date         *string `json:"date"`
+	// ManualResults è vero se i risultati sono stati modificati a mano: la
+	// registrazione collegata non li riscrive finché non si ripristinano.
+	ManualResults bool `json:"manual_results"`
+}
+
+const raceColumns = "id, tournament_id, track, track_id, type, date, manual_results"
+
+func scanRace(row interface{ Scan(...any) error }, r *Race) error {
+	return row.Scan(&r.ID, &r.TournamentID, &r.Track, &r.TrackID, &r.Type, &r.Date, &r.ManualResults)
 }
 
 type RaceResult struct {
@@ -52,12 +69,20 @@ type RaceResult struct {
 type RaceWithResults struct {
 	Race
 	Results []RaceResult `json:"results"`
+	// Recordings sono le registrazioni collegate alla gara, dalla più recente:
+	// quella con Source vero dà i risultati.
+	Recordings []live.RaceRecording `json:"recordings"`
 }
 
 // --- Configurazione -------------------------------------------------------
 
 func (s *Server) getPoints(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, http.StatusOK, scoring.Points)
+}
+
+// listTracks restituisce i circuiti da proporre per le gare, nell'ordine del calendario.
+func (s *Server) listTracks(w http.ResponseWriter, r *http.Request) error {
+	return writeJSON(w, http.StatusOK, live.Tracks)
 }
 
 // --- Tornei ---------------------------------------------------------------
@@ -119,8 +144,35 @@ func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error 
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	s.live.TournamentsChanged()
 	return writeJSON(w, http.StatusCreated, t)
+}
+
+// updateTournament rinomina un torneo. Body: { "name": "..." }
+func (s *Server) updateTournament(w http.ResponseWriter, r *http.Request) error {
+	id, err := s.pathID(r, "tournaments", "Torneo")
+	if err != nil {
+		return err
+	}
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		return err
+	}
+	name, err := requireText(body.Name, "nome")
+	if err != nil {
+		return err
+	}
+	var t Tournament
+	err = scanTournament(s.db.QueryRow("UPDATE tournaments SET name = ? WHERE id = ? AND free = 0 RETURNING "+tournamentColumns,
+		name, id), &t)
+	if errors.Is(err, sql.ErrNoRows) {
+		return errorf(http.StatusBadRequest, "\"Nessun torneo\" non si può rinominare")
+	}
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, t)
 }
 
 // checkNoneActive restituisce un errore se c'è già un torneo in corso.
@@ -170,7 +222,6 @@ func (s *Server) startTournament(w http.ResponseWriter, r *http.Request) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	s.live.TournamentsChanged()
 	return writeJSON(w, http.StatusOK, t)
 }
 
@@ -190,10 +241,11 @@ func (s *Server) endTournament(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	s.live.TournamentsChanged()
 	return writeJSON(w, http.StatusOK, t)
 }
 
+// deleteTournament elimina un torneo con le sue gare. Le registrazioni delle
+// gare passano in "Nessun torneo": la risposta dice quante sono.
 func (s *Server) deleteTournament(w http.ResponseWriter, r *http.Request) error {
 	id, err := s.pathID(r, "tournaments", "Torneo")
 	if err != nil {
@@ -206,12 +258,11 @@ func (s *Server) deleteTournament(w http.ResponseWriter, r *http.Request) error 
 	if free {
 		return errorf(http.StatusConflict, "\"Nessun torneo\" non si può eliminare")
 	}
-	if _, err := s.db.Exec("DELETE FROM tournaments WHERE id = ?", id); err != nil {
+	moved, err := s.live.DeleteTournament(id)
+	if err := sessionError(err); err != nil {
 		return err
 	}
-	s.live.TournamentsChanged()
-	w.WriteHeader(http.StatusNoContent)
-	return nil
+	return writeJSON(w, http.StatusOK, map[string]int{"movedRecordings": moved})
 }
 
 // --- Piloti ---------------------------------------------------------------
@@ -237,35 +288,64 @@ func (s *Server) listPlayers(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, http.StatusOK, players)
 }
 
-func (s *Server) createPlayer(w http.ResponseWriter, r *http.Request) error {
-	var body struct {
-		Name string `json:"name"`
-		Team string `json:"team"`
-	}
-	if err := readJSON(r, &body); err != nil {
-		return err
-	}
-	name, err := requireText(body.Name, "nome")
-	if err != nil {
-		return err
-	}
+// playerBody è il body per creare o modificare un pilota.
+type playerBody struct {
+	Name string `json:"name"`
+	Team string `json:"team"`
+}
 
+// readPlayer legge e controlla il body di un pilota. id è il pilota che si
+// modifica (0 se è nuovo): il suo nome attuale non conta come già usato.
+func (s *Server) readPlayer(r *http.Request, id int64) (name string, team *string, err error) {
+	var body playerBody
+	if err := readJSON(r, &body); err != nil {
+		return "", nil, err
+	}
+	if name, err = requireText(body.Name, "nome"); err != nil {
+		return "", nil, err
+	}
 	// La colonna name è COLLATE NOCASE: il confronto ignora maiuscole e minuscole.
-	taken, err := s.exists("SELECT 1 FROM players WHERE name = ?", name)
+	taken, err := s.exists("SELECT 1 FROM players WHERE name = ? AND id != ?", name, id)
 	if err != nil {
-		return err
+		return "", nil, err
 	}
 	if taken {
-		return errorf(http.StatusConflict, "Esiste già un pilota chiamato \"%s\"", name)
+		return "", nil, errorf(http.StatusConflict, "Esiste già un pilota chiamato \"%s\"", name)
 	}
+	return name, optionalText(body.Team), nil
+}
 
+func (s *Server) createPlayer(w http.ResponseWriter, r *http.Request) error {
+	name, team, err := s.readPlayer(r, 0)
+	if err != nil {
+		return err
+	}
 	var p Player
-	err = s.db.QueryRow("INSERT INTO players (name, team) VALUES (?, ?) RETURNING id, name, team", name, optionalText(body.Team)).
+	err = s.db.QueryRow("INSERT INTO players (name, team) VALUES (?, ?) RETURNING id, name, team", name, team).
 		Scan(&p.ID, &p.Name, &p.Team)
 	if err != nil {
 		return err
 	}
 	return writeJSON(w, http.StatusCreated, p)
+}
+
+// updatePlayer cambia nome e scuderia di un pilota. Body: { "name": "...", "team": "..." }
+func (s *Server) updatePlayer(w http.ResponseWriter, r *http.Request) error {
+	id, err := s.pathID(r, "players", "Pilota")
+	if err != nil {
+		return err
+	}
+	name, team, err := s.readPlayer(r, id)
+	if err != nil {
+		return err
+	}
+	var p Player
+	err = s.db.QueryRow("UPDATE players SET name = ?, team = ? WHERE id = ? RETURNING id, name, team", name, team, id).
+		Scan(&p.ID, &p.Name, &p.Team)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, p)
 }
 
 func (s *Server) deletePlayer(w http.ResponseWriter, r *http.Request) error {
@@ -295,6 +375,10 @@ func (s *Server) listRaces(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	races, err := s.racesOf(tournamentID)
+	if err != nil {
+		return err
+	}
+	recordings, err := s.live.TournamentRecordings(tournamentID)
 	if err != nil {
 		return err
 	}
@@ -334,7 +418,11 @@ func (s *Server) listRaces(w http.ResponseWriter, r *http.Request) error {
 		slices.SortStableFunc(results, func(a, b RaceResult) int {
 			return cmp.Compare(positionOrLast(a.Position), positionOrLast(b.Position))
 		})
-		out = append(out, RaceWithResults{Race: race, Results: results})
+		recs := recordings[race.ID]
+		if recs == nil {
+			recs = []live.RaceRecording{}
+		}
+		out = append(out, RaceWithResults{Race: race, Results: results, Recordings: recs})
 	}
 	return writeJSON(w, http.StatusOK, out)
 }
@@ -346,10 +434,11 @@ func positionOrLast(position *int) int {
 	return *position
 }
 
-// racesOf restituisce le gare di un torneo in ordine di inserimento.
+// racesOf restituisce le gare di un torneo in ordine di data; quelle senza
+// data (ancora da programmare) vanno in fondo, nell'ordine di inserimento.
 func (s *Server) racesOf(tournamentID int64) ([]Race, error) {
 	rows, err := s.db.Query(
-		"SELECT id, tournament_id, track, type, date FROM races WHERE tournament_id = ? ORDER BY id", tournamentID)
+		"SELECT "+raceColumns+" FROM races WHERE tournament_id = ? ORDER BY date IS NULL, date, id", tournamentID)
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +447,7 @@ func (s *Server) racesOf(tournamentID int64) ([]Race, error) {
 	races := []Race{}
 	for rows.Next() {
 		var race Race
-		if err := rows.Scan(&race.ID, &race.TournamentID, &race.Track, &race.Type, &race.Date); err != nil {
+		if err := scanRace(rows, &race); err != nil {
 			return nil, err
 		}
 		races = append(races, race)
@@ -366,54 +455,100 @@ func (s *Server) racesOf(tournamentID int64) ([]Race, error) {
 	return races, rows.Err()
 }
 
+// raceBody è il body per creare o modificare una gara.
+type raceBody struct {
+	Track string `json:"track"`
+	Type  string `json:"type"`
+	Date  string `json:"date"`
+}
+
+// readRace legge e controlla il body di una gara. Il tipo vuoto vale "race".
+func readRace(r *http.Request) (track, raceType string, date *string, err error) {
+	var body raceBody
+	if err := readJSON(r, &body); err != nil {
+		return "", "", nil, err
+	}
+	if track, err = requireText(body.Track, "circuito"); err != nil {
+		return "", "", nil, err
+	}
+	switch body.Type {
+	case "":
+		raceType = "race"
+	case "race", "sprint", "qualifying", "practice":
+		raceType = body.Type
+	default:
+		return "", "", nil, errorf(http.StatusBadRequest, "Tipo di gara \"%s\" non valido", body.Type)
+	}
+	return track, raceType, optionalText(body.Date), nil
+}
+
 func (s *Server) createRace(w http.ResponseWriter, r *http.Request) error {
 	tournamentID, err := s.pathID(r, "tournaments", "Torneo")
 	if err != nil {
 		return err
 	}
-	var body struct {
-		Track string `json:"track"`
-		Type  string `json:"type"`
-		Date  string `json:"date"`
-	}
-	if err := readJSON(r, &body); err != nil {
-		return err
-	}
-	track, err := requireText(body.Track, "circuito")
+	track, raceType, date, err := readRace(r)
 	if err != nil {
 		return err
 	}
-	raceType := "race"
-	switch body.Type {
-	case "sprint", "qualifying", "practice":
-		raceType = body.Type
-	}
-
 	var race Race
-	err = s.db.QueryRow(`
-		INSERT INTO races (tournament_id, track, type, date) VALUES (?, ?, ?, ?)
-		RETURNING id, tournament_id, track, type, date`,
-		tournamentID, track, raceType, optionalText(body.Date),
-	).Scan(&race.ID, &race.TournamentID, &race.Track, &race.Type, &race.Date)
+	err = scanRace(s.db.QueryRow(`
+		INSERT INTO races (tournament_id, track, track_id, type, date) VALUES (?, ?, ?, ?, ?)
+		RETURNING `+raceColumns,
+		tournamentID, track, live.TrackIDByName(track), raceType, date,
+	), &race)
 	if err != nil {
 		return err
 	}
 	return writeJSON(w, http.StatusCreated, race)
 }
 
+// updateRace cambia circuito, tipo e data di una gara. Body come per createRace.
+func (s *Server) updateRace(w http.ResponseWriter, r *http.Request) error {
+	id, err := s.pathID(r, "races", "Gara")
+	if err != nil {
+		return err
+	}
+	track, raceType, date, err := readRace(r)
+	if err != nil {
+		return err
+	}
+	if err := sessionError(s.live.CheckRaceType(id, raceType)); err != nil {
+		return err
+	}
+	var race Race
+	err = scanRace(s.db.QueryRow(`
+		UPDATE races SET track = ?, track_id = ?, type = ?, date = ? WHERE id = ?
+		RETURNING `+raceColumns,
+		track, live.TrackIDByName(track), raceType, date, id,
+	), &race)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, race)
+}
+
+// deleteRace elimina una gara con i suoi risultati. Le sue registrazioni
+// passano in "Nessun torneo" (o restano senza torneo, se la gara era già lì):
+// la risposta dice quante sono state spostate.
 func (s *Server) deleteRace(w http.ResponseWriter, r *http.Request) error {
 	id, err := s.pathID(r, "races", "Gara")
 	if err != nil {
 		return err
 	}
-	if _, err := s.db.Exec("DELETE FROM races WHERE id = ?", id); err != nil {
+	moved, err := s.live.DeleteRace(id)
+	if errors.Is(err, live.ErrRaceNotFound) {
+		return errorf(http.StatusNotFound, "Gara non trovata")
+	}
+	if err != nil {
 		return err
 	}
-	w.WriteHeader(http.StatusNoContent)
-	return nil
+	return writeJSON(w, http.StatusOK, map[string]int{"movedRecordings": moved})
 }
 
-// saveResults sostituisce in blocco i risultati di una gara.
+// saveResults sostituisce in blocco i risultati di una gara. Se la gara li
+// prendeva da una registrazione, da qui restano quelli inseriti a mano
+// (vedi resyncRace per tornare a quelli della registrazione).
 // Body: { "results": [{ "player_id": 1, "position": 3, "dnf": false }] }
 func (s *Server) saveResults(w http.ResponseWriter, r *http.Request) error {
 	raceID, err := s.pathID(r, "races", "Gara")
@@ -487,7 +622,24 @@ func (s *Server) saveResults(w http.ResponseWriter, r *http.Request) error {
 			return err
 		}
 	}
+	if _, err := tx.Exec("UPDATE races SET manual_results = 1 WHERE id = ?", raceID); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
+		return err
+	}
+	w.WriteHeader(http.StatusNoContent)
+	return nil
+}
+
+// resyncRace riprende i risultati della gara dalla sua registrazione,
+// annullando le modifiche fatte a mano.
+func (s *Server) resyncRace(w http.ResponseWriter, r *http.Request) error {
+	id, err := s.pathID(r, "races", "Gara")
+	if err != nil {
+		return err
+	}
+	if err := sessionError(s.live.ResyncRace(id)); err != nil {
 		return err
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"f1-scoreboard/internal/live"
 	"f1-scoreboard/internal/store"
 )
 
@@ -118,8 +119,8 @@ func seed(db *sql.DB) error {
 				date = r.date
 			}
 			var raceID int64
-			err := tx.QueryRow("INSERT INTO races (tournament_id, track, type, date) VALUES (?, ?, ?, ?) RETURNING id",
-				tournamentID, r.track, r.raceType, date).Scan(&raceID)
+			err := tx.QueryRow("INSERT INTO races (tournament_id, track, track_id, type, date) VALUES (?, ?, ?, ?, ?) RETURNING id",
+				tournamentID, r.track, live.TrackIDByName(r.track), r.raceType, date).Scan(&raceID)
 			if err != nil {
 				return err
 			}

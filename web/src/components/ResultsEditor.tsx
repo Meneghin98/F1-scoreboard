@@ -12,11 +12,12 @@ interface Row {
 interface Props {
   race: RaceWithResults;
   players: Player[];
+  fromRecording: boolean; // i risultati vengono da una registrazione
   onCancel: () => void;
   onSaved: () => Promise<void>;
 }
 
-export function ResultsEditor({ race, players, onCancel, onSaved }: Props) {
+export function ResultsEditor({ race, players, fromRecording, onCancel, onSaved }: Props) {
   const { run, toast } = useToast();
   const [rows, setRows] = useState<Record<number, Row>>(() => Object.fromEntries(
     players.map((p) => {
@@ -53,6 +54,12 @@ export function ResultsEditor({ race, players, onCancel, onSaved }: Props) {
 
   return (
     <form className="mt-4" onSubmit={handleSubmit}>
+      {fromRecording && (
+        <p className="mb-2 rounded-md border border-sprint/40 bg-sprint-bg/40 px-3 py-2 text-sm">
+          I risultati vengono dalla registrazione della gara. Se li modifichi restano questi: cambiare i piloti
+          della registrazione non li aggiornerà più, finché non li ripristini.
+        </p>
+      )}
       <p className="mb-2 text-muted">Inserisci la posizione d'arrivo; lascia vuoto chi non ha partecipato.</p>
       <Table>
         <thead><tr><Th>Pilota</Th><Th>Posizione</Th><Th>DNF</Th></tr></thead>

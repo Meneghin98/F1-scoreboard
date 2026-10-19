@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useConfirm } from '../lib/confirm';
 import type { Player } from '../lib/types';
@@ -10,6 +10,7 @@ export function PlayersPage() {
   const { run } = useToast();
   const confirm = useConfirm();
   const { data: players, reload } = useLoad(api.players, []);
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   function handleAdd(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -19,6 +20,16 @@ export function PlayersPage() {
       await api.createPlayer(String(fields.get('name')), String(fields.get('team')));
       form.reset();
       form.querySelector<HTMLInputElement>('[name=name]')?.focus();
+      await reload();
+    });
+  }
+
+  function handleSave(player: Player, e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fields = new FormData(e.currentTarget);
+    run(async () => {
+      await api.updatePlayer(player.id, String(fields.get('name')), String(fields.get('team')));
+      setEditingId(null);
       await reload();
     });
   }
@@ -40,17 +51,51 @@ export function PlayersPage() {
     <>
       <Card>
         <form className="flex flex-wrap gap-2" onSubmit={handleAdd}>
-          <input name="name" placeholder="Nome pilota" required className={cx(fieldClass, 'flex-[1_1_200px]')} />
-          <input name="team" list="teams" placeholder="Scuderia (opzionale)" className={cx(fieldClass, 'flex-[1_1_200px]')} />
+          <PlayerFields />
           <Button>Aggiungi pilota</Button>
         </form>
       </Card>
       {players && (players.length ? players.map((p) => (
-        <Card key={p.id} className="flex items-center justify-between">
-          <span>{p.name} <TeamTag team={p.team} /></span>
-          <Button variant="ghost" size="sm" onClick={() => handleDelete(p)}>Elimina</Button>
+        <Card key={p.id}>
+          {editingId === p.id ? (
+            <form className="flex flex-wrap gap-2" onSubmit={(e) => handleSave(p, e)}>
+              <PlayerFields player={p} />
+              <Button type="button" variant="ghost" onClick={() => setEditingId(null)}>Annulla</Button>
+              <Button>Salva</Button>
+            </form>
+          ) : (
+            <div className="flex items-center justify-between gap-2">
+              <span>{p.name} <TeamTag team={p.team} /></span>
+              <div className="flex gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setEditingId(p.id)}>Modifica</Button>
+                <Button variant="ghost" size="sm" onClick={() => handleDelete(p)}>Elimina</Button>
+              </div>
+            </div>
+          )}
         </Card>
       )) : <Empty>Nessun pilota registrato.</Empty>)}
+    </>
+  );
+}
+
+// Nome e scuderia di un pilota, per aggiungerlo o modificarlo.
+function PlayerFields({ player }: { player?: Player }) {
+  return (
+    <>
+      <input
+        name="name"
+        placeholder="Nome pilota"
+        required
+        defaultValue={player?.name}
+        className={cx(fieldClass, 'flex-[1_1_200px]')}
+      />
+      <input
+        name="team"
+        list="teams"
+        placeholder="Scuderia (opzionale)"
+        defaultValue={player?.team ?? ''}
+        className={cx(fieldClass, 'flex-[1_1_200px]')}
+      />
     </>
   );
 }

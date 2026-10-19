@@ -59,6 +59,14 @@ export function useLive(): LiveSnapshot | null {
   return useSyncExternalStore(subscribe, () => snapshot);
 }
 
+// Versione dei dati salvati sul server: cambia a ogni modifica (anche quando
+// una gara viene salvata dalla telemetria). undefined finché non è nota.
+// Usa la stessa connessione di useLive, ma il componente si aggiorna solo
+// quando cambia la versione, non a ogni stato live.
+export function useDataVersion(): number | undefined {
+  return useSyncExternalStore(subscribe, () => snapshot?.dataVersion);
+}
+
 // Acceleratore e freno dei giocatori negli ultimi PEDAL_WINDOW_MS, dal più vecchio.
 export function usePedalHistory(): PedalSample[] {
   return useSyncExternalStore(subscribe, () => pedals);

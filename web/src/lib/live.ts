@@ -49,6 +49,7 @@ export const TYRE_CLASS: Record<string, string> = {
 
 // Colori delle scuderie per la mappa. Il gioco aggiunge l'anno alle squadre
 // delle stagioni passate ("Ferrari '24"): si usa il colore della squadra.
+// Valgono sia i nomi del gioco ("RB", "Sauber") sia quelli proposti per i piloti.
 const TEAM_COLORS: Record<string, string> = {
   Mercedes: '#27f4d2',
   Ferrari: '#e8002d',
@@ -57,9 +58,11 @@ const TEAM_COLORS: Record<string, string> = {
   'Aston Martin': '#229971',
   Alpine: '#ff87bc',
   RB: '#6692ff',
+  'Racing Bulls': '#6692ff',
   Haas: '#b6babd',
   McLaren: '#ff8000',
   Sauber: '#52e252',
+  'Kick Sauber': '#52e252',
   Audi: '#bb0a30',
   Cadillac: '#d4d4d8',
 };

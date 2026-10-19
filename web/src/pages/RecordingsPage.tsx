@@ -69,7 +69,11 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
     run(async () => {
       await api.setSessionPlayers(session.id, [{ carIndex, playerId }]);
       await reload();
-      if (session.race && session.providesResults) toast('Risultati della gara e classifica aggiornati');
+      if (session.race && session.providesResults) {
+        toast(session.race.manualResults
+          ? 'I risultati della gara sono stati modificati a mano e non cambiano: ripristinali dalla pagina Gare'
+          : 'Risultati della gara e classifica aggiornati');
+      }
     });
   }
 
@@ -212,7 +216,9 @@ function RecordingCard({ session: s, players, onAssign, onDelete, onPlayerChange
                 <span className="text-muted">
                   {' · '}{s.race.track}{s.race.type !== 'race' && ` (${raceTypeLabel(s.race.type)})`}
                   {s.race.date && ` · ${formatDate(s.race.date)}`}
-                  {s.providesResults && ' · risultati presi da questa registrazione'}
+                  {s.providesResults && (s.race.manualResults
+                    ? ' · risultati presi da questa registrazione e modificati a mano'
+                    : ' · risultati presi da questa registrazione')}
                 </span>
               </>
             ) : (

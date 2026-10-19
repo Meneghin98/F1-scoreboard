@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react';
 import { useToast } from './toast';
+import { useDataVersion } from './useLive';
 
 // Carica dei dati quando cambiano le dipendenze e restituisce una funzione per ricaricarli.
 // Gli errori finiscono nel toast; data resta null finché il primo caricamento non è finito.
+// I dati si ricaricano da soli anche quando cambiano sul server: una gara salvata
+// dalla telemetria, o una modifica fatta da un'altra pagina o da un altro PC.
 export function useLoad<T>(load: () => Promise<T>, deps: DependencyList) {
   const { run } = useToast();
   const [data, setData] = useState<T | null>(null);
@@ -21,6 +24,15 @@ export function useLoad<T>(load: () => Promise<T>, deps: DependencyList) {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // La prima versione ricevuta non è un cambiamento: i dati sono appena stati caricati.
+  const version = useDataVersion();
+  const seen = useRef(version);
+  useEffect(() => {
+    if (version === undefined) return;
+    if (seen.current !== undefined && seen.current !== version) void reload();
+    seen.current = version;
+  }, [version, reload]);
 
   return { data, reload };
 }

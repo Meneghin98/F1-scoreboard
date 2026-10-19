@@ -4,10 +4,11 @@ import { NewTournamentDialog } from './components/NewTournamentDialog';
 import { Button, Empty, fieldSmClass } from './components/ui';
 import { api } from './lib/api';
 import { useConfirm } from './lib/confirm';
-import { TEAMS, TRACKS } from './lib/f1';
+import { TEAMS } from './lib/f1';
 import { href, useView, useViewParam, VIEW_LABELS, VIEW_PARENT } from './lib/route';
 import { useToast } from './lib/toast';
 import type { Tournament } from './lib/types';
+import { useLoad } from './lib/useLoad';
 import { DashboardPage } from './pages/DashboardPage';
 import { LivePage } from './pages/LivePage';
 import { PlayersPage } from './pages/PlayersPage';
@@ -22,6 +23,11 @@ function tournamentLabel(t: Tournament): string {
   return t.name;
 }
 
+// Cosa succede alle registrazioni di un torneo eliminato.
+function recordingsMoved(n: number): string {
+  return n === 1 ? 'La registrazione della gara passerà' : `Le ${n} registrazioni delle sue gare passeranno`;
+}
+
 export function App() {
   const { run, toast } = useToast();
   const confirm = useConfirm();
@@ -33,6 +39,7 @@ export function App() {
     () => Number(localStorage.getItem('tournamentId')) || null,
   );
   const [creating, setCreating] = useState(false);
+  const { data: tracks } = useLoad(api.tracks, []);
 
   // Ricarica i tornei e seleziona selectId, oppure il primo se non esiste più.
   async function loadTournaments(selectId: number | null) {
@@ -82,13 +89,19 @@ export function App() {
     if (!t) return;
     const ok = await confirm({
       title: 'Eliminare il torneo?',
-      message: `"${t.name}" verrà eliminato insieme a tutte le sue gare e ai risultati.`,
+      message: (
+        <>
+          "{t.name}" verrà eliminato insieme a tutte le sue gare e ai risultati.
+          {t.recordings > 0 && ` ${recordingsMoved(t.recordings)} in "Nessun torneo".`}
+        </>
+      ),
       confirmLabel: 'Elimina torneo',
     });
     if (!ok) return;
     run(async () => {
-      await api.deleteTournament(t.id);
+      const { movedRecordings } = await api.deleteTournament(t.id);
       await loadTournaments(null);
+      if (movedRecordings) toast(`${recordingsMoved(movedRecordings)} in "Nessun torneo"`);
     });
   }
 
@@ -162,7 +175,7 @@ export function App() {
               {/* key: cambiando torneo la pagina riparte da zero (es. chiude l'editor dei risultati). */}
               {view === 'dashboard' && <DashboardPage key={tournamentId} tournamentId={tournamentId} />}
               {view === 'standings' && <StandingsPage key={tournamentId} tournamentId={tournamentId!} />}
-              {view === 'races' && <RacesPage key={tournamentId} tournamentId={tournamentId!} />}
+              {view === 'races' && <RacesPage key={tournamentId} tournamentId={tournamentId!} free={!!current?.free} />}
               {view === 'players' && <PlayersPage />}
               {view === 'live' && <LivePage />}
               {view === 'recordings' && <RecordingsPage tournaments={tournaments} />}
@@ -183,7 +196,7 @@ export function App() {
       />
 
       <datalist id="tracks">
-        {TRACKS.map((track) => <option key={track} value={track} />)}
+        {tracks?.map((track) => <option key={track.id} value={track.name} />)}
       </datalist>
       <datalist id="teams">
         {TEAMS.map((team) => <option key={team} value={team} />)}

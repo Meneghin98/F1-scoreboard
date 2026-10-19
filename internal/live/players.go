@@ -147,6 +147,7 @@ func (s *Service) analyzePending() {
 	// Dopo l'analisi, così le gare create hanno subito i risultati.
 	s.adoptPending()
 	s.recoverPending()
+	s.DataChanged()
 }
 
 // recoverPending salva nel torneo in corso (o in "Nessun torneo") le sessioni
@@ -192,6 +193,9 @@ func (s *Service) recoverPending() {
 		if t != nil {
 			log.Printf("telemetria: sessione %d rimasta in sospeso salvata nel torneo %q", p.id, t.Name)
 		}
+	}
+	if len(list) > 0 {
+		s.DataChanged()
 	}
 }
 
@@ -422,8 +426,17 @@ func raceTypeFor(st telemetry.SessionType) string {
 // registrazione: ogni pilota associato a un giocatore prende la posizione
 // d'arrivo di quell'auto. La classifica del torneo si calcola dai risultati,
 // quindi si aggiorna da sola. Se la gara non ha registrazioni con la
-// classifica finale, i risultati inseriti a mano restano com'erano.
+// classifica finale, o se i suoi risultati sono stati modificati a mano,
+// restano com'erano.
 func syncRaceResults(db dbtx, raceID int64) error {
+	var manual bool
+	err := db.QueryRow("SELECT manual_results FROM races WHERE id = ?", raceID).Scan(&manual)
+	if errors.Is(err, sql.ErrNoRows) || manual {
+		return nil // gara eliminata, o risultati da non toccare finché non si ripristinano (ResyncRace)
+	}
+	if err != nil {
+		return err
+	}
 	sessionID, err := resultsSource(db, raceID)
 	if err != nil || sessionID == 0 {
 		return err
@@ -591,15 +604,7 @@ func (s *Service) LinkNewRace(sessionID, tournamentID int64, raceType string) (i
 
 // linkNewRace è LinkNewRace dentro una transazione già aperta.
 func linkNewRace(tx dbtx, sessionID, tournamentID int64, raceType string) (int64, error) {
-	var (
-		trackID, sessionType *int
-		startedAt            string
-	)
-	err := tx.QueryRow("SELECT track_id, session_type, started_at FROM telemetry_sessions WHERE id = ?", sessionID).
-		Scan(&trackID, &sessionType, &startedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, ErrSessionNotFound
-	}
+	spec, err := raceSpecOf(tx, sessionID, raceType)
 	if err != nil {
 		return 0, err
 	}
@@ -611,28 +616,9 @@ func linkNewRace(tx dbtx, sessionID, tournamentID int64, raceType string) (int64
 	if err != nil {
 		return 0, err
 	}
-	switch raceType {
-	case "race", "sprint", "qualifying", "practice":
-	default:
-		raceType = "race"
-		if sessionType != nil && raceTypeFor(telemetry.SessionType(*sessionType)) != "" {
-			raceType = raceTypeFor(telemetry.SessionType(*sessionType))
-		}
-	}
-	track := "Circuito sconosciuto"
-	if trackID != nil {
-		track = RaceTrackName(telemetry.TrackID(*trackID))
-	}
-	// La data della gara è quella locale, come la inserirebbe l'utente a mano.
-	var date *string
-	if t, err := time.Parse("2006-01-02 15:04:05", startedAt); err == nil {
-		d := t.Local().Format("2006-01-02")
-		date = &d
-	}
-
 	var raceID int64
-	err = tx.QueryRow("INSERT INTO races (tournament_id, track, type, date) VALUES (?, ?, ?, ?) RETURNING id",
-		tournamentID, track, raceType, date).Scan(&raceID)
+	err = tx.QueryRow("INSERT INTO races (tournament_id, track, track_id, type, date) VALUES (?, ?, ?, ?, ?) RETURNING id",
+		tournamentID, spec.track, spec.trackID, spec.kind, spec.date).Scan(&raceID)
 	if err != nil {
 		return 0, err
 	}
@@ -642,6 +628,51 @@ func linkNewRace(tx dbtx, sessionID, tournamentID int64, raceType string) (int64
 	return raceID, nil
 }
 
+// raceSpec è la gara del torneo che corrisponde a una sessione registrata.
+type raceSpec struct {
+	trackID *int
+	track   string  // nome del circuito, come per le gare inserite a mano
+	kind    string  // tipo della gara: "race", "sprint", "qualifying" o "practice"
+	date    *string // giorno della sessione, nil se non si sa
+}
+
+// raceSpecOf ricava circuito, tipo e data della gara per la sessione. raceType
+// vuoto (o non valido) si ricava dal tipo di sessione.
+func raceSpecOf(tx dbtx, sessionID int64, raceType string) (raceSpec, error) {
+	var (
+		spec        raceSpec
+		sessionType *int
+		startedAt   string
+	)
+	err := tx.QueryRow("SELECT track_id, session_type, started_at FROM telemetry_sessions WHERE id = ?", sessionID).
+		Scan(&spec.trackID, &sessionType, &startedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return spec, ErrSessionNotFound
+	}
+	if err != nil {
+		return spec, err
+	}
+	spec.kind = raceType
+	switch raceType {
+	case "race", "sprint", "qualifying", "practice":
+	default:
+		spec.kind = "race"
+		if sessionType != nil && raceTypeFor(telemetry.SessionType(*sessionType)) != "" {
+			spec.kind = raceTypeFor(telemetry.SessionType(*sessionType))
+		}
+	}
+	spec.track = "Circuito sconosciuto"
+	if spec.trackID != nil {
+		spec.track = RaceTrackName(telemetry.TrackID(*spec.trackID))
+	}
+	// La data della gara è quella locale, come la inserirebbe l'utente a mano.
+	if t, err := time.Parse("2006-01-02 15:04:05", startedAt); err == nil {
+		d := t.Local().Format("2006-01-02")
+		spec.date = &d
+	}
+	return spec, nil
+}
+
 // linkRace sposta la sessione su un'altra gara (o nessuna, con nil) e
 // aggiorna i risultati di entrambe le gare.
 func linkRace(tx dbtx, sessionID int64, raceID *int64) error {
@@ -649,9 +680,10 @@ func linkRace(tx dbtx, sessionID int64, raceID *int64) error {
 	if err != nil {
 		return err
 	}
+	moved := raceID != nil && (oldRace == nil || *oldRace != *raceID) // arriva in una gara diversa
+	source := false
 	if raceID != nil {
-		source, err := isSourceFor(tx, sessionID, *raceID)
-		if err != nil {
+		if source, err = isSourceFor(tx, sessionID, *raceID); err != nil {
 			return err
 		}
 		if source {
@@ -680,8 +712,18 @@ func linkRace(tx dbtx, sessionID int64, raceID *int64) error {
 			return err
 		}
 	}
+	if source && moved {
+		// I risultati della gara vengono da questa registrazione e sostituiscono
+		// quelli inseriti prima, anche se modificati a mano.
+		if _, err := tx.Exec("UPDATE races SET manual_results = 0 WHERE id = ?", *raceID); err != nil {
+			return err
+		}
+	}
 	if wasSource {
 		// I risultati della gara di prima venivano da questa registrazione: non valgono più.
+		if _, err := tx.Exec("UPDATE races SET manual_results = 0 WHERE id = ?", *oldRace); err != nil {
+			return err
+		}
 		if _, err := tx.Exec("DELETE FROM results WHERE race_id = ?", *oldRace); err != nil {
 			return err
 		}
@@ -781,5 +823,6 @@ func (s *Service) deleteUnfinished(now time.Time) {
 	}
 	if deleted > 0 {
 		log.Printf("telemetria: eliminate %d sessioni non terminate", deleted)
+		s.DataChanged()
 	}
 }

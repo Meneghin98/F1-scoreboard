@@ -52,7 +52,14 @@ func main() {
 	liveService := live.NewService(db, live.Options{Dir: sessionsDir, Record: record})
 	go liveService.Run(ctx, telemetryAddr)
 
-	srv := &http.Server{Addr: ":" + port, Handler: api.New(db, static, liveService)}
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: api.New(db, static, liveService),
+		// Un client che non manda nemmeno le intestazioni non tiene occupata la
+		// connessione per sempre. Niente WriteTimeout: lo stream live dura ore.
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+	}
 
 	shutdownDone := make(chan struct{})
 	go func() {

@@ -27,21 +27,26 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service) http.Handler {
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /api/points", s.handle(s.getPoints))
+	mux.Handle("GET /api/tracks", s.handle(s.listTracks))
 
 	mux.Handle("GET /api/tournaments", s.handle(s.listTournaments))
 	mux.Handle("POST /api/tournaments", s.handle(s.createTournament))
+	mux.Handle("PUT /api/tournaments/{id}", s.handle(s.updateTournament))
 	mux.Handle("DELETE /api/tournaments/{id}", s.handle(s.deleteTournament))
 	mux.Handle("POST /api/tournaments/{id}/start", s.handle(s.startTournament))
 	mux.Handle("POST /api/tournaments/{id}/end", s.handle(s.endTournament))
 
 	mux.Handle("GET /api/players", s.handle(s.listPlayers))
 	mux.Handle("POST /api/players", s.handle(s.createPlayer))
+	mux.Handle("PUT /api/players/{id}", s.handle(s.updatePlayer))
 	mux.Handle("DELETE /api/players/{id}", s.handle(s.deletePlayer))
 
 	mux.Handle("GET /api/tournaments/{id}/races", s.handle(s.listRaces))
 	mux.Handle("POST /api/tournaments/{id}/races", s.handle(s.createRace))
+	mux.Handle("PUT /api/races/{id}", s.handle(s.updateRace))
 	mux.Handle("DELETE /api/races/{id}", s.handle(s.deleteRace))
 	mux.Handle("PUT /api/races/{id}/results", s.handle(s.saveResults))
+	mux.Handle("POST /api/races/{id}/resync", s.handle(s.resyncRace))
 
 	mux.Handle("GET /api/tournaments/{id}/standings", s.handle(s.getStandings))
 
@@ -85,10 +90,19 @@ func errorf(status int, format string, args ...any) error {
 // scrivere la risposta d'errore a mano in ogni punto.
 type handlerFunc func(w http.ResponseWriter, r *http.Request) error
 
+// maxBodyBytes è la dimensione massima del body di una richiesta.
+const maxBodyBytes = 1 << 20
+
 func (s *Server) handle(h handlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Nessuna richiesta legittima supera pochi KB: un limite evita di leggere body enormi.
+		r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 		err := h(w, r)
 		if err == nil {
+			// Dopo ogni modifica le pagine aperte nei browser si ricaricano (vedi live.Service.DataChanged).
+			if r.Method != http.MethodGet && r.Method != http.MethodHead {
+				s.live.DataChanged()
+			}
 			return
 		}
 		var he *httpError

@@ -10,6 +10,14 @@ export interface Tournament {
   started_at: string | null; // UTC
   ended_at: string | null; // UTC
   active: boolean; // in corso: le gare finite vengono salvate qui
+  races: number; // gare del torneo
+  recordings: number; // registrazioni collegate alle sue gare
+}
+
+// Circuito proposto per le gare (GET /api/tracks), nell'ordine del calendario.
+export interface Track {
+  id: number;
+  name: string;
 }
 
 export interface Player {
@@ -22,8 +30,10 @@ export interface Race {
   id: number;
   tournament_id: number;
   track: string;
+  track_id: number | null; // circuito del gioco, null se il nome non è tra quelli noti
   type: RaceType;
   date: string | null;
+  manual_results: boolean; // risultati modificati a mano: la registrazione non li riscrive
 }
 
 export interface RaceResult {
@@ -35,6 +45,8 @@ export interface RaceResult {
 
 export interface RaceWithResults extends Race {
   results: RaceResult[];
+  // Registrazioni collegate, dalla più recente: quella con source dà i risultati.
+  recordings: { id: number; source: boolean }[];
 }
 
 export interface RaceScore {
@@ -246,6 +258,7 @@ export interface LiveSnapshot {
   lineup: Lineup | null;
   events: RaceEvent[]; // ultimi messaggi della direzione gara, dal più vecchio
   telemetry?: TelemetryStatus; // solo nello stato live, non nei replay
+  dataVersion?: number; // cambia a ogni modifica dei dati salvati: le pagine si ricaricano (solo nello stato live)
 }
 
 // Ricezione della telemetria (vedi internal/live/diagnostics.go).
@@ -312,6 +325,7 @@ export interface SessionRace {
   date: string | null;
   tournamentId: number;
   tournamentName: string;
+  manualResults: boolean; // risultati della gara modificati a mano: cambiare i piloti non li aggiorna
 }
 
 export interface SessionRecord {

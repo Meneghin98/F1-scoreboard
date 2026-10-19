@@ -68,6 +68,11 @@ type Service struct {
 	target       *LineupTournament
 	targetLoaded bool
 
+	// dataVersion cresce a ogni modifica dei dati (tornei, gare, risultati,
+	// registrazioni): arriva ai browser con lo stato live e le pagine aperte
+	// si ricaricano da sole, anche quando una gara viene salvata dalla telemetria.
+	dataVersion int64
+
 	// Replay preparati dalle registrazioni, per sessione (vedi replay.go).
 	replayMu sync.Mutex
 	replays  map[int64]*replayEntry
@@ -101,8 +106,24 @@ func NewService(db *sql.DB, opts Options) *Service {
 		warnedFmt:   map[uint16]bool{},
 		subscribers: map[chan []byte]struct{}{},
 		replays:     map[int64]*replayEntry{},
+		dataVersion: 1,
 		done:        make(chan struct{}),
 	}
+}
+
+// DataChanged va chiamato dopo ogni modifica dei dati: le pagine aperte nei
+// browser se ne accorgono dallo stato live e si ricaricano. Rilegge anche il
+// torneo in corso mostrato nella pagina Live.
+func (s *Service) DataChanged() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.dataChangedLocked()
+}
+
+// dataChangedLocked è DataChanged per chi ha già bloccato s.mu.
+func (s *Service) dataChangedLocked() {
+	s.dataVersion++
+	s.target, s.targetLoaded = nil, false
 }
 
 // Done viene chiuso quando Run termina: i client in streaming lo usano per chiudersi.
@@ -316,6 +337,7 @@ func (s *Service) endSession(at time.Time) {
 			log.Printf("telemetria: salvataggio dei giocatori: %v", err)
 		}
 	}
+	s.dataChangedLocked() // la sessione compare tra le registrazioni come terminata
 	log.Printf("telemetria: sessione %016x terminata (%d pacchetti)", cur.uid, cur.packets)
 }
 
@@ -391,6 +413,7 @@ func (s *Service) snapshotJSON(now time.Time) []byte {
 		snap = emptySnapshot(status)
 	}
 	snap.Telemetry = s.diag.status(now)
+	snap.DataVersion = s.dataVersion
 	msg, err := json.Marshal(snap)
 	if err != nil {
 		log.Printf("telemetria: %v", err)

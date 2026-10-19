@@ -70,6 +70,9 @@ type SessionRace struct {
 	Date           *string `json:"date"`
 	TournamentID   int64   `json:"tournamentId"`
 	TournamentName string  `json:"tournamentName"`
+	// ManualResults è vero se i risultati della gara sono stati modificati a
+	// mano: cambiare i piloti della registrazione non li aggiorna.
+	ManualResults bool `json:"manualResults"`
 }
 
 // Sessions restituisce le sessioni registrate, dalla più recente.
@@ -77,7 +80,7 @@ func (s *Service) Sessions() ([]SessionRecord, error) {
 	rows, err := s.db.Query(`
 		SELECT s.id, s.session_uid, s.packet_format, s.track_id, s.session_type, s.total_laps, s.started_at, s.ended_at,
 		       s.file, s.size_bytes, s.packets, s.has_classification, s.cars, s.analyzed,
-		       r.id, r.track, r.type, r.date, t.id, t.name
+		       r.id, r.track, r.type, r.date, r.manual_results, t.id, t.name
 		FROM telemetry_sessions s
 		LEFT JOIN races r ON r.id = s.race_id
 		LEFT JOIN tournaments t ON t.id = r.tournament_id
@@ -95,16 +98,17 @@ func (s *Service) Sessions() ([]SessionRecord, error) {
 			raceID, tournamentID  *int64
 			raceTrack, raceType   *string
 			raceDate, tournamentN *string
+			manual                *bool
 		)
 		err := rows.Scan(&r.ID, &r.UID, &r.Format, &r.TrackID, &r.SessionType, &r.TotalLaps, &r.StartedAt,
 			&r.EndedAt, &r.file, &r.SizeBytes, &r.Packets, &r.HasClassification, &r.Cars, &r.Analyzed,
-			&raceID, &raceTrack, &raceType, &raceDate, &tournamentID, &tournamentN)
+			&raceID, &raceTrack, &raceType, &raceDate, &manual, &tournamentID, &tournamentN)
 		if err != nil {
 			return nil, err
 		}
 		if raceID != nil {
 			r.Race = &SessionRace{ID: *raceID, Track: *raceTrack, Type: *raceType, Date: raceDate,
-				TournamentID: *tournamentID, TournamentName: *tournamentN}
+				TournamentID: *tournamentID, TournamentName: *tournamentN, ManualResults: manual != nil && *manual}
 		}
 		r.Players = []SessionPlayer{}
 		byID[r.ID] = len(records)
@@ -267,24 +271,4 @@ func slug(s string) string {
 		}
 	}
 	return strings.TrimSuffix(b.String(), "-")
-}
-
-// raceTrackNames sono i nomi dei circuiti come li propone il frontend per le
-// gare inserite a mano (web/src/lib/f1.ts): una gara creata da una
-// registrazione si chiama come una inserita a mano.
-var raceTrackNames = map[telemetry.TrackID]string{
-	0: "Australia – Melbourne", 2: "Cina – Shanghai", 3: "Bahrain – Sakhir", 4: "Spagna – Barcellona",
-	5: "Monaco", 6: "Canada – Montréal", 7: "Gran Bretagna – Silverstone", 9: "Ungheria – Hungaroring",
-	10: "Belgio – Spa-Francorchamps", 11: "Italia – Monza", 12: "Singapore – Marina Bay", 13: "Giappone – Suzuka",
-	14: "Abu Dhabi – Yas Marina", 15: "USA – Austin", 16: "Brasile – Interlagos", 17: "Austria – Red Bull Ring",
-	19: "Messico – Città del Messico", 20: "Azerbaijan – Baku", 26: "Olanda – Zandvoort",
-	27: "Emilia-Romagna – Imola", 29: "Arabia Saudita – Jeddah", 30: "Miami", 31: "Las Vegas", 32: "Qatar – Lusail",
-}
-
-// RaceTrackName restituisce il nome del circuito da usare per una gara del torneo.
-func RaceTrackName(id telemetry.TrackID) string {
-	if name, ok := raceTrackNames[id]; ok {
-		return name
-	}
-	return id.String()
 }

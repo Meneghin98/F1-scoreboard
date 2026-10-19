@@ -1,33 +1,9 @@
-// Dati di F1: suggerimenti per i campi circuito e scuderia (calendario e team F1 2025) e tipi di gara.
+// Dati di F1: suggerimenti per il campo scuderia e tipi di gara. I circuiti
+// arrivano dal server (GET /api/tracks), che li usa anche per le gare create
+// dalle registrazioni.
 import type { RaceType } from './types';
 
-export const TRACKS = [
-  'Australia – Melbourne',
-  'Cina – Shanghai',
-  'Giappone – Suzuka',
-  'Bahrain – Sakhir',
-  'Arabia Saudita – Jeddah',
-  'Miami',
-  'Emilia-Romagna – Imola',
-  'Monaco',
-  'Spagna – Barcellona',
-  'Canada – Montréal',
-  'Austria – Red Bull Ring',
-  'Gran Bretagna – Silverstone',
-  'Belgio – Spa-Francorchamps',
-  'Ungheria – Hungaroring',
-  'Olanda – Zandvoort',
-  'Italia – Monza',
-  'Azerbaijan – Baku',
-  'Singapore – Marina Bay',
-  'USA – Austin',
-  'Messico – Città del Messico',
-  'Brasile – Interlagos',
-  'Las Vegas',
-  'Qatar – Lusail',
-  'Abu Dhabi – Yas Marina',
-];
-
+// Scuderie proposte per i piloti: la griglia 2025, più quelle del 2026.
 export const TEAMS = [
   'McLaren',
   'Ferrari',
@@ -39,6 +15,8 @@ export const TEAMS = [
   'Racing Bulls',
   'Williams',
   'Kick Sauber',
+  'Audi',
+  'Cadillac',
 ];
 
 // Tipi di gara del torneo. Prove libere e qualifiche mostrano i piazzamenti ma non danno punti.

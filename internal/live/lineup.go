@@ -180,6 +180,7 @@ func (s *Service) saveLineup(cur *session, at time.Time) error {
 		return err
 	}
 	l.stage, l.deadline, l.saveErr = StageSaved, time.Time{}, ""
+	s.dataChangedLocked() // la gara è nel torneo: classifica e gare vanno ricaricate
 	return nil
 }
 
@@ -213,10 +214,11 @@ func (s *Service) sessionData() sessionData {
 }
 
 // addRaceToTournament mette la sessione in una gara del torneo in corso (o di
-// "Nessun torneo") e restituisce torneo e gara. Se la sessione è già collegata
-// a una gara (a mano, dalla pagina delle registrazioni) resta dov'è. Tutto
-// avviene in una transazione: chiamata due volte per la stessa sessione (dal
-// salvataggio e dal recupero dopo un'interruzione) crea una gara sola.
+// "Nessun torneo") e restituisce torneo e gara: quella in calendario sullo
+// stesso circuito, se c'è, altrimenti una nuova. Se la sessione è già
+// collegata a una gara (a mano, dalla pagina delle registrazioni) resta dov'è.
+// Tutto avviene in una transazione: chiamata due volte per la stessa sessione
+// (dal salvataggio e dal recupero dopo un'interruzione) crea una gara sola.
 func (s *Service) addRaceToTournament(sessionID int64, raceType string) (*LineupTournament, *int64, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -233,7 +235,24 @@ func (s *Service) addRaceToTournament(sessionID int64, raceType string) (*Lineup
 		if err != nil || target == nil {
 			return nil, nil, err
 		}
-		id, err := linkNewRace(tx, sessionID, target.ID, raceType)
+		spec, err := raceSpecOf(tx, sessionID, raceType)
+		if err != nil {
+			return nil, nil, err
+		}
+		id, err := plannedRace(tx, target.ID, spec)
+		if err != nil {
+			return nil, nil, err
+		}
+		if id != 0 {
+			// La gara era in calendario: prende il giorno in cui si è corsa davvero.
+			_, err = tx.Exec("UPDATE races SET date = COALESCE(?, date), track_id = COALESCE(track_id, ?) WHERE id = ?",
+				spec.date, spec.trackID, id)
+			if err == nil {
+				err = linkRace(tx, sessionID, &id)
+			}
+		} else {
+			id, err = linkNewRace(tx, sessionID, target.ID, spec.kind)
+		}
 		if err != nil {
 			return nil, nil, err
 		}
@@ -290,14 +309,6 @@ func targetTournament(db dbtx) (*LineupTournament, error) {
 		return nil, err
 	}
 	return &t, nil
-}
-
-// TournamentsChanged va chiamato quando cambia il torneo in corso (o un nome):
-// il torneo mostrato nella pagina Live viene riletto.
-func (s *Service) TournamentsChanged() {
-	s.mu.Lock()
-	s.target, s.targetLoaded = nil, false
-	s.mu.Unlock()
 }
 
 // lineupView prepara la scelta dei piloti per il frontend e scrive i nomi dei

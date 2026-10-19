@@ -1,18 +1,23 @@
 import { useState, type FormEvent } from 'react';
-import { api } from '../lib/api';
+import { api, type RaceInput } from '../lib/api';
 import { useConfirm } from '../lib/confirm';
 import { countsForPoints, RACE_TYPES, raceTypeLabel } from '../lib/f1';
 import { formatDate, raceLabels } from '../lib/format';
+import { href } from '../lib/route';
 import type { Player, RaceType, RaceWithResults } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
 import { ResultsEditor } from '../components/ResultsEditor';
-import { Button, Card, cx, dnfClass, Empty, fieldClass, rankClass, Table, Td, Th, Tr } from '../components/ui';
+import { Button, buttonClass, Card, cx, dnfClass, Empty, fieldClass, rankClass, Table, Td, Th, Tr } from '../components/ui';
 
-export function RacesPage({ tournamentId }: { tournamentId: number }) {
-  const { run } = useToast();
+// Cosa si sta modificando di una gara: i risultati o circuito, tipo e data.
+type Editing = { raceId: number; what: 'results' | 'details' } | null;
+
+// free: il torneo è "Nessun torneo" (eliminando una gara, la registrazione resta senza torneo).
+export function RacesPage({ tournamentId, free }: { tournamentId: number; free: boolean }) {
+  const { run, toast } = useToast();
   const confirm = useConfirm();
-  const [editingRaceId, setEditingRaceId] = useState<number | null>(null);
+  const [editing, setEditing] = useState<Editing>(null);
   const { data, reload } = useLoad(
     () => Promise.all([api.races(tournamentId), api.players()]),
     [tournamentId],
@@ -21,30 +26,55 @@ export function RacesPage({ tournamentId }: { tournamentId: number }) {
   function handleAdd(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    const fields = new FormData(form);
     run(async () => {
-      const race = await api.createRace(tournamentId, {
-        track: String(fields.get('track')),
-        type: fields.get('type') as RaceType,
-        date: String(fields.get('date')),
-      });
+      const race = await api.createRace(tournamentId, raceInput(form));
       form.reset();
-      setEditingRaceId(race.id);
+      setEditing({ raceId: race.id, what: 'results' });
       await reload();
     });
   }
 
-  async function handleDelete(raceId: number) {
-    const race = data?.[0].find((r) => r.id === raceId);
+  async function handleDelete(race: RaceWithResults) {
+    const recordings = race.recordings.length;
     const ok = await confirm({
       title: 'Eliminare la gara?',
-      message: `${race?.track ?? 'La gara'} verrà eliminata insieme ai suoi risultati.`,
+      message: (
+        <>
+          {race.track} verrà eliminata insieme ai suoi risultati.
+          {recordings > 0 && (free
+            ? ` ${recordings === 1 ? 'La sua registrazione resterà' : `Le sue ${recordings} registrazioni resteranno`} senza torneo.`
+            : ` ${recordings === 1 ? 'La sua registrazione passerà' : `Le sue ${recordings} registrazioni passeranno`} in "Nessun torneo".`)}
+        </>
+      ),
       confirmLabel: 'Elimina gara',
     });
     if (!ok) return;
     run(async () => {
-      await api.deleteRace(raceId);
-      if (editingRaceId === raceId) setEditingRaceId(null);
+      const { movedRecordings } = await api.deleteRace(race.id);
+      if (editing?.raceId === race.id) setEditing(null);
+      await reload();
+      if (movedRecordings) toast('La registrazione della gara è passata in "Nessun torneo"');
+    });
+  }
+
+  async function handleResync(race: RaceWithResults) {
+    const ok = await confirm({
+      title: 'Ripristinare i risultati?',
+      message: 'Le modifiche fatte a mano vengono annullate: i risultati tornano quelli della registrazione della gara.',
+      confirmLabel: 'Ripristina',
+    });
+    if (!ok) return;
+    run(async () => {
+      await api.resyncRace(race.id);
+      await reload();
+      toast('Risultati ripresi dalla registrazione');
+    });
+  }
+
+  function handleSaveDetails(race: RaceWithResults, input: RaceInput) {
+    run(async () => {
+      await api.updateRace(race.id, input);
+      setEditing(null);
       await reload();
     });
   }
@@ -53,65 +83,142 @@ export function RacesPage({ tournamentId }: { tournamentId: number }) {
     <>
       <Card>
         <form className="flex flex-wrap gap-2" onSubmit={handleAdd}>
-          <input name="track" list="tracks" placeholder="Circuito" required className={cx(fieldClass, 'flex-[1_1_200px]')} />
-          <select name="type" className={fieldClass}>
-            {RACE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
-          <input name="date" type="date" className={fieldClass} />
+          <RaceFields />
           <Button>Aggiungi gara</Button>
         </form>
       </Card>
-      {data && <RaceList
-        races={data[0]}
-        players={data[1]}
-        editingRaceId={editingRaceId}
-        onEdit={setEditingRaceId}
-        onDelete={handleDelete}
-        onSaved={async () => {
-          setEditingRaceId(null);
-          await reload();
-        }}
-      />}
+      {data && (data[0].length ? (
+        <RaceList
+          races={data[0]}
+          players={data[1]}
+          editing={editing}
+          onEdit={setEditing}
+          onDelete={handleDelete}
+          onResync={handleResync}
+          onSaveDetails={handleSaveDetails}
+          onSaved={async () => {
+            setEditing(null);
+            await reload();
+          }}
+        />
+      ) : <Empty>Nessuna gara in questo torneo.</Empty>)}
     </>
   );
+}
+
+// Campi di una gara, per aggiungerla o modificarla.
+function RaceFields({ race }: { race?: RaceWithResults }) {
+  return (
+    <>
+      <input
+        name="track"
+        list="tracks"
+        placeholder="Circuito"
+        required
+        defaultValue={race?.track}
+        className={cx(fieldClass, 'flex-[1_1_200px]')}
+      />
+      <select name="type" defaultValue={race?.type} className={fieldClass}>
+        {RACE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+      </select>
+      <input name="date" type="date" defaultValue={race?.date ?? ''} className={fieldClass} />
+    </>
+  );
+}
+
+function raceInput(form: HTMLFormElement): RaceInput {
+  const fields = new FormData(form);
+  return {
+    track: String(fields.get('track')),
+    type: fields.get('type') as RaceType,
+    date: String(fields.get('date')),
+  };
 }
 
 interface RaceListProps {
   races: RaceWithResults[];
   players: Player[];
-  editingRaceId: number | null;
-  onEdit: (raceId: number | null) => void;
-  onDelete: (raceId: number) => void;
+  editing: Editing;
+  onEdit: (editing: Editing) => void;
+  onDelete: (race: RaceWithResults) => void;
+  onResync: (race: RaceWithResults) => void;
+  onSaveDetails: (race: RaceWithResults, input: RaceInput) => void;
   onSaved: () => Promise<void>;
 }
 
-function RaceList({ races, players, editingRaceId, onEdit, onDelete, onSaved }: RaceListProps) {
-  if (!races.length) return <Empty>Nessuna gara in questo torneo.</Empty>;
-
+function RaceList({ races, players, editing, onEdit, onDelete, onResync, onSaveDetails, onSaved }: RaceListProps) {
   const labels = raceLabels(races);
   const playerName = (id: number) => players.find((p) => p.id === id)?.name ?? '?';
 
   return races.map((race) => {
-    const editing = editingRaceId === race.id;
+    const what = editing?.raceId === race.id ? editing.what : null;
+    const source = race.recordings.find((r) => r.source);
+    const replay = source ?? race.recordings[0];
     return (
       <Card key={race.id}>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h3 className="text-lg font-bold">
-            <span className="text-muted">{labels.get(race.id)}</span> {race.track}
-            {race.type !== 'race' && <> <TypeBadge type={race.type} /></>}
-            {race.date && <> <span className="text-muted">· {formatDate(race.date)}</span></>}
-          </h3>
-          <div className="flex gap-2">
-            {!editing && (
-              <Button size="sm" onClick={() => onEdit(race.id)}>
-                {race.results.length ? 'Modifica risultati' : 'Inserisci risultati'}
-              </Button>
-            )}
-            <Button variant="ghost" size="sm" onClick={() => onDelete(race.id)}>Elimina</Button>
+        {what === 'details' ? (
+          <form
+            className="flex flex-wrap gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              onSaveDetails(race, raceInput(e.currentTarget));
+            }}
+          >
+            <RaceFields race={race} />
+            <Button type="button" variant="ghost" onClick={() => onEdit(null)}>Annulla</Button>
+            <Button>Salva</Button>
+          </form>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <h3 className="flex flex-wrap items-center gap-x-2 text-lg font-bold">
+              <span className="text-muted">{labels.get(race.id)}</span> {race.track}
+              {race.type !== 'race' && <TypeBadge type={race.type} />}
+              {race.date && <span className="text-muted">· {formatDate(race.date)}</span>}
+              {source && (
+                <span
+                  className={cx(
+                    'rounded px-2 py-0.5 text-xs font-bold uppercase',
+                    race.manual_results ? 'bg-surface-2 text-sprint' : 'bg-surface-2 text-green-400',
+                  )}
+                  title={race.manual_results
+                    ? 'I risultati vengono dalla registrazione ma sono stati modificati a mano: la registrazione non li aggiorna più'
+                    : 'I risultati vengono dalla registrazione della gara'}
+                >
+                  {race.manual_results ? 'Modificati a mano' : 'Dalla telemetria'}
+                </span>
+              )}
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {replay && (
+                <a href={href('replay', replay.id)} className={buttonClass('ghost', 'sm')} title="Rivedi la gara">
+                  ▶ Replay
+                </a>
+              )}
+              {source && race.manual_results && (
+                <Button variant="ghost" size="sm" onClick={() => onResync(race)}>Ripristina risultati</Button>
+              )}
+              {!what && (
+                <>
+                  <Button variant="ghost" size="sm" onClick={() => onEdit({ raceId: race.id, what: 'details' })}>
+                    Modifica gara
+                  </Button>
+                  <Button size="sm" onClick={() => onEdit({ raceId: race.id, what: 'results' })}>
+                    {race.results.length ? 'Modifica risultati' : 'Inserisci risultati'}
+                  </Button>
+                </>
+              )}
+              <Button variant="ghost" size="sm" onClick={() => onDelete(race)}>Elimina</Button>
+            </div>
           </div>
-        </div>
-        {editing ? (
-          <ResultsEditor race={race} players={players} onCancel={() => onEdit(null)} onSaved={onSaved} />
+        )}
+        {what === 'results' ? (
+          <ResultsEditor
+            race={race}
+            players={players}
+            fromRecording={!!source}
+            onCancel={() => onEdit(null)}
+            onSaved={onSaved}
+          />
         ) : race.results.length ? (
           <Table>
             <thead><tr><Th>Pos</Th><Th>Pilota</Th>{countsForPoints(race.type) && <Th num>Punti</Th>}</tr></thead>
