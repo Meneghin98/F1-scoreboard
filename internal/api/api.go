@@ -49,6 +49,8 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service) http.Handler {
 	mux.Handle("POST /api/races/{id}/resync", s.handle(s.resyncRace))
 
 	mux.Handle("GET /api/tournaments/{id}/standings", s.handle(s.getStandings))
+	mux.Handle("GET /api/stats", s.handle(s.getStats))
+	mux.Handle("GET /api/players/{id}/stats", s.handle(s.getPlayerStats))
 
 	mux.Handle("GET /api/live", s.handle(s.getLive))
 	mux.Handle("GET /api/live/stream", s.handle(s.streamLive))

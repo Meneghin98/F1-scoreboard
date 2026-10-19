@@ -8,11 +8,13 @@ import type { Tournament } from './lib/types';
 import { useLoad } from './lib/useLoad';
 import { DashboardPage } from './pages/DashboardPage';
 import { LivePage } from './pages/LivePage';
+import { PlayerPage } from './pages/PlayerPage';
 import { PlayersPage } from './pages/PlayersPage';
 import { RacesPage } from './pages/RacesPage';
 import { RecordingsPage } from './pages/RecordingsPage';
 import { ReplayPage } from './pages/ReplayPage';
 import { StandingsPage } from './pages/StandingsPage';
+import { StatsPage } from './pages/StatsPage';
 import { TournamentsPage } from './pages/TournamentsPage';
 import { TvPage } from './pages/TvPage';
 
@@ -105,7 +107,11 @@ export function App() {
               {view === 'dashboard' && <DashboardPage key={tournamentId} tournamentId={tournamentId} />}
               {view === 'standings' && <StandingsPage key={tournamentId} tournamentId={tournamentId!} />}
               {view === 'races' && <RacesPage key={tournamentId} tournamentId={tournamentId!} free={!!current?.free} />}
+              {view === 'stats' && <StatsPage />}
               {view === 'players' && <PlayersPage />}
+              {view === 'player' && (
+                viewParam ? <PlayerPage key={viewParam} playerId={viewParam} /> : <Empty>Pilota non trovato.</Empty>
+              )}
               {view === 'tournaments' && (
                 <TournamentsPage
                   tournaments={tournaments}

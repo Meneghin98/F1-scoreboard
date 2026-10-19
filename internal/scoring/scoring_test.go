@@ -93,3 +93,25 @@ func TestStandingsIgnoreSessionsWithoutPoints(t *testing.T) {
 		t.Error("Counts")
 	}
 }
+
+// Le qualifiche vinte contano come pole, i giri veloci solo nei Gran Premi.
+func TestPolesAndFastestLaps(t *testing.T) {
+	p := func(n int) *int { return &n }
+	st := Standings([]Result{
+		{RaceID: 1, RaceType: "qualifying", PlayerID: 1, Name: "A", Position: p(1)},
+		{RaceID: 1, RaceType: "qualifying", PlayerID: 2, Name: "B", Position: p(2)},
+		{RaceID: 2, RaceType: "race", PlayerID: 1, Name: "A", Position: p(2)},
+		{RaceID: 2, RaceType: "race", PlayerID: 2, Name: "B", Position: p(1), FastestLap: true},
+		{RaceID: 3, RaceType: "sprint", PlayerID: 1, Name: "A", Position: p(1), FastestLap: true},
+	})
+	byName := map[string]Standing{}
+	for _, s := range st {
+		byName[s.Name] = s
+	}
+	if a, b := byName["A"], byName["B"]; a.Poles != 1 || b.Poles != 0 || a.Fastest != 0 || b.Fastest != 1 {
+		t.Fatalf("A %+v, B %+v", a, b)
+	}
+	if a := byName["A"]; a.Points != 18+8 || len(a.PerRace) != 2 {
+		t.Fatalf("punti di A %+v", a)
+	}
+}

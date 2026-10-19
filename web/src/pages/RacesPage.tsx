@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { api, type RaceInput } from '../lib/api';
 import { useConfirm } from '../lib/confirm';
 import { countsForPoints, RACE_TYPES, raceTypeLabel } from '../lib/f1';
-import { formatDate, raceLabels } from '../lib/format';
+import { formatDate, formatLapTime, raceLabels } from '../lib/format';
 import { href } from '../lib/route';
 import type { Player, RaceType, RaceWithResults } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
@@ -220,22 +220,46 @@ function RaceList({ races, players, editing, onEdit, onDelete, onResync, onSaveD
             onSaved={onSaved}
           />
         ) : race.results.length ? (
-          <Table>
-            <thead><tr><Th>Pos</Th><Th>Pilota</Th>{countsForPoints(race.type) && <Th num>Punti</Th>}</tr></thead>
-            <tbody>
-              {race.results.map((r) => (
-                <Tr key={r.player_id}>
-                  <Td className={r.dnf ? dnfClass : rankClass(r.position)}>{r.dnf ? 'DNF' : r.position}</Td>
-                  <Td>{playerName(r.player_id)}</Td>
-                  {countsForPoints(race.type) && <Td num>{r.points}</Td>}
-                </Tr>
-              ))}
-            </tbody>
-          </Table>
+          <ResultsTable race={race} playerName={playerName} />
         ) : <p className="mt-2 text-muted">Nessun risultato inserito.</p>}
       </Card>
     );
   });
+}
+
+// Risultati di una gara: posizione, pilota, giro veloce e punti. Il miglior
+// giro c'è solo per le gare prese da una registrazione.
+function ResultsTable({ race, playerName }: { race: RaceWithResults; playerName: (id: number) => string }) {
+  const points = countsForPoints(race.type);
+  const laps = race.results.some((r) => r.best_lap_ms);
+  return (
+    <Table>
+      <thead>
+        <tr>
+          <Th>Pos</Th><Th>Pilota</Th>
+          {laps && <Th num>Miglior giro</Th>}
+          {points && <Th num>Punti</Th>}
+        </tr>
+      </thead>
+      <tbody>
+        {race.results.map((r) => (
+          <Tr key={r.player_id}>
+            <Td className={r.dnf ? dnfClass : rankClass(r.position)}>{r.dnf ? 'DNF' : r.position}</Td>
+            <Td>
+              {playerName(r.player_id)}
+              {r.fastest_lap && (
+                <span className="ml-2 rounded bg-purple-950 px-1.5 py-0.5 text-xs font-bold text-purple-400" title="Giro più veloce della gara">
+                  GV
+                </span>
+              )}
+            </Td>
+            {laps && <Td num className={cx(r.fastest_lap && 'font-bold text-purple-400')}>{formatLapTime(r.best_lap_ms ?? 0)}</Td>}
+            {points && <Td num>{r.points}</Td>}
+          </Tr>
+        ))}
+      </tbody>
+    </Table>
+  );
 }
 
 // Etichetta del tipo per tutto ciò che non è un Gran Premio; prove libere e

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
+import { countsForPoints } from '../lib/f1';
 import type { Player, RaceWithResults, ResultInput } from '../lib/types';
 import { useToast } from '../lib/toast';
 import { Button, cx, fieldClass, Table, TeamTag, Td, Th, Tr } from './ui';
@@ -25,6 +26,10 @@ export function ResultsEditor({ race, players, fromRecording, onCancel, onSaved 
       return [p.id, { position: r && !r.dnf ? String(r.position) : '', dnf: r?.dnf ?? false }];
     }),
   ));
+  // Chi ha fatto il giro più veloce (uno solo), null se nessuno dei piloti.
+  const [fastest, setFastest] = useState<number | null>(() => race.results.find((r) => r.fastest_lap)?.player_id ?? null);
+  // Il giro veloce conta nelle gare che danno punti.
+  const withFastest = countsForPoints(race.type);
 
   if (!players.length) {
     return <p className="mt-4 text-muted">Aggiungi prima dei piloti nella scheda "Piloti".</p>;
@@ -43,7 +48,12 @@ export function ResultsEditor({ race, players, fromRecording, onCancel, onSaved 
     const results: ResultInput[] = players
       .map((p) => ({ playerId: p.id, ...rows[p.id] }))
       .filter((r) => r.position !== '' || r.dnf)
-      .map((r) => ({ player_id: r.playerId, position: r.dnf ? null : Number(r.position), dnf: r.dnf }));
+      .map((r) => ({
+        player_id: r.playerId,
+        position: r.dnf ? null : Number(r.position),
+        dnf: r.dnf,
+        fastest_lap: withFastest && fastest === r.playerId,
+      }));
 
     run(async () => {
       await api.saveResults(race.id, results);
@@ -60,9 +70,17 @@ export function ResultsEditor({ race, players, fromRecording, onCancel, onSaved 
           della registrazione non li aggiornerà più, finché non li ripristini.
         </p>
       )}
-      <p className="mb-2 text-muted">Inserisci la posizione d'arrivo; lascia vuoto chi non ha partecipato.</p>
+      <p className="mb-2 text-muted">
+        Inserisci la posizione d'arrivo; lascia vuoto chi non ha partecipato.
+        {withFastest && ' Segna chi ha fatto il giro più veloce, se è uno dei piloti.'}
+      </p>
       <Table>
-        <thead><tr><Th>Pilota</Th><Th>Posizione</Th><Th>DNF</Th></tr></thead>
+        <thead>
+          <tr>
+            <Th>Pilota</Th><Th>Posizione</Th><Th>DNF</Th>
+            {withFastest && <Th title="Giro più veloce della gara">Giro veloce</Th>}
+          </tr>
+        </thead>
         <tbody>
           {players.map((p) => (
             <Tr key={p.id}>
@@ -83,6 +101,18 @@ export function ResultsEditor({ race, players, fromRecording, onCancel, onSaved 
                   onChange={(e) => setDnf(p.id, e.target.checked)}
                 />
               </Td>
+              {withFastest && (
+                <Td>
+                  {/* Un secondo clic sullo stesso pilota toglie il giro veloce. */}
+                  <input
+                    type="radio" name="fastest"
+                    className="size-4 accent-purple-500"
+                    checked={fastest === p.id}
+                    onChange={() => setFastest(p.id)}
+                    onClick={() => fastest === p.id && setFastest(null)}
+                  />
+                </Td>
+              )}
             </Tr>
           ))}
         </tbody>

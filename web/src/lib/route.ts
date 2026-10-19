@@ -5,13 +5,16 @@ import { useSyncExternalStore } from 'react';
 // Alcune pagine hanno un parametro dopo il nome: #/replay/12.
 
 export type View =
-  | 'dashboard' | 'standings' | 'races' | 'players' | 'tournaments' | 'live' | 'recordings' | 'replay' | 'tv';
+  | 'dashboard' | 'standings' | 'races' | 'stats' | 'players' | 'player' | 'tournaments' | 'live' | 'recordings' | 'replay'
+  | 'tv';
 
 export const VIEW_LABELS: Record<View, string> = {
   dashboard: 'Dashboard',
   standings: 'Classifica',
   races: 'Gare',
+  stats: 'Statistiche',
   players: 'Piloti',
+  player: 'Profilo',
   tournaments: 'Tornei',
   live: 'Live',
   recordings: 'Registrazioni',
@@ -20,11 +23,12 @@ export const VIEW_LABELS: Record<View, string> = {
 };
 
 // Pagine nella barra di navigazione, in ordine.
-export const NAV_VIEWS: View[] = ['dashboard', 'standings', 'races', 'players', 'tournaments', 'live', 'recordings'];
+export const NAV_VIEWS: View[] = ['dashboard', 'standings', 'races', 'stats', 'players', 'tournaments', 'live', 'recordings'];
 
 // Pagina della barra a cui appartiene una pagina che non c'è (il replay sta sotto le registrazioni).
 export const VIEW_PARENT: Partial<Record<View, View>> = {
   replay: 'recordings',
+  player: 'players',
 };
 
 // Pagine a schermo intero, senza header e barra di navigazione.

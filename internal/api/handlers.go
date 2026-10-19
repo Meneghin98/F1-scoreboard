@@ -88,10 +88,12 @@ func scanRace(row interface{ Scan(...any) error }, r *Race) error {
 }
 
 type RaceResult struct {
-	PlayerID int64 `json:"player_id"`
-	Position *int  `json:"position"`
-	DNF      bool  `json:"dnf"`
-	Points   int   `json:"points"`
+	PlayerID   int64  `json:"player_id"`
+	Position   *int   `json:"position"`
+	DNF        bool   `json:"dnf"`
+	Points     int    `json:"points"`
+	FastestLap bool   `json:"fastest_lap"` // giro più veloce della gara
+	BestLapMS  *int64 `json:"best_lap_ms"` // miglior giro, solo dalle registrazioni
 }
 
 type RaceWithResults struct {
@@ -480,7 +482,7 @@ func (s *Server) listRaces(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	rows, err := s.db.Query(`
-		SELECT r.race_id, r.player_id, r.position, r.dnf
+		SELECT r.race_id, r.player_id, r.position, r.dnf, r.fastest_lap, r.best_lap_ms
 		FROM results r JOIN races ra ON ra.id = r.race_id
 		WHERE ra.tournament_id = ?`, tournamentID)
 	if err != nil {
@@ -492,7 +494,7 @@ func (s *Server) listRaces(w http.ResponseWriter, r *http.Request) error {
 	for rows.Next() {
 		var raceID int64
 		var res RaceResult
-		if err := rows.Scan(&raceID, &res.PlayerID, &res.Position, &res.DNF); err != nil {
+		if err := rows.Scan(&raceID, &res.PlayerID, &res.Position, &res.DNF, &res.FastestLap, &res.BestLapMS); err != nil {
 			return err
 		}
 		resultsByRace[raceID] = append(resultsByRace[raceID], res)
@@ -644,8 +646,9 @@ func (s *Server) deleteRace(w http.ResponseWriter, r *http.Request) error {
 
 // saveResults sostituisce in blocco i risultati di una gara. Se la gara li
 // prendeva da una registrazione, da qui restano quelli inseriti a mano
-// (vedi resyncRace per tornare a quelli della registrazione).
-// Body: { "results": [{ "player_id": 1, "position": 3, "dnf": false }] }
+// (vedi resyncRace per tornare a quelli della registrazione). I migliori giri
+// presi dalla registrazione restano a chi aveva già un risultato.
+// Body: { "results": [{ "player_id": 1, "position": 3, "dnf": false, "fastest_lap": true }] }
 func (s *Server) saveResults(w http.ResponseWriter, r *http.Request) error {
 	raceID, err := s.pathID(r, "races", "Gara")
 	if err != nil {
@@ -653,9 +656,10 @@ func (s *Server) saveResults(w http.ResponseWriter, r *http.Request) error {
 	}
 	var body struct {
 		Results *[]struct {
-			PlayerID int64    `json:"player_id"`
-			Position *float64 `json:"position"` // float per poter rifiutare i decimali con un messaggio chiaro
-			DNF      bool     `json:"dnf"`
+			PlayerID   int64    `json:"player_id"`
+			Position   *float64 `json:"position"` // float per poter rifiutare i decimali con un messaggio chiaro
+			DNF        bool     `json:"dnf"`
+			FastestLap bool     `json:"fastest_lap"`
 		} `json:"results"`
 	}
 	if err := readJSON(r, &body); err != nil {
@@ -669,12 +673,19 @@ func (s *Server) saveResults(w http.ResponseWriter, r *http.Request) error {
 		playerID int64
 		position *int
 		dnf      bool
+		fastest  bool
 	}
 	rows := make([]row, 0, len(*body.Results))
 	seenPlayers := map[int64]bool{}
 	seenPositions := map[int]bool{}
+	fastest := 0
 
 	for _, in := range *body.Results {
+		if in.FastestLap {
+			if fastest++; fastest > 1 {
+				return errorf(http.StatusBadRequest, "Il giro più veloce può averlo un solo pilota")
+			}
+		}
 		found, err := s.exists("SELECT 1 FROM players WHERE id = ?", in.PlayerID)
 		if err != nil {
 			return err
@@ -687,7 +698,7 @@ func (s *Server) saveResults(w http.ResponseWriter, r *http.Request) error {
 		}
 		seenPlayers[in.PlayerID] = true
 
-		res := row{playerID: in.PlayerID, dnf: in.DNF}
+		res := row{playerID: in.PlayerID, dnf: in.DNF, fastest: in.FastestLap}
 		if !in.DNF {
 			if in.Position == nil || *in.Position < 1 || *in.Position != math.Trunc(*in.Position) {
 				return errorf(http.StatusBadRequest, "Le posizioni devono essere numeri interi maggiori di zero")
@@ -708,12 +719,29 @@ func (s *Server) saveResults(w http.ResponseWriter, r *http.Request) error {
 	}
 	defer tx.Rollback() // non fa nulla se la transazione è già stata confermata
 
+	// Il body non porta i migliori giri: si tengono quelli presi dalla registrazione.
+	bestLaps := map[int64]*int64{}
+	lapRows, err := tx.Query("SELECT player_id, best_lap_ms FROM results WHERE race_id = ?", raceID)
+	if err != nil {
+		return err
+	}
+	for lapRows.Next() {
+		var id int64
+		var lap *int64
+		if err := lapRows.Scan(&id, &lap); err != nil {
+			lapRows.Close()
+			return err
+		}
+		bestLaps[id] = lap
+	}
+	lapRows.Close()
+
 	if _, err := tx.Exec("DELETE FROM results WHERE race_id = ?", raceID); err != nil {
 		return err
 	}
 	for _, res := range rows {
-		_, err := tx.Exec("INSERT INTO results (race_id, player_id, position, dnf) VALUES (?, ?, ?, ?)",
-			raceID, res.playerID, res.position, res.dnf)
+		_, err := tx.Exec("INSERT INTO results (race_id, player_id, position, dnf, fastest_lap, best_lap_ms) VALUES (?, ?, ?, ?, ?, ?)",
+			raceID, res.playerID, res.position, res.dnf, res.fastest, bestLaps[res.playerID])
 		if err != nil {
 			return err
 		}
@@ -776,7 +804,7 @@ func (s *Server) getStandings(w http.ResponseWriter, r *http.Request) error {
 // resultsOf restituisce tutti i risultati di un torneo, con i dati dei piloti.
 func (s *Server) resultsOf(tournamentID int64) ([]scoring.Result, error) {
 	rows, err := s.db.Query(`
-		SELECT r.race_id, ra.type, r.player_id, p.name, p.team, COALESCE(p.color, ''), r.position, r.dnf
+		SELECT r.race_id, ra.type, r.player_id, p.name, p.team, COALESCE(p.color, ''), r.position, r.dnf, r.fastest_lap
 		FROM results r
 		JOIN races ra ON ra.id = r.race_id
 		JOIN players p ON p.id = r.player_id
@@ -789,7 +817,7 @@ func (s *Server) resultsOf(tournamentID int64) ([]scoring.Result, error) {
 	var results []scoring.Result
 	for rows.Next() {
 		var res scoring.Result
-		if err := rows.Scan(&res.RaceID, &res.RaceType, &res.PlayerID, &res.Name, &res.Team, &res.Color, &res.Position, &res.DNF); err != nil {
+		if err := rows.Scan(&res.RaceID, &res.RaceType, &res.PlayerID, &res.Name, &res.Team, &res.Color, &res.Position, &res.DNF, &res.FastestLap); err != nil {
 			return nil, err
 		}
 		results = append(results, res)

@@ -203,6 +203,25 @@ mai modificati. I database creati dalla vecchia versione Node.js vengono adottat
 Il punto per il giro veloce non c'è più dal 2025. A parità di punti vale il countback sui
 piazzamenti nei Gran Premi (più vittorie, poi più secondi posti, ecc.).
 
+La classifica mostra anche le **pole** (qualifiche vinte) e i **giri veloci** nei Gran Premi. Il
+giro veloce arriva dalla registrazione (chi ha fatto il miglior giro della gara, IA compresa) o si
+segna a mano nell'editor dei risultati.
+
+## Statistiche
+
+La pagina **Statistiche** raccoglie tutte le gare di tutti i tornei:
+
+- **Carriera**: titoli, punti (somma delle classifiche dei tornei), vittorie, podi, pole, giri
+  veloci, ritiri, media e miglior piazzamento di ogni pilota;
+- **Record dei circuiti**: il giro più veloce dei piloti su ogni circuito, in qualunque sessione
+  registrata, con il link al replay;
+- **Testa a testa**: quante volte ogni pilota è arrivato davanti a ciascun altro.
+
+Ogni pilota ha un **profilo** (dalla pagina Piloti o cliccando il nome) con i tornei, i migliori
+giri per circuito, gli ultimi risultati e i confronti diretti. Miglior giro, griglia, giri, soste
+e penalità si leggono dalla classifica finale delle registrazioni; quelle registrate prima di
+questa funzione vengono rilette una volta all'avvio del server.
+
 ## Backup
 
 Per fare un backup basta copiare la cartella `data/` a server fermo.

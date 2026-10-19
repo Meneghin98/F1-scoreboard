@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -147,6 +148,7 @@ func (s *Service) analyzePending() {
 	// Dopo l'analisi, così le gare create hanno subito i risultati.
 	s.adoptPending()
 	s.recoverPending()
+	s.backfillStats()
 	s.DataChanged()
 }
 
@@ -298,10 +300,13 @@ func (s *Service) savePlayers(sessionID int64, d sessionData) error {
 					return err
 				}
 			}
+			st := statsOf(d.classification, i)
 			_, err = tx.Exec(`
-				INSERT INTO telemetry_players (session_id, car_index, name, team, race_number, position, result_status, player_id, controller)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-				sessionID, i, car.Name, car.TeamID.String(), int(car.RaceNumber), position, status, playerID, controller)
+				INSERT INTO telemetry_players (session_id, car_index, name, team, race_number, position, result_status, player_id, controller,
+					best_lap_ms, grid_position, laps, pit_stops, penalties_s, race_time_ms)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				sessionID, i, car.Name, car.TeamID.String(), int(car.RaceNumber), position, status, playerID, controller,
+				st.bestLap, st.grid, st.laps, st.pitStops, st.penalties, st.raceTime)
 			if err != nil {
 				return err
 			}
@@ -310,9 +315,148 @@ func (s *Service) savePlayers(sessionID int64, d sessionData) error {
 	if _, err := tx.Exec("UPDATE telemetry_sessions SET analyzed = 1, cars = ? WHERE id = ?", cars, sessionID); err != nil {
 		return err
 	}
+	if c := d.classification; c != nil {
+		_, err := tx.Exec("UPDATE telemetry_sessions SET best_lap_ms = ?, stats_extracted = 1 WHERE id = ?", sessionBestLap(c), sessionID)
+		if err != nil {
+			return err
+		}
+	}
 
 	var raceID *int64
 	if err := tx.QueryRow("SELECT race_id FROM telemetry_sessions WHERE id = ?", sessionID).Scan(&raceID); err != nil {
+		return err
+	}
+	if raceID != nil {
+		if err := syncRaceResults(tx, *raceID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// classStats sono i dati della classifica finale di un'auto che servono alle
+// statistiche; nil quando mancano (niente classifica, nessun giro valido).
+type classStats struct {
+	bestLap, grid, laps, pitStops, penalties, raceTime *int64
+}
+
+func statsOf(c *telemetry.FinalClassification, i int) classStats {
+	var st classStats
+	if c == nil || i >= len(c.Cars) {
+		return st
+	}
+	e := c.Cars[i]
+	value := func(v int64) *int64 { return &v }
+	if e.BestLapTimeMS > 0 {
+		st.bestLap = value(int64(e.BestLapTimeMS))
+	}
+	if e.GridPosition > 0 {
+		st.grid = value(int64(e.GridPosition))
+	}
+	st.laps, st.pitStops, st.penalties = value(int64(e.NumLaps)), value(int64(e.NumPitStops)), value(int64(e.PenaltiesTime))
+	if e.TotalRaceTime > 0 {
+		st.raceTime = value(int64(math.Round(e.TotalRaceTime * 1000)))
+	}
+	return st
+}
+
+// sessionBestLap restituisce il miglior giro della sessione tra tutte le auto
+// in classifica, IA comprese; nil se nessuno ha completato un giro valido.
+func sessionBestLap(c *telemetry.FinalClassification) *int64 {
+	var best int64
+	for _, e := range c.Cars {
+		if ms := int64(e.BestLapTimeMS); ms > 0 && (best == 0 || ms < best) {
+			best = ms
+		}
+	}
+	if best == 0 {
+		return nil
+	}
+	return &best
+}
+
+// backfillStats legge dalla classifica finale i dati per le statistiche
+// (miglior giro, griglia, soste…) delle sessioni registrate prima che il
+// server li salvasse. I piloti associati ai giocatori non cambiano.
+func (s *Service) backfillStats() {
+	type pending struct {
+		id        int64
+		uid, file string
+	}
+	rows, err := s.db.Query(`SELECT id, session_uid, file FROM telemetry_sessions
+		WHERE has_classification = 1 AND stats_extracted = 0 AND ended_at IS NOT NULL`)
+	if err != nil {
+		log.Printf("telemetria: %v", err)
+		return
+	}
+	var list []pending
+	for rows.Next() {
+		var p pending
+		if rows.Scan(&p.id, &p.uid, &p.file) == nil {
+			list = append(list, p)
+		}
+	}
+	rows.Close()
+
+	for _, p := range list {
+		var d sessionData
+		uid, err := strconv.ParseUint(p.uid, 16, 64)
+		if err == nil {
+			d, err = analyzeFile(filepath.Join(s.opts.Dir, p.file), uid)
+		}
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			log.Printf("telemetria: lettura della sessione %d: %v", p.id, err)
+		}
+		if err := s.saveStats(p.id, d.classification); err != nil {
+			log.Printf("telemetria: statistiche della sessione %d: %v", p.id, err)
+		}
+	}
+	if len(list) > 0 {
+		log.Printf("telemetria: lette le statistiche di %d sessioni registrate", len(list))
+	}
+}
+
+// saveStats salva i dati della classifica c (nil se non c'è più il file) nei
+// giocatori della sessione e aggiorna i risultati della gara collegata.
+func (s *Service) saveStats(sessionID int64, c *telemetry.FinalClassification) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if c != nil {
+		rows, err := tx.Query("SELECT car_index FROM telemetry_players WHERE session_id = ?", sessionID)
+		if err != nil {
+			return err
+		}
+		var cars []int
+		for rows.Next() {
+			var car int
+			if err := rows.Scan(&car); err != nil {
+				rows.Close()
+				return err
+			}
+			cars = append(cars, car)
+		}
+		rows.Close()
+		for _, car := range cars {
+			st := statsOf(c, car)
+			_, err := tx.Exec(`UPDATE telemetry_players SET best_lap_ms = ?, grid_position = ?, laps = ?, pit_stops = ?,
+				penalties_s = ?, race_time_ms = ? WHERE session_id = ? AND car_index = ?`,
+				st.bestLap, st.grid, st.laps, st.pitStops, st.penalties, st.raceTime, sessionID, car)
+			if err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec("UPDATE telemetry_sessions SET best_lap_ms = ? WHERE id = ?", sessionBestLap(c), sessionID); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec("UPDATE telemetry_sessions SET stats_extracted = 1 WHERE id = ?", sessionID); err != nil {
+		return err
+	}
+	raceID, err := sessionRace(tx, sessionID)
+	if err != nil {
 		return err
 	}
 	if raceID != nil {
@@ -441,20 +585,26 @@ func syncRaceResults(db dbtx, raceID int64) error {
 	if err != nil || sessionID == 0 {
 		return err
 	}
-	rows, err := db.Query(
-		"SELECT player_id, position, result_status FROM telemetry_players WHERE session_id = ? AND player_id IS NOT NULL",
-		sessionID)
+	// Il giro più veloce della gara è di chi ha fatto il miglior giro della
+	// sessione, tra tutte le auto (IA comprese).
+	var sessionBest *int64
+	if err := db.QueryRow("SELECT best_lap_ms FROM telemetry_sessions WHERE id = ?", sessionID).Scan(&sessionBest); err != nil {
+		return err
+	}
+	rows, err := db.Query(`SELECT player_id, position, result_status, best_lap_ms FROM telemetry_players
+		WHERE session_id = ? AND player_id IS NOT NULL`, sessionID)
 	if err != nil {
 		return err
 	}
 	type result struct {
 		playerID         int64
 		position, status *int
+		bestLap          *int64
 	}
 	var results []result
 	for rows.Next() {
 		var r result
-		if err := rows.Scan(&r.playerID, &r.position, &r.status); err != nil {
+		if err := rows.Scan(&r.playerID, &r.position, &r.status, &r.bestLap); err != nil {
 			rows.Close()
 			return err
 		}
@@ -473,8 +623,9 @@ func syncRaceResults(db dbtx, raceID int64) error {
 		if dnf {
 			position = nil
 		}
-		_, err := db.Exec("INSERT INTO results (race_id, player_id, position, dnf) VALUES (?, ?, ?, ?)",
-			raceID, r.playerID, position, dnf)
+		fastest := r.bestLap != nil && sessionBest != nil && *r.bestLap == *sessionBest
+		_, err := db.Exec("INSERT INTO results (race_id, player_id, position, dnf, best_lap_ms, fastest_lap) VALUES (?, ?, ?, ?, ?, ?)",
+			raceID, r.playerID, position, dnf, r.bestLap, fastest)
 		if err != nil {
 			return err
 		}

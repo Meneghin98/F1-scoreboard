@@ -43,6 +43,8 @@ export interface RaceResult {
   position: number | null;
   dnf: boolean;
   points: number;
+  fastest_lap: boolean; // giro più veloce della gara
+  best_lap_ms: number | null; // miglior giro, solo dalle registrazioni
 }
 
 export interface RaceWithResults extends Race {
@@ -68,6 +70,8 @@ export interface Standing {
   podiums: number;
   races: number;
   dnf: number;
+  poles: number; // qualifiche vinte
+  fastestLaps: number; // giri più veloci nei Gran Premi
   perRace: Record<number, RaceScore>;
 }
 
@@ -81,6 +85,7 @@ export interface ResultInput {
   player_id: number;
   position: number | null;
   dnf: boolean;
+  fastest_lap: boolean;
 }
 
 // --- Telemetria live (vedi internal/live/tracker.go) ----------------------
@@ -414,4 +419,70 @@ export interface ReplayFrame {
   t: number;
   snapshot: LiveSnapshot;
   pedals: ReplayPedal[]; // di tutti i giocatori, dal più vecchio
+}
+
+// --- Statistiche (vedi internal/api/stats.go) ---------------------------------
+
+export interface CareerStats {
+  player_id: number;
+  name: string;
+  team: string | null;
+  color: string;
+  races: number; // Gran Premi corsi
+  sprints: number;
+  wins: number; // vittorie nei Gran Premi
+  sprintWins: number;
+  podiums: number;
+  poles: number;
+  fastestLaps: number;
+  dnf: number;
+  avgFinish: number | null; // media dei piazzamenti nei Gran Premi finiti
+  bestFinish: number | null;
+  points: number; // somma dei punti nelle classifiche dei tornei
+  tournaments: number;
+  titles: number; // tornei terminati da primo
+}
+
+// Giro più veloce dei piloti su un circuito, dalle registrazioni.
+export interface TrackRecord {
+  trackId: number;
+  track: string;
+  lapMs: number;
+  player_id: number;
+  name: string;
+  color: string;
+  sessionId: number;
+  sessionType: string;
+  date: string; // UTC
+}
+
+export interface H2HPlayer {
+  id: number;
+  name: string;
+  color: string;
+}
+
+export interface StatsResponse {
+  career: CareerStats[]; // dal migliore
+  records: TrackRecord[]; // nell'ordine del calendario
+  headToHead: { players: H2HPlayer[]; ahead: number[][] }; // ahead[i][j]: gare in cui i è arrivato davanti a j
+}
+
+export interface PlayerProfile {
+  player: Player;
+  career: CareerStats;
+  tournaments: { id: number; name: string; rank: number; of: number; points: number; wins: number; active: boolean; ended: boolean }[];
+  bestLaps: { trackId: number; track: string; lapMs: number; sessionId: number; sessionType: string; date: string; record: boolean }[];
+  recent: {
+    raceId: number;
+    tournamentId: number;
+    tournamentName: string;
+    track: string;
+    type: RaceType;
+    date: string | null;
+    position: number | null;
+    dnf: boolean;
+    fastestLap: boolean;
+  }[];
+  rivals: (H2HPlayer & { ahead: number; behind: number })[];
 }

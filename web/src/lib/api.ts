@@ -1,5 +1,6 @@
 import type {
-  Player, Race, RaceType, RaceWithResults, ResultInput, SessionRaceInput, SessionRecord, StandingsResponse, Tournament,
+  Player, PlayerProfile, Race, RaceType, RaceWithResults, ResultInput, SessionRaceInput, SessionRecord, StandingsResponse,
+  StatsResponse, Tournament,
   ReplayFrame, ReplayInfo, Track, TrackMap,
 } from './types';
 
@@ -51,6 +52,8 @@ export const api = {
   resyncRace: (raceId: number) => request<void>(`/races/${raceId}/resync`, 'POST'),
 
   standings: (tournamentId: number) => request<StandingsResponse>(`/tournaments/${tournamentId}/standings`),
+  stats: () => request<StatsResponse>('/stats'),
+  playerStats: (id: number) => request<PlayerProfile>(`/players/${id}/stats`),
 
   liveTrack: () => request<TrackMap>('/live/track'),
   setLineup: (players: { carIndex: number; playerId: number | null }[], confirm: boolean) =>

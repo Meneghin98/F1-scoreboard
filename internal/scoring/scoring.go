@@ -34,14 +34,15 @@ func PointsFor(raceType string, position *int, dnf bool) int {
 
 // Result è un singolo risultato di gara, con i dati del pilota che servono alla classifica.
 type Result struct {
-	RaceID   int64
-	RaceType string
-	PlayerID int64
-	Name     string
-	Team     *string
-	Color    string
-	Position *int
-	DNF      bool
+	RaceID     int64
+	RaceType   string
+	PlayerID   int64
+	Name       string
+	Team       *string
+	Color      string
+	Position   *int
+	DNF        bool
+	FastestLap bool // giro più veloce della gara
 }
 
 // RaceScore è il risultato di un pilota in una gara, come appare in classifica.
@@ -63,17 +64,21 @@ type Standing struct {
 	Podiums  int                 `json:"podiums"`
 	Races    int                 `json:"races"`
 	DNF      int                 `json:"dnf"`
+	Poles    int                 `json:"poles"`       // qualifiche vinte
+	Fastest  int                 `json:"fastestLaps"` // giri più veloci nei Gran Premi
 	PerRace  map[int64]RaceScore `json:"perRace"`
 
 	positions []int // piazzamenti nei Gran Premi, usati per il countback
 }
 
 // Standings calcola la classifica a partire da tutti i risultati di un torneo.
-// Le sessioni che non danno punti (prove libere e qualifiche) non contano.
+// Le sessioni che non danno punti (prove libere e qualifiche) non contano,
+// tranne le qualifiche vinte, che diventano pole position.
 func Standings(results []Result) []Standing {
 	byPlayer := map[int64]*Standing{}
 	for _, r := range results {
-		if !Counts(r.RaceType) {
+		pole := r.RaceType == "qualifying" && !r.DNF && r.Position != nil && *r.Position == 1
+		if !Counts(r.RaceType) && !pole {
 			continue
 		}
 		s, ok := byPlayer[r.PlayerID]
@@ -81,16 +86,23 @@ func Standings(results []Result) []Standing {
 			s = &Standing{PlayerID: r.PlayerID, Name: r.Name, Team: r.Team, Color: r.Color, PerRace: map[int64]RaceScore{}}
 			byPlayer[r.PlayerID] = s
 		}
+		if pole {
+			s.Poles++
+			continue
+		}
 
 		points := PointsFor(r.RaceType, r.Position, r.DNF)
 		s.Points += points
 		s.PerRace[r.RaceID] = RaceScore{Points: points, Position: r.Position, DNF: r.DNF}
 
-		// Vittorie, podi e countback considerano solo i Gran Premi, non le sprint.
+		// Vittorie, podi, giri veloci e countback considerano solo i Gran Premi, non le sprint.
 		if r.RaceType != "race" {
 			continue
 		}
 		s.Races++
+		if r.FastestLap {
+			s.Fastest++
+		}
 		if r.DNF || r.Position == nil {
 			s.DNF++
 			continue

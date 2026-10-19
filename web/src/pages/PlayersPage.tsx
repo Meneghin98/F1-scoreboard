@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
 import { useConfirm } from '../lib/confirm';
+import { href } from '../lib/route';
 import type { Player } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
@@ -74,10 +75,10 @@ export function PlayersPage() {
             </form>
           ) : (
             <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-2">
+              <a href={href('player', p.id)} className="flex items-center gap-2 hover:underline" title="Apri il profilo">
                 <ColorDot color={p.color} className="size-3" />
                 {p.name} <TeamTag team={p.team} />
-              </span>
+              </a>
               <div className="flex gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setEditingId(p.id)}>Modifica</Button>
                 <Button variant="ghost" size="sm" onClick={() => handleDelete(p)}>Elimina</Button>
