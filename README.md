@@ -91,6 +91,11 @@ nella pagina Live con la classifica in tempo reale, e
 2 MB al minuto). Se la porta UDP è occupata (per esempio da `cmd/record`) il server parte
 comunque e riprova ogni 10 secondi.
 
+In split-screen la pagina Live mostra anche il **Duello** tra i due giocatori (chi è davanti, di
+quanto, confronto dei giri). La **Modalità TV** (`#/tv`, dal pulsante nella pagina Live) mostra
+classifica, mappa e direzione gara a schermo intero, con caratteri grandi da leggere dal divano.
+Ogni pilota ha un colore (si cambia nella pagina Piloti), lo stesso nei grafici e nella classifica live.
+
 Quando non c'è una sessione, la pagina Live mostra cosa impostare nel gioco (con gli indirizzi IP
 del server) e i problemi di ricezione: porta UDP occupata o formato UDP non supportato. I
 pacchetti ricevuti aspettano in una coda prima di essere elaborati, così un rallentamento (per
@@ -119,9 +124,9 @@ i piloti già proposti (quelli che avevano lo stesso controller nella sessione p
    colpo prima di salvare, la sessione viene salvata al riavvio.
 3. La sessione diventa una gara del **torneo in corso** o, se nessun torneo è in corso, di
    **Nessun torneo**. Se nel torneo c'è già la gara in calendario (stesso circuito e tipo, ancora
-   senza risultati) la sessione va lì, altrimenti ne viene creata una nuova. Un torneo si inizia
-   e si termina dai pulsanti nell'header; terminato, le gare tornano in Nessun torneo, che non si
-   può iniziare né eliminare.
+   senza risultati) la sessione va lì, altrimenti ne viene creata una nuova. Un torneo si crea,
+   si inizia, si termina e si rinomina dalla pagina Tornei; terminato, le gare tornano in Nessun
+   torneo, che non si può iniziare né eliminare.
 
 Ogni sessione del weekend finita (con la classifica finale) appartiene sempre a un torneo: dalla
 pagina Registrazioni si può spostare in un altro, non togliere. Quando la si sposta, la gara

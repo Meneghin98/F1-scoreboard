@@ -39,6 +39,7 @@ type Result struct {
 	PlayerID int64
 	Name     string
 	Team     *string
+	Color    string
 	Position *int
 	DNF      bool
 }
@@ -56,6 +57,7 @@ type Standing struct {
 	PlayerID int64               `json:"player_id"`
 	Name     string              `json:"name"`
 	Team     *string             `json:"team"`
+	Color    string              `json:"color"` // colore del pilota, "#rrggbb"
 	Points   int                 `json:"points"`
 	Wins     int                 `json:"wins"`
 	Podiums  int                 `json:"podiums"`
@@ -76,7 +78,7 @@ func Standings(results []Result) []Standing {
 		}
 		s, ok := byPlayer[r.PlayerID]
 		if !ok {
-			s = &Standing{PlayerID: r.PlayerID, Name: r.Name, Team: r.Team, PerRace: map[int64]RaceScore{}}
+			s = &Standing{PlayerID: r.PlayerID, Name: r.Name, Team: r.Team, Color: r.Color, PerRace: map[int64]RaceScore{}}
 			byPlayer[r.PlayerID] = s
 		}
 

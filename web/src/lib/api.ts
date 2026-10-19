@@ -38,7 +38,8 @@ export const api = {
 
   players: () => request<Player[]>('/players'),
   createPlayer: (name: string, team: string) => request<Player>('/players', 'POST', { name, team }),
-  updatePlayer: (id: number, name: string, team: string) => request<Player>(`/players/${id}`, 'PUT', { name, team }),
+  updatePlayer: (id: number, name: string, team: string, color: string) =>
+    request<Player>(`/players/${id}`, 'PUT', { name, team, color }),
   deletePlayer: (id: number) => request<void>(`/players/${id}`, 'DELETE'),
 
   races: (tournamentId: number) => request<RaceWithResults[]>(`/tournaments/${tournamentId}/races`),

@@ -8,7 +8,7 @@ import type { Player, RaceType, RaceWithResults } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
 import { ResultsEditor } from '../components/ResultsEditor';
-import { Button, buttonClass, Card, cx, dnfClass, Empty, fieldClass, rankClass, Table, Td, Th, Tr } from '../components/ui';
+import { Button, buttonClass, Card, cx, dnfClass, Empty, fieldClass, Loading, rankClass, Table, Td, Th, Tr } from '../components/ui';
 
 // Cosa si sta modificando di una gara: i risultati o circuito, tipo e data.
 type Editing = { raceId: number; what: 'results' | 'details' } | null;
@@ -87,7 +87,7 @@ export function RacesPage({ tournamentId, free }: { tournamentId: number; free: 
           <Button>Aggiungi gara</Button>
         </form>
       </Card>
-      {data && (data[0].length ? (
+      {!data ? <Loading /> : (data[0].length ? (
         <RaceList
           races={data[0]}
           players={data[1]}

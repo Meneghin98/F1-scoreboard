@@ -13,6 +13,10 @@ import (
 
 func replayOf(t *testing.T, names map[int]string) *Replay {
 	t.Helper()
+	players := map[int]scoreboardPlayer{}
+	for car, name := range names {
+		players[car] = scoreboardPlayer{Name: name, Color: "#3987e5"}
+	}
 	packets := loadRecording(t)
 	// La registrazione di prova contiene più sessioni: si usa la gara, quella con più pacchetti.
 	counts := map[uint64]int{}
@@ -34,7 +38,7 @@ func replayOf(t *testing.T, names map[int]string) *Replay {
 		return packets[i-1], nil
 	}
 	start := time.Now()
-	r, err := buildReplay(next, uid, names, func(*telemetry.Session) *outline { return nil })
+	r, err := buildReplay(next, uid, players, func(*telemetry.Session) *outline { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}

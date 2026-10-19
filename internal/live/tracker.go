@@ -78,8 +78,9 @@ type Driver struct {
 	Name          string  `json:"name"`
 	Team          string  `json:"team"`
 	RaceNumber    uint8   `json:"raceNumber"`
-	Controller    int     `json:"controller"` // 1 o 2 per le auto dei giocatori, 0 per le altre
-	PlayerName    string  `json:"playerName"` // pilota del segnapunti alla guida, se scelto
+	Controller    int     `json:"controller"`  // 1 o 2 per le auto dei giocatori, 0 per le altre
+	PlayerName    string  `json:"playerName"`  // pilota del segnapunti alla guida, se scelto
+	PlayerColor   string  `json:"playerColor"` // suo colore ("#rrggbb"), vuoto se non scelto
 	AI            bool    `json:"ai"`
 	Lap           uint8   `json:"lap"`
 	LastLapMS     uint32  `json:"lastLapMs"`

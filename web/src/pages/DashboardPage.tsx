@@ -37,7 +37,7 @@ export function DashboardPage({ tournamentId }: { tournamentId: number | null })
           {active ? sessionSummary(live) : 'Nessuna sessione in corso'}
         </div>
         {active ? (
-          <Podium rows={live.drivers.slice(0, 3).map((d) => ({ key: d.carIndex, rank: d.position, name: d.name }))} />
+          <Podium rows={live.drivers.slice(0, 3).map((d) => ({ key: d.carIndex, rank: d.position, name: d.playerName || d.name }))} />
         ) : (
           <p className="text-sm text-muted">La classifica compare qui appena il gioco invia la telemetria.</p>
         )}

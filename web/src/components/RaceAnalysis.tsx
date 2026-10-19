@@ -24,7 +24,8 @@ const TYRE_NAME: Record<string, string> = { S: 'Morbide', M: 'Medie', H: 'Dure',
 // Riassunto della sessione sotto il replay. onSeekLap porta il replay alla fine del giro indicato (0 = partenza).
 export function RaceAnalysis({ analysis, onSeekLap }: { analysis: Analysis; onSeekLap: (lap: number) => void }) {
   const humans = analysis.cars.filter((c) => c.human);
-  const colorOf = new Map(humans.map((c, i) => [c.carIndex, HUMAN_COLORS[i % HUMAN_COLORS.length]]));
+  // Il colore del pilota del segnapunti, se scelto; altrimenti uno fisso per giocatore.
+  const colorOf = new Map(humans.map((c, i) => [c.carIndex, c.playerColor || HUMAN_COLORS[i % HUMAN_COLORS.length]]));
 
   return (
     <>

@@ -41,6 +41,11 @@ export function formatDateTime(utc: string): string {
   });
 }
 
+// Giorno di un orario salvato dal server in UTC: "16/10/2026".
+export function formatUtcDate(utc: string): string {
+  return new Date(`${utc.replace(' ', 'T')}Z`).toLocaleDateString('it-IT');
+}
+
 // Durata tra due orari UTC del server: "12:34" o "1:02:03".
 export function formatDuration(fromUtc: string, toUtc: string): string {
   const parse = (s: string) => Date.parse(`${s.replace(' ', 'T')}Z`);

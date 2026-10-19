@@ -11,17 +11,18 @@ type Analysis struct {
 }
 
 type AnalysisCar struct {
-	CarIndex   int       `json:"carIndex"`
-	Position   uint8     `json:"position"`
-	Name       string    `json:"name"`
-	Team       string    `json:"team"`
-	Controller int       `json:"controller"` // 1 o 2 per le auto dei giocatori, 0 per le altre
-	PlayerName string    `json:"playerName"`
-	Human      bool      `json:"human"`
-	Status     string    `json:"status"`
-	Positions  []int     `json:"positions"` // posizione all'inizio di ogni giro (0 = griglia); 0 se manca
-	Stints     []Stint   `json:"stints"`
-	Laps       []LapTime `json:"laps"` // giri completati
+	CarIndex    int       `json:"carIndex"`
+	Position    uint8     `json:"position"`
+	Name        string    `json:"name"`
+	Team        string    `json:"team"`
+	Controller  int       `json:"controller"` // 1 o 2 per le auto dei giocatori, 0 per le altre
+	PlayerName  string    `json:"playerName"`
+	PlayerColor string    `json:"playerColor"`
+	Human       bool      `json:"human"`
+	Status      string    `json:"status"`
+	Positions   []int     `json:"positions"` // posizione all'inizio di ogni giro (0 = griglia); 0 se manca
+	Stints      []Stint   `json:"stints"`
+	Laps        []LapTime `json:"laps"` // giri completati
 }
 
 type LapTime struct {
@@ -40,7 +41,7 @@ func (t *Tracker) Analysis() *Analysis {
 	for _, d := range drivers {
 		c := AnalysisCar{
 			CarIndex: d.CarIndex, Position: d.Position, Name: d.Name, Team: d.Team, Controller: d.Controller,
-			PlayerName: d.PlayerName, Human: t.isHuman(d.CarIndex), Status: d.Status, Stints: d.Stints,
+			PlayerName: d.PlayerName, PlayerColor: d.PlayerColor, Human: t.isHuman(d.CarIndex), Status: d.Status, Stints: d.Stints,
 			Positions: make([]int, len(t.lapPositions)), Laps: []LapTime{},
 		}
 		for lap, positions := range t.lapPositions {

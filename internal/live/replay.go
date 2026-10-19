@@ -118,10 +118,10 @@ func (r *Replay) Frame(at time.Duration) (ReplayFrame, error) {
 }
 
 // buildReplay ricostruisce gli stati della sessione uid dai pacchetti restituiti
-// da next (fino a io.EOF). Con uid 0 vale la prima sessione incontrata. names
-// sono i piloti del segnapunti alla guida (indice dell'auto → nome); seed
+// da next (fino a io.EOF). Con uid 0 vale la prima sessione incontrata. players
+// sono i piloti del segnapunti alla guida (indice dell'auto → nome e colore); seed
 // restituisce la pianta già salvata del circuito, o nil.
-func buildReplay(next func() (recording.Packet, error), uid uint64, names map[int]string,
+func buildReplay(next func() (recording.Packet, error), uid uint64, players map[int]scoreboardPlayer,
 	seed func(*telemetry.Session) *outline) (*Replay, error) {
 	var (
 		r         = &Replay{laps: []ReplayLap{}, events: []ReplayEvent{}}
@@ -142,7 +142,8 @@ func buildReplay(next func() (recording.Packet, error), uid uint64, names map[in
 			}
 			snap := tracker.Snapshot(status)
 			for i := range snap.Drivers {
-				snap.Drivers[i].PlayerName = names[snap.Drivers[i].CarIndex]
+				p := players[snap.Drivers[i].CarIndex]
+				snap.Drivers[i].PlayerName, snap.Drivers[i].PlayerColor = p.Name, p.Color
 			}
 			if s := snap.Session; s != nil {
 				// La pianta si scarica a parte, completa: il numero di punti non deve farla riscaricare.
@@ -232,7 +233,8 @@ func buildReplay(next func() (recording.Packet, error), uid uint64, names map[in
 	r.Duration = last
 	if a := tracker.Analysis(); a != nil {
 		for i := range a.Cars {
-			a.Cars[i].PlayerName = names[a.Cars[i].CarIndex]
+			p := players[a.Cars[i].CarIndex]
+			a.Cars[i].PlayerName, a.Cars[i].PlayerColor = p.Name, p.Color
 		}
 		r.analysis = a
 	}
@@ -330,21 +332,21 @@ func (s *Service) loadReplay(id int64) (*Replay, error) {
 		return nil, fmt.Errorf("sessione %d: uid %q non valido", id, uidHex)
 	}
 
-	names := map[int]string{}
+	players := map[int]scoreboardPlayer{}
 	rows, err := s.db.Query(`
-		SELECT tp.car_index, p.name FROM telemetry_players tp JOIN players p ON p.id = tp.player_id
+		SELECT tp.car_index, p.name, COALESCE(p.color, '') FROM telemetry_players tp JOIN players p ON p.id = tp.player_id
 		WHERE tp.session_id = ?`, id)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var car int
-		var name string
-		if err := rows.Scan(&car, &name); err != nil {
+		var p scoreboardPlayer
+		if err := rows.Scan(&car, &p.Name, &p.Color); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		names[car] = name
+		players[car] = p
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -370,5 +372,5 @@ func (s *Service) loadReplay(id int64) (*Replay, error) {
 		}
 		return o
 	}
-	return buildReplay(rec.Next, uid, names, seed)
+	return buildReplay(rec.Next, uid, players, seed)
 }

@@ -50,10 +50,11 @@ type lineup struct {
 }
 
 type lineupCar struct {
-	controller int // 1 o 2
-	carIndex   int
-	playerID   *int64
-	playerName string
+	controller  int // 1 o 2
+	carIndex    int
+	playerID    *int64
+	playerName  string
+	playerColor string
 }
 
 // Lineup è la scelta dei piloti come arriva al frontend.
@@ -72,15 +73,16 @@ type Lineup struct {
 }
 
 type LineupCar struct {
-	Controller int    `json:"controller"`
-	CarIndex   int    `json:"carIndex"`
-	Name       string `json:"name"` // nome mostrato dal gioco
-	Team       string `json:"team"`
-	RaceNumber uint8  `json:"raceNumber"`
-	PlayerID   *int64 `json:"playerId"`
-	PlayerName string `json:"playerName"`
-	Position   *int   `json:"position"` // dalla classifica finale
-	DNF        bool   `json:"dnf"`
+	Controller  int    `json:"controller"`
+	CarIndex    int    `json:"carIndex"`
+	Name        string `json:"name"` // nome mostrato dal gioco
+	Team        string `json:"team"`
+	RaceNumber  uint8  `json:"raceNumber"`
+	PlayerID    *int64 `json:"playerId"`
+	PlayerName  string `json:"playerName"`
+	PlayerColor string `json:"playerColor"` // colore del pilota, vuoto se non scelto
+	Position    *int   `json:"position"`    // dalla classifica finale
+	DNF         bool   `json:"dnf"`
 }
 
 type LineupTournament struct {
@@ -146,19 +148,28 @@ func (s *Service) startLineup(cur *session, at time.Time) {
 			log.Printf("telemetria: scelta dei piloti: %v", err)
 		}
 		if id != nil {
-			car.playerID, car.playerName = id, s.playerName(*id)
+			car.playerID = id
+			if p, err := playerInfo(s.db, *id); err != nil {
+				log.Printf("telemetria: %v", err)
+			} else {
+				car.playerName, car.playerColor = p.Name, p.Color
+			}
 		}
 		l.cars = append(l.cars, car)
 	}
 	cur.lineup = l
 }
 
-func (s *Service) playerName(id int64) string {
-	var name string
-	if err := s.db.QueryRow("SELECT name FROM players WHERE id = ?", id).Scan(&name); err != nil {
-		log.Printf("telemetria: %v", err)
-	}
-	return name
+// scoreboardPlayer è un pilota del segnapunti come lo mostrano live e replay.
+type scoreboardPlayer struct {
+	Name, Color string
+}
+
+// playerInfo restituisce nome e colore del pilota id (sql.ErrNoRows se non esiste).
+func playerInfo(db dbtx, id int64) (scoreboardPlayer, error) {
+	var p scoreboardPlayer
+	err := db.QueryRow("SELECT name, COALESCE(color, '') FROM players WHERE id = ?", id).Scan(&p.Name, &p.Color)
+	return p, err
 }
 
 func (l *lineup) assigned() map[int]*int64 {
@@ -340,7 +351,10 @@ func (s *Service) lineupView(snap *Snapshot, now time.Time) {
 
 	parts, class := s.tracker.Participants(), s.tracker.Classification()
 	for _, c := range l.cars {
-		car := LineupCar{Controller: c.controller, CarIndex: c.carIndex, PlayerID: c.playerID, PlayerName: c.playerName}
+		car := LineupCar{
+			Controller: c.controller, CarIndex: c.carIndex,
+			PlayerID: c.playerID, PlayerName: c.playerName, PlayerColor: c.playerColor,
+		}
 		if parts != nil && c.carIndex < len(parts.Cars) {
 			p := parts.Cars[c.carIndex]
 			car.Name, car.Team, car.RaceNumber = p.Name, p.TeamID.String(), p.RaceNumber
@@ -356,7 +370,7 @@ func (s *Service) lineupView(snap *Snapshot, now time.Time) {
 		v.Cars = append(v.Cars, car)
 		for i := range snap.Drivers {
 			if snap.Drivers[i].CarIndex == c.carIndex {
-				snap.Drivers[i].PlayerName = c.playerName
+				snap.Drivers[i].PlayerName, snap.Drivers[i].PlayerColor = c.playerName, c.playerColor
 			}
 		}
 	}
@@ -392,9 +406,10 @@ func (s *Service) SetLineup(choices []LineupChoice, confirm bool) error {
 		if i < 0 {
 			return invalid("Nessun giocatore sull'auto %d", ch.CarIndex)
 		}
-		var name string
+		var p scoreboardPlayer
 		if ch.PlayerID != nil {
-			err := s.db.QueryRow("SELECT name FROM players WHERE id = ?", *ch.PlayerID).Scan(&name)
+			var err error
+			p, err = playerInfo(s.db, *ch.PlayerID)
 			if errors.Is(err, sql.ErrNoRows) {
 				return invalid("Pilota %d inesistente", *ch.PlayerID)
 			}
@@ -405,7 +420,7 @@ func (s *Service) SetLineup(choices []LineupChoice, confirm bool) error {
 		if !samePlayer(cars[i].playerID, ch.PlayerID) {
 			changed = true
 		}
-		cars[i].playerID, cars[i].playerName = ch.PlayerID, name
+		cars[i].playerID, cars[i].playerName, cars[i].playerColor = ch.PlayerID, p.Name, p.Color
 	}
 	for i, a := range cars {
 		for _, b := range cars[i+1:] {

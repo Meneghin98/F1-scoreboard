@@ -6,7 +6,9 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"regexp"
 	"slices"
+	"strings"
 
 	"f1-scoreboard/internal/live"
 	"f1-scoreboard/internal/scoring"
@@ -22,6 +24,15 @@ type Tournament struct {
 	Active     bool    `json:"active"`     // in corso: le gare finite vengono salvate qui
 	Races      int     `json:"races"`      // gare del torneo
 	Recordings int     `json:"recordings"` // registrazioni collegate alle sue gare
+	// Leader è il primo in classifica, solo nell'elenco dei tornei: nil se non
+	// ci sono ancora risultati, e sempre per "Nessun torneo".
+	Leader *TournamentLeader `json:"leader,omitempty"`
+}
+
+type TournamentLeader struct {
+	Name   string `json:"name"`
+	Color  string `json:"color"`
+	Points int    `json:"points"`
 }
 
 // tournamentColumns si usa anche dopo RETURNING: per questo le sottoquery
@@ -36,10 +47,27 @@ func scanTournament(row interface{ Scan(...any) error }, t *Tournament) error {
 }
 
 type Player struct {
-	ID   int64   `json:"id"`
-	Name string  `json:"name"`
-	Team *string `json:"team"`
+	ID    int64   `json:"id"`
+	Name  string  `json:"name"`
+	Team  *string `json:"team"`
+	Color string  `json:"color"` // "#rrggbb": lo stesso nei grafici, nella classifica live e sulla mappa
 }
+
+const playerColumns = "id, name, team, COALESCE(color, '')"
+
+func scanPlayer(row interface{ Scan(...any) error }, p *Player) error {
+	return row.Scan(&p.ID, &p.Name, &p.Team, &p.Color)
+}
+
+// playerColors è la tavolozza dei piloti: ognuno nuovo prende il primo colore
+// non ancora usato. La migrazione 009 ha usato gli stessi, nello stesso ordine.
+var playerColors = []string{
+	"#e8443a", "#3987e5", "#f5a524", "#22b573", "#a970ff",
+	"#ff6fae", "#2fc6d6", "#9ccc3c", "#ff8a3d", "#7f8cff",
+}
+
+// colorPattern è il formato dei colori accettati: "#rrggbb".
+var colorPattern = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 type Race struct {
 	ID           int64   `json:"id"`
@@ -106,6 +134,22 @@ func (s *Server) listTournaments(w http.ResponseWriter, r *http.Request) error {
 	}
 	if err := rows.Err(); err != nil {
 		return err
+	}
+	rows.Close()
+
+	// Il primo in classifica di ogni torneo: i tornei e i loro risultati sono pochi.
+	for i := range tournaments {
+		t := &tournaments[i]
+		if t.Free {
+			continue
+		}
+		results, err := s.resultsOf(t.ID)
+		if err != nil {
+			return err
+		}
+		if st := scoring.Standings(results); len(st) > 0 {
+			t.Leader = &TournamentLeader{Name: st[0].Name, Color: st[0].Color, Points: st[0].Points}
+		}
 	}
 	return writeJSON(w, http.StatusOK, tournaments)
 }
@@ -268,7 +312,7 @@ func (s *Server) deleteTournament(w http.ResponseWriter, r *http.Request) error 
 // --- Piloti ---------------------------------------------------------------
 
 func (s *Server) listPlayers(w http.ResponseWriter, r *http.Request) error {
-	rows, err := s.db.Query("SELECT id, name, team FROM players ORDER BY name")
+	rows, err := s.db.Query("SELECT " + playerColumns + " FROM players ORDER BY name")
 	if err != nil {
 		return err
 	}
@@ -277,7 +321,7 @@ func (s *Server) listPlayers(w http.ResponseWriter, r *http.Request) error {
 	players := []Player{}
 	for rows.Next() {
 		var p Player
-		if err := rows.Scan(&p.ID, &p.Name, &p.Team); err != nil {
+		if err := scanPlayer(rows, &p); err != nil {
 			return err
 		}
 		players = append(players, p)
@@ -288,60 +332,112 @@ func (s *Server) listPlayers(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, http.StatusOK, players)
 }
 
-// playerBody è il body per creare o modificare un pilota.
-type playerBody struct {
-	Name string `json:"name"`
-	Team string `json:"team"`
+// playerInput è un pilota come arriva nel body per crearlo o modificarlo.
+type playerInput struct {
+	name  string
+	team  *string
+	color *string // nil: per un pilota nuovo il primo libero, per uno esistente quello che ha
 }
 
 // readPlayer legge e controlla il body di un pilota. id è il pilota che si
 // modifica (0 se è nuovo): il suo nome attuale non conta come già usato.
-func (s *Server) readPlayer(r *http.Request, id int64) (name string, team *string, err error) {
-	var body playerBody
-	if err := readJSON(r, &body); err != nil {
-		return "", nil, err
+// Body: { "name": "...", "team": "...", "color": "#rrggbb" } (scuderia e colore facoltativi)
+func (s *Server) readPlayer(r *http.Request, id int64) (playerInput, error) {
+	var body struct {
+		Name  string `json:"name"`
+		Team  string `json:"team"`
+		Color string `json:"color"`
 	}
-	if name, err = requireText(body.Name, "nome"); err != nil {
-		return "", nil, err
+	var in playerInput
+	if err := readJSON(r, &body); err != nil {
+		return in, err
+	}
+	name, err := requireText(body.Name, "nome")
+	if err != nil {
+		return in, err
 	}
 	// La colonna name è COLLATE NOCASE: il confronto ignora maiuscole e minuscole.
 	taken, err := s.exists("SELECT 1 FROM players WHERE name = ? AND id != ?", name, id)
 	if err != nil {
-		return "", nil, err
+		return in, err
 	}
 	if taken {
-		return "", nil, errorf(http.StatusConflict, "Esiste già un pilota chiamato \"%s\"", name)
+		return in, errorf(http.StatusConflict, "Esiste già un pilota chiamato \"%s\"", name)
 	}
-	return name, optionalText(body.Team), nil
+	in.name, in.team = name, optionalText(body.Team)
+	if body.Color != "" {
+		if !colorPattern.MatchString(body.Color) {
+			return in, errorf(http.StatusBadRequest, "Colore \"%s\" non valido: serve il formato #rrggbb", body.Color)
+		}
+		color := strings.ToLower(body.Color)
+		in.color = &color
+	}
+	return in, nil
+}
+
+// freeColor restituisce il primo colore della tavolozza che nessun pilota usa
+// (se sono tutti usati, ricomincia dall'inizio).
+func (s *Server) freeColor() (string, error) {
+	rows, err := s.db.Query("SELECT color FROM players WHERE color IS NOT NULL")
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	used := map[string]int{}
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return "", err
+		}
+		used[strings.ToLower(c)]++
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	// Il colore meno usato, a parità il primo della tavolozza.
+	best := playerColors[0]
+	for _, c := range playerColors {
+		if used[c] < used[best] {
+			best = c
+		}
+	}
+	return best, nil
 }
 
 func (s *Server) createPlayer(w http.ResponseWriter, r *http.Request) error {
-	name, team, err := s.readPlayer(r, 0)
+	in, err := s.readPlayer(r, 0)
 	if err != nil {
 		return err
 	}
+	if in.color == nil {
+		color, err := s.freeColor()
+		if err != nil {
+			return err
+		}
+		in.color = &color
+	}
 	var p Player
-	err = s.db.QueryRow("INSERT INTO players (name, team) VALUES (?, ?) RETURNING id, name, team", name, team).
-		Scan(&p.ID, &p.Name, &p.Team)
+	err = scanPlayer(s.db.QueryRow("INSERT INTO players (name, team, color) VALUES (?, ?, ?) RETURNING "+playerColumns,
+		in.name, in.team, in.color), &p)
 	if err != nil {
 		return err
 	}
 	return writeJSON(w, http.StatusCreated, p)
 }
 
-// updatePlayer cambia nome e scuderia di un pilota. Body: { "name": "...", "team": "..." }
+// updatePlayer cambia nome, scuderia e colore di un pilota. Body come per createPlayer.
 func (s *Server) updatePlayer(w http.ResponseWriter, r *http.Request) error {
 	id, err := s.pathID(r, "players", "Pilota")
 	if err != nil {
 		return err
 	}
-	name, team, err := s.readPlayer(r, id)
+	in, err := s.readPlayer(r, id)
 	if err != nil {
 		return err
 	}
 	var p Player
-	err = s.db.QueryRow("UPDATE players SET name = ?, team = ? WHERE id = ? RETURNING id, name, team", name, team, id).
-		Scan(&p.ID, &p.Name, &p.Team)
+	err = scanPlayer(s.db.QueryRow("UPDATE players SET name = ?, team = ?, color = COALESCE(?, color) WHERE id = ? RETURNING "+playerColumns,
+		in.name, in.team, in.color, id), &p)
 	if err != nil {
 		return err
 	}
@@ -680,7 +776,7 @@ func (s *Server) getStandings(w http.ResponseWriter, r *http.Request) error {
 // resultsOf restituisce tutti i risultati di un torneo, con i dati dei piloti.
 func (s *Server) resultsOf(tournamentID int64) ([]scoring.Result, error) {
 	rows, err := s.db.Query(`
-		SELECT r.race_id, ra.type, r.player_id, p.name, p.team, r.position, r.dnf
+		SELECT r.race_id, ra.type, r.player_id, p.name, p.team, COALESCE(p.color, ''), r.position, r.dnf
 		FROM results r
 		JOIN races ra ON ra.id = r.race_id
 		JOIN players p ON p.id = r.player_id
@@ -693,7 +789,7 @@ func (s *Server) resultsOf(tournamentID int64) ([]scoring.Result, error) {
 	var results []scoring.Result
 	for rows.Next() {
 		var res scoring.Result
-		if err := rows.Scan(&res.RaceID, &res.RaceType, &res.PlayerID, &res.Name, &res.Team, &res.Position, &res.DNF); err != nil {
+		if err := rows.Scan(&res.RaceID, &res.RaceType, &res.PlayerID, &res.Name, &res.Team, &res.Color, &res.Position, &res.DNF); err != nil {
 			return nil, err
 		}
 		results = append(results, res)

@@ -1,12 +1,9 @@
 import { useEffect, useState } from 'react';
 import { LiveBadge } from './components/LiveBadge';
-import { NewTournamentDialog } from './components/NewTournamentDialog';
-import { Button, Empty, fieldSmClass } from './components/ui';
+import { cx, Empty, fieldSmClass, Loading } from './components/ui';
 import { api } from './lib/api';
-import { useConfirm } from './lib/confirm';
 import { TEAMS } from './lib/f1';
-import { href, useView, useViewParam, VIEW_LABELS, VIEW_PARENT } from './lib/route';
-import { useToast } from './lib/toast';
+import { href, NAV_VIEWS, STANDALONE_VIEWS, useView, useViewParam, VIEW_LABELS, VIEW_PARENT } from './lib/route';
 import type { Tournament } from './lib/types';
 import { useLoad } from './lib/useLoad';
 import { DashboardPage } from './pages/DashboardPage';
@@ -16,6 +13,8 @@ import { RacesPage } from './pages/RacesPage';
 import { RecordingsPage } from './pages/RecordingsPage';
 import { ReplayPage } from './pages/ReplayPage';
 import { StandingsPage } from './pages/StandingsPage';
+import { TournamentsPage } from './pages/TournamentsPage';
+import { TvPage } from './pages/TvPage';
 
 function tournamentLabel(t: Tournament): string {
   if (t.active) return `${t.name} (in corso)`;
@@ -23,153 +22,83 @@ function tournamentLabel(t: Tournament): string {
   return t.name;
 }
 
-// Cosa succede alle registrazioni di un torneo eliminato.
-function recordingsMoved(n: number): string {
-  return n === 1 ? 'La registrazione della gara passerà' : `Le ${n} registrazioni delle sue gare passeranno`;
-}
-
 export function App() {
-  const { run, toast } = useToast();
-  const confirm = useConfirm();
   const view = useView();
   const viewParam = useViewParam();
-  const parent = VIEW_PARENT[view];
-  const [tournaments, setTournaments] = useState<Tournament[] | null>(null);
-  const [tournamentId, setTournamentId] = useState<number | null>(
+  // I tornei si ricaricano da soli quando cambiano (vedi useLoad).
+  const { data: tournaments, reload: reloadTournaments } = useLoad(api.tournaments, []);
+  const { data: tracks } = useLoad(api.tracks, []);
+  const [selectedId, setSelectedId] = useState<number | null>(
     () => Number(localStorage.getItem('tournamentId')) || null,
   );
-  const [creating, setCreating] = useState(false);
-  const { data: tracks } = useLoad(api.tracks, []);
 
-  // Ricarica i tornei e seleziona selectId, oppure il primo se non esiste più.
-  async function loadTournaments(selectId: number | null) {
-    const list = await api.tournaments();
-    setTournaments(list);
-    setTournamentId(list.some((t) => t.id === selectId) ? selectId : list[0]?.id ?? null);
-  }
-
-  // Solo all'avvio: dopo, i tornei si ricaricano esplicitamente quando si creano o si eliminano.
+  // Il torneo scelto in alto o, se non esiste più, il primo dell'elenco (quello in corso).
+  const tournamentId = tournaments?.some((t) => t.id === selectedId) ? selectedId : tournaments?.[0]?.id ?? null;
+  const current = tournaments?.find((t) => t.id === tournamentId);
   useEffect(() => {
-    run(() => loadTournaments(tournamentId));
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('tournamentId', String(tournamentId ?? ''));
+    if (tournamentId !== null) localStorage.setItem('tournamentId', String(tournamentId));
   }, [tournamentId]);
 
-  const current = tournaments?.find((x) => x.id === tournamentId);
-  const active = tournaments?.find((x) => x.active);
-
-  // Iniziato un torneo, le gare finite vengono salvate lì; terminato, si torna a "Nessun torneo".
-  function handleStart() {
-    if (!current) return;
-    run(async () => {
-      await api.startTournament(current.id);
-      await loadTournaments(current.id);
-      toast(`"${current.name}" è in corso: le prossime gare verranno salvate qui`);
-    });
-  }
-
-  async function handleEnd() {
-    if (!current) return;
-    const ok = await confirm({
-      title: 'Terminare il torneo?',
-      message: `Le prossime gare verranno salvate in "Nessun torneo" invece che in "${current.name}". Potrai riprenderlo più avanti.`,
-      confirmLabel: 'Termina torneo',
-    });
-    if (!ok) return;
-    run(async () => {
-      await api.endTournament(current.id);
-      await loadTournaments(current.id);
-    });
-  }
-
-  async function handleDelete() {
-    const t = current;
-    if (!t) return;
-    const ok = await confirm({
-      title: 'Eliminare il torneo?',
-      message: (
-        <>
-          "{t.name}" verrà eliminato insieme a tutte le sue gare e ai risultati.
-          {t.recordings > 0 && ` ${recordingsMoved(t.recordings)} in "Nessun torneo".`}
-        </>
-      ),
-      confirmLabel: 'Elimina torneo',
-    });
-    if (!ok) return;
-    run(async () => {
-      const { movedRecordings } = await api.deleteTournament(t.id);
-      await loadTournaments(null);
-      if (movedRecordings) toast(`${recordingsMoved(movedRecordings)} in "Nessun torneo"`);
-    });
-  }
+  if (STANDALONE_VIEWS.includes(view)) return <TvPage />;
 
   // Classifica e gare appartengono a un torneo: senza tornei non c'è niente da mostrare.
   const missing = (view === 'standings' || view === 'races') && !tournamentId;
+  const parent = VIEW_PARENT[view];
+  const section = parent ?? view; // pagina evidenziata nella barra
 
   return (
     <>
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b-3 border-accent bg-surface px-6 py-4">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          <h1 className="text-2xl font-bold tracking-wide">
-            <a href={href('dashboard')}>
-              <span className="font-black text-accent italic">F1</span> 2025 Scoreboard
-            </a>
-          </h1>
-          <LiveBadge />
-        </div>
-        <div className="flex items-center gap-2">
+      <header className="border-t-3 border-accent bg-surface">
+        <div className="flex flex-wrap items-center justify-between gap-4 px-6 pt-3 pb-2">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <h1 className="text-2xl font-bold tracking-wide">
+              <a href={href('dashboard')}>
+                <span className="font-black text-accent italic">F1</span> 2025 Scoreboard
+              </a>
+            </h1>
+            <LiveBadge />
+          </div>
           <select
             aria-label="Torneo"
+            title="Torneo mostrato in dashboard, classifica e gare"
             className={fieldSmClass}
             value={tournamentId ?? ''}
-            onChange={(e) => setTournamentId(Number(e.target.value))}
+            onChange={(e) => setSelectedId(Number(e.target.value))}
           >
             {tournaments?.length
               ? tournaments.map((t) => <option key={t.id} value={t.id}>{tournamentLabel(t)}</option>)
               : <option value="">Nessun torneo</option>}
           </select>
-          {current?.active ? (
-            <Button variant="ghost" size="sm" onClick={handleEnd}>Termina torneo</Button>
-          ) : current && !current.free && (
-            <Button
-              variant="ghost"
-              size="sm"
-              disabled={!!active}
-              title={active ? `Termina prima "${active.name}"` : 'Le prossime gare verranno salvate in questo torneo'}
-              onClick={handleStart}
-            >
-              {current.ended_at ? 'Riprendi torneo' : 'Inizia torneo'}
-            </Button>
-          )}
-          <Button size="sm" onClick={() => setCreating(true)}>+ Torneo</Button>
-          {!current?.free && (
-            <Button variant="ghost" size="sm" title="Elimina torneo" disabled={!tournamentId} onClick={handleDelete}>
-              Elimina
-            </Button>
-          )}
         </div>
+        <nav aria-label="Pagine" className="flex flex-wrap gap-1 border-b border-line px-4">
+          {NAV_VIEWS.map((v) => (
+            <a
+              key={v}
+              href={href(v)}
+              aria-current={section === v ? 'page' : undefined}
+              className={cx(
+                '-mb-px border-b-2 px-3 pt-1.5 pb-2.5 text-sm font-semibold transition-colors',
+                section === v ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg',
+              )}
+            >
+              {VIEW_LABELS[v]}
+            </a>
+          ))}
+        </nav>
       </header>
 
       {/* Le pagine montano solo dopo aver caricato i tornei, per non chiedere un torneo salvato che non esiste più. */}
-      {tournaments && (
+      {tournaments ? (
         <main className="mx-auto max-w-300 p-6">
-          {view !== 'dashboard' && (
+          {parent && (
             <nav aria-label="Percorso" className="mb-4 flex items-center gap-2 text-sm">
-              <a href={href('dashboard')} className="text-muted hover:text-fg">{VIEW_LABELS.dashboard}</a>
+              <a href={href(parent)} className="text-muted hover:text-fg">{VIEW_LABELS[parent]}</a>
               <span className="text-muted">/</span>
-              {parent && (
-                <>
-                  <a href={href(parent)} className="text-muted hover:text-fg">{VIEW_LABELS[parent]}</a>
-                  <span className="text-muted">/</span>
-                </>
-              )}
               <span aria-current="page" className="font-semibold">{VIEW_LABELS[view]}</span>
             </nav>
           )}
           {missing ? (
-            <Empty>Crea un torneo per iniziare.</Empty>
+            <Empty>Crea un torneo nella pagina <a href={href('tournaments')} className="underline">Tornei</a> per iniziare.</Empty>
           ) : (
             <section>
               {/* key: cambiando torneo la pagina riparte da zero (es. chiude l'editor dei risultati). */}
@@ -177,6 +106,14 @@ export function App() {
               {view === 'standings' && <StandingsPage key={tournamentId} tournamentId={tournamentId!} />}
               {view === 'races' && <RacesPage key={tournamentId} tournamentId={tournamentId!} free={!!current?.free} />}
               {view === 'players' && <PlayersPage />}
+              {view === 'tournaments' && (
+                <TournamentsPage
+                  tournaments={tournaments}
+                  selectedId={tournamentId}
+                  onSelect={setSelectedId}
+                  onChanged={reloadTournaments}
+                />
+              )}
               {view === 'live' && <LivePage />}
               {view === 'recordings' && <RecordingsPage tournaments={tournaments} />}
               {view === 'replay' && (
@@ -185,15 +122,9 @@ export function App() {
             </section>
           )}
         </main>
+      ) : (
+        <Loading />
       )}
-
-      <NewTournamentDialog
-        open={creating}
-        defaultName={`Torneo F1 2025 #${(tournaments?.filter((t) => !t.free).length ?? 0) + 1}`}
-        canStart={!active}
-        onClose={() => setCreating(false)}
-        onCreated={(t) => loadTournaments(t.id)}
-      />
 
       <datalist id="tracks">
         {tracks?.map((track) => <option key={track.id} value={track.name} />)}

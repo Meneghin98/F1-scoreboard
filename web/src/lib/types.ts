@@ -12,6 +12,7 @@ export interface Tournament {
   active: boolean; // in corso: le gare finite vengono salvate qui
   races: number; // gare del torneo
   recordings: number; // registrazioni collegate alle sue gare
+  leader?: { name: string; color: string; points: number }; // primo in classifica (solo nell'elenco dei tornei)
 }
 
 // Circuito proposto per le gare (GET /api/tracks), nell'ordine del calendario.
@@ -24,6 +25,7 @@ export interface Player {
   id: number;
   name: string;
   team: string | null;
+  color: string; // "#rrggbb": lo stesso nei grafici, nella classifica live e sulla mappa
 }
 
 export interface Race {
@@ -60,6 +62,7 @@ export interface Standing {
   player_id: number;
   name: string;
   team: string | null;
+  color: string;
   points: number;
   wins: number;
   podiums: number;
@@ -133,6 +136,7 @@ export interface LiveDriver {
   raceNumber: number;
   controller: number; // 1 o 2 per le auto dei giocatori (split-screen), 0 per le altre
   playerName: string; // pilota del segnapunti alla guida, vuoto se non scelto
+  playerColor: string; // suo colore, vuoto se non scelto
   ai: boolean;
   lap: number;
   lastLapMs: number;
@@ -282,6 +286,7 @@ export interface LineupCar {
   raceNumber: number;
   playerId: number | null;
   playerName: string;
+  playerColor: string;
   position: number | null; // dalla classifica finale
   dnf: boolean;
 }
@@ -389,6 +394,7 @@ export interface AnalysisCar {
   team: string;
   controller: number;
   playerName: string;
+  playerColor: string;
   human: boolean;
   status: string;
   positions: number[]; // posizione all'inizio di ogni giro, 0 se manca

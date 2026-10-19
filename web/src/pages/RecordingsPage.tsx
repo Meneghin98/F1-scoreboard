@@ -10,7 +10,7 @@ import { useLoad } from '../lib/useLoad';
 import { AssignRaceDialog } from '../components/AssignRaceDialog';
 import { LiveDot } from '../components/LiveBadge';
 import {
-  Button, buttonClass, Card, cx, dnfClass, Empty, fieldSmClass, rankClass, Table, Td, Th, Tr,
+  Button, buttonClass, Card, cx, dnfClass, Empty, fieldSmClass, Loading, rankClass, Table, Td, Th, Tr,
 } from '../components/ui';
 
 // Valori speciali del filtro torneo.
@@ -31,7 +31,7 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
   const [showUnfinished, setShowUnfinished] = useState(false);
   const [assigning, setAssigning] = useState<SessionRecord | null>(null);
 
-  if (!data) return null;
+  if (!data) return <Loading />;
   const [sessions, players] = data;
 
   // Circuiti presenti nelle registrazioni, in ordine alfabetico.

@@ -46,6 +46,17 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="p-8 text-center text-muted">{children}</p>;
 }
 
+// Segnaposto mentre una pagina aspetta i dati dal server.
+export function Loading() {
+  return <p className="p-8 text-center text-muted">Caricamento…</p>;
+}
+
+// Pallino del colore di un pilota.
+export function ColorDot({ color, className }: { color: string; className?: string }) {
+  if (!color) return null;
+  return <span className={cx('inline-block size-2.5 shrink-0 rounded-full', className)} style={{ background: color }} />;
+}
+
 export function TeamTag({ team }: { team: string | null }) {
   return team ? <span className="text-sm text-muted">{team}</span> : null;
 }

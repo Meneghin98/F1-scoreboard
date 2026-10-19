@@ -5,12 +5,14 @@ import {
 } from '../lib/live';
 import type { LiveDriver, LiveSession, LiveSnapshot, PlayerCar, RaceEvent, TelemetryStatus, TrackMap } from '../lib/types';
 import { useLive, usePedalHistory, type PedalSample } from '../lib/useLive';
+import { href } from '../lib/route';
+import { DuelCard } from '../components/DuelCard';
 import { LiveDot } from '../components/LiveBadge';
 import { LineupCard } from '../components/LineupCard';
 import { PlayerCarCard } from '../components/PlayerCarCard';
 import { RaceControlCard } from '../components/RaceControlCard';
 import { TrackMapCard } from '../components/TrackMapCard';
-import { Button, Card, cx, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
+import { Button, buttonClass, Card, ColorDot, cx, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
 
 // Classifica della sessione in corso, aggiornata in tempo reale dalla telemetria.
 export function LivePage() {
@@ -34,7 +36,15 @@ export function LivePage() {
 
   return (
     <>
-      <SessionCard live={live} session={live.session} />
+      <SessionCard
+        live={live}
+        session={live.session}
+        actions={
+          <a href={href('tv')} className={buttonClass('ghost', 'sm')} title="Classifica e mappa a schermo intero, per la TV">
+            Modalità TV
+          </a>
+        }
+      />
       {/* A sessione finita non arrivano più dati: il server la chiude poco dopo. */}
       {live.status === 'paused' && !live.finished && (
         <p className="mb-4 text-sm text-muted">
@@ -53,7 +63,7 @@ export function LivePage() {
 
 // Senza una sessione in corso: cosa impostare nel gioco perché la telemetria
 // arrivi qui, ed eventuali problemi di ricezione.
-function WaitingCard({ telemetry: t }: { telemetry?: TelemetryStatus }) {
+export function WaitingCard({ telemetry: t }: { telemetry?: TelemetryStatus }) {
   const problem = telemetryProblem(t);
   const [primary, ...others] = t?.addresses ?? [];
   const settings: [string, ReactNode][] = [
@@ -143,6 +153,7 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
           marshalZones={session.marshalZones}
           loadMap={loadMap}
         />
+        {players.length === 2 && <DuelCard session={session} drivers={drivers} className="mb-0" />}
         {players.map((car) => (
           <PlayerCarCard
             key={car.controller}
@@ -160,8 +171,14 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
   );
 }
 
-// indicator sostituisce il pallino verde della diretta (il replay mostra il suo).
-export function SessionCard({ live, session: s, indicator }: { live: LiveSnapshot; session: LiveSession; indicator?: ReactNode }) {
+// indicator sostituisce il pallino verde della diretta (il replay mostra il suo);
+// actions sono pulsanti da mostrare in fondo a destra.
+export function SessionCard({ live, session: s, indicator, actions }: {
+  live: LiveSnapshot;
+  session: LiveSession;
+  indicator?: ReactNode;
+  actions?: ReactNode;
+}) {
   let progress = '';
   if (live.finished) progress = 'Finita';
   else if (s.isRace && s.totalLaps > 0) progress = `Giro ${Math.max(s.currentLap, 1)}/${s.totalLaps}`;
@@ -197,6 +214,7 @@ export function SessionCard({ live, session: s, indicator }: { live: LiveSnapsho
         {isPaused(live) && <span className="text-sm font-semibold text-muted">In pausa</span>}
         <span className="text-sm text-muted">{facts.join(' · ')}</span>
         {progress && <span className="text-lg font-extrabold tabular-nums">{progress}</span>}
+        {actions}
       </div>
       {(forecast.length > 0 || (s.isRace && s.pitWindowIdeal > 0 && !live.finished)) && (
         <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 border-t border-line pt-3 text-sm">
@@ -347,9 +365,15 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
 // Etichetta del giocatore: il controller (P1, P2) e, se scelto in "Chi guida?", il pilota.
 function PlayerTag({ driver, className }: { driver: LiveDriver; className?: string }) {
   return (
-    <span className={cx('shrink-0 text-xs font-bold text-accent-text uppercase', className)}>
+    <span className={cx('inline-flex shrink-0 items-center gap-1 text-xs font-bold text-accent-text uppercase', className)}>
       {controllerLabel(driver.controller)}
-      {driver.playerName && ` · ${driver.playerName}`}
+      {driver.playerName && (
+        <>
+          {' · '}
+          <ColorDot color={driver.playerColor} className="size-2" />
+          <span style={{ color: driver.playerColor || undefined }}>{driver.playerName}</span>
+        </>
+      )}
     </span>
   );
 }

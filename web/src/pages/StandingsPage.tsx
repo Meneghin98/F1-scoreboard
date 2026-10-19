@@ -2,11 +2,12 @@ import { api } from '../lib/api';
 import { raceLabels } from '../lib/format';
 import type { Race, Standing } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
-import { Card, dnfClass, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
+import { PointsChart } from '../components/PointsChart';
+import { Card, ColorDot, dnfClass, Empty, Loading, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
 
 export function StandingsPage({ tournamentId }: { tournamentId: number }) {
   const { data } = useLoad(() => api.standings(tournamentId), [tournamentId]);
-  if (!data) return null;
+  if (!data) return <Loading />;
 
   const { races, standings } = data;
   if (!standings.length) {
@@ -14,43 +15,60 @@ export function StandingsPage({ tournamentId }: { tournamentId: number }) {
   }
 
   const labels = raceLabels(races);
+  const leader = standings[0].points;
   return (
-    <Card>
-      <Table>
-        <thead>
-          <tr>
-            <Th>Pos</Th>
-            <Th>Pilota</Th>
-            {races.map((race) => (
-              <Th key={race.id} num title={race.track}>{labels.get(race.id)}</Th>
+    <>
+      <Card>
+        <Table>
+          <thead>
+            <tr>
+              <Th>Pos</Th>
+              <Th>Pilota</Th>
+              {races.map((race) => (
+                <Th key={race.id} num title={race.track}>{labels.get(race.id)}</Th>
+              ))}
+              <Th num>Vitt.</Th>
+              <Th num>Podi</Th>
+              <Th num>DNF</Th>
+              <Th num title="Punti di distacco dal primo">Dist.</Th>
+              <Th num>Punti</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {standings.map((s) => (
+              <Tr key={s.player_id}>
+                <Td className={rankClass(s.rank)}>{s.rank}</Td>
+                <Td>
+                  <span className="flex items-center gap-2">
+                    <ColorDot color={s.color} />
+                    {s.name} <TeamTag team={s.team} />
+                  </span>
+                </Td>
+                {races.map((race) => <RaceCell key={race.id} standing={s} race={race} />)}
+                <Td num>{s.wins}</Td>
+                <Td num>{s.podiums}</Td>
+                <Td num>{s.dnf}</Td>
+                <Td num className="text-muted">{s.points < leader ? `−${leader - s.points}` : ''}</Td>
+                <Td num className="text-lg font-extrabold">{s.points}</Td>
+              </Tr>
             ))}
-            <Th num>Vitt.</Th>
-            <Th num>Podi</Th>
-            <Th num>DNF</Th>
-            <Th num>Punti</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {standings.map((s) => (
-            <Tr key={s.player_id}>
-              <Td className={rankClass(s.rank)}>{s.rank}</Td>
-              <Td>{s.name} <TeamTag team={s.team} /></Td>
-              {races.map((race) => <RaceCell key={race.id} standing={s} race={race} />)}
-              <Td num>{s.wins}</Td>
-              <Td num>{s.podiums}</Td>
-              <Td num>{s.dnf}</Td>
-              <Td num className="text-lg font-extrabold">{s.points}</Td>
-            </Tr>
-          ))}
-        </tbody>
-      </Table>
-    </Card>
+          </tbody>
+        </Table>
+      </Card>
+      <PointsChart races={races} standings={standings} labels={labels} />
+    </>
   );
 }
 
+// Punti presi nella gara, con la posizione d'arrivo in piccolo.
 function RaceCell({ standing, race }: { standing: Standing; race: Race }) {
   const r = standing.perRace[race.id];
   if (!r) return <Td num className="text-muted">–</Td>;
   if (r.dnf) return <Td num className={dnfClass} title="Ritirato">DNF</Td>;
-  return <Td num title={`${r.position}° posto`}>{r.points}</Td>;
+  return (
+    <Td num title={`${r.position}° posto`}>
+      {r.points}
+      <span className="ml-1 text-xs text-muted">{r.position}°</span>
+    </Td>
+  );
 }

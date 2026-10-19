@@ -388,3 +388,63 @@ func TestDataVersionChanges(t *testing.T) {
 		t.Fatal("la versione non cambia dopo una modifica")
 	}
 }
+
+// Ogni pilota ha un colore: il primo libero della tavolozza, o quello scelto.
+func TestPlayerColors(t *testing.T) {
+	srv := newTestServer(t)
+	type player struct {
+		ID    int    `json:"id"`
+		Color string `json:"color"`
+	}
+	var a, b, c player
+	call(t, srv, "POST", "/players", map[string]string{"name": "A"}, &a)
+	call(t, srv, "POST", "/players", map[string]string{"name": "B", "color": "#ABCDEF"}, &b)
+	call(t, srv, "POST", "/players", map[string]string{"name": "C"}, &c)
+	if a.Color != "#e8443a" || b.Color != "#abcdef" || c.Color != "#3987e5" {
+		t.Fatalf("colori %q, %q, %q", a.Color, b.Color, c.Color)
+	}
+	expectStatus(t, call(t, srv, "POST", "/players", map[string]string{"name": "D", "color": "rosso"}, nil), 400, "colore non valido")
+	call(t, srv, "PUT", fmt.Sprintf("/players/%d", a.ID), map[string]string{"name": "A"}, &a)
+	if a.Color != "#e8443a" {
+		t.Fatalf("senza colore nel body il colore cambia: %q", a.Color)
+	}
+	call(t, srv, "PUT", fmt.Sprintf("/players/%d", a.ID), map[string]string{"name": "A", "color": "#00ff00"}, &a)
+	if a.Color != "#00ff00" {
+		t.Fatalf("colore non cambiato: %q", a.Color)
+	}
+}
+
+// L'elenco dei tornei dice chi è in testa a ciascuno.
+func TestTournamentLeader(t *testing.T) {
+	srv := newTestServer(t)
+	var cup struct {
+		ID int `json:"id"`
+	}
+	call(t, srv, "POST", "/tournaments", map[string]string{"name": "Coppa"}, &cup)
+	call(t, srv, "POST", "/players", map[string]string{"name": "Simone"}, nil)
+	call(t, srv, "POST", "/players", map[string]string{"name": "Luca"}, nil)
+	var race struct {
+		ID int `json:"id"`
+	}
+	call(t, srv, "POST", fmt.Sprintf("/tournaments/%d/races", cup.ID), map[string]string{"track": "Monza"}, &race)
+	call(t, srv, "PUT", fmt.Sprintf("/races/%d/results", race.ID), map[string]any{"results": []result{
+		{PlayerID: 1, Position: pos(2)}, {PlayerID: 2, Position: pos(1)},
+	}}, nil)
+	var list []struct {
+		ID     int `json:"id"`
+		Leader *struct {
+			Name   string `json:"name"`
+			Color  string `json:"color"`
+			Points int    `json:"points"`
+		} `json:"leader"`
+	}
+	call(t, srv, "GET", "/tournaments", nil, &list)
+	for _, t2 := range list {
+		if t2.ID == cup.ID && (t2.Leader == nil || t2.Leader.Name != "Luca" || t2.Leader.Points != 25 || t2.Leader.Color == "") {
+			t.Fatalf("capoclassifica %+v", t2.Leader)
+		}
+		if t2.ID != cup.ID && t2.Leader != nil {
+			t.Errorf("torneo %d senza gare con capoclassifica %+v", t2.ID, t2.Leader)
+		}
+	}
+}

@@ -4,22 +4,31 @@ import { useSyncExternalStore } from 'react';
 // "indietro" del browser funziona e una pagina si può aprire direttamente da un link.
 // Alcune pagine hanno un parametro dopo il nome: #/replay/12.
 
-export type View = 'dashboard' | 'standings' | 'races' | 'players' | 'live' | 'recordings' | 'replay';
+export type View =
+  | 'dashboard' | 'standings' | 'races' | 'players' | 'tournaments' | 'live' | 'recordings' | 'replay' | 'tv';
 
 export const VIEW_LABELS: Record<View, string> = {
   dashboard: 'Dashboard',
   standings: 'Classifica',
   races: 'Gare',
   players: 'Piloti',
+  tournaments: 'Tornei',
   live: 'Live',
   recordings: 'Registrazioni',
   replay: 'Replay',
+  tv: 'Modalità TV',
 };
 
-// Pagina da cui si arriva, mostrata nel percorso tra la dashboard e la pagina attuale.
+// Pagine nella barra di navigazione, in ordine.
+export const NAV_VIEWS: View[] = ['dashboard', 'standings', 'races', 'players', 'tournaments', 'live', 'recordings'];
+
+// Pagina della barra a cui appartiene una pagina che non c'è (il replay sta sotto le registrazioni).
 export const VIEW_PARENT: Partial<Record<View, View>> = {
   replay: 'recordings',
 };
+
+// Pagine a schermo intero, senza header e barra di navigazione.
+export const STANDALONE_VIEWS: View[] = ['tv'];
 
 export function href(view: View, param?: number): string {
   if (view === 'dashboard') return '#/';
@@ -52,4 +61,9 @@ export function useView(): View {
 // Parametro numerico della pagina (#/replay/12 → 12), null se manca.
 export function useViewParam(): number | null {
   return useSyncExternalStore(subscribe, currentParam);
+}
+
+// Va alla pagina indicata.
+export function navigate(view: View, param?: number) {
+  location.hash = href(view, param);
 }

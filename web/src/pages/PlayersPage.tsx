@@ -4,7 +4,7 @@ import { useConfirm } from '../lib/confirm';
 import type { Player } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
-import { Button, Card, cx, Empty, fieldClass, TeamTag } from '../components/ui';
+import { Button, Card, ColorDot, cx, Empty, fieldClass, Loading, TeamTag } from '../components/ui';
 
 export function PlayersPage() {
   const { run } = useToast();
@@ -28,7 +28,7 @@ export function PlayersPage() {
     e.preventDefault();
     const fields = new FormData(e.currentTarget);
     run(async () => {
-      await api.updatePlayer(player.id, String(fields.get('name')), String(fields.get('team')));
+      await api.updatePlayer(player.id, String(fields.get('name')), String(fields.get('team')), String(fields.get('color')));
       setEditingId(null);
       await reload();
     });
@@ -47,25 +47,37 @@ export function PlayersPage() {
     });
   }
 
+  if (!players) return <Loading />;
   return (
     <>
       <Card>
+        {/* Il colore lo sceglie il server (il primo libero): si cambia modificando il pilota. */}
         <form className="flex flex-wrap gap-2" onSubmit={handleAdd}>
           <PlayerFields />
           <Button>Aggiungi pilota</Button>
         </form>
       </Card>
-      {players && (players.length ? players.map((p) => (
+      {players.length ? players.map((p) => (
         <Card key={p.id}>
           {editingId === p.id ? (
             <form className="flex flex-wrap gap-2" onSubmit={(e) => handleSave(p, e)}>
+              <input
+                name="color"
+                type="color"
+                defaultValue={p.color || '#9a9aae'}
+                title="Colore del pilota nei grafici e nella pagina Live"
+                className="h-10.5 w-12 cursor-pointer rounded-md border border-line bg-surface-2 p-1"
+              />
               <PlayerFields player={p} />
               <Button type="button" variant="ghost" onClick={() => setEditingId(null)}>Annulla</Button>
               <Button>Salva</Button>
             </form>
           ) : (
             <div className="flex items-center justify-between gap-2">
-              <span>{p.name} <TeamTag team={p.team} /></span>
+              <span className="flex items-center gap-2">
+                <ColorDot color={p.color} className="size-3" />
+                {p.name} <TeamTag team={p.team} />
+              </span>
               <div className="flex gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setEditingId(p.id)}>Modifica</Button>
                 <Button variant="ghost" size="sm" onClick={() => handleDelete(p)}>Elimina</Button>
@@ -73,7 +85,7 @@ export function PlayersPage() {
             </div>
           )}
         </Card>
-      )) : <Empty>Nessun pilota registrato.</Empty>)}
+      )) : <Empty>Nessun pilota registrato.</Empty>}
     </>
   );
 }
