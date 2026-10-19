@@ -23,6 +23,10 @@ const (
 	// Senza pacchetti per questo tempo la sessione viene chiusa. Prima della fine
 	// della sessione (SEND) contano anche quelli di menù: il gioco è ancora aperto.
 	sessionTimeout = 60 * time.Second
+	// Con la classifica finale la sessione è conclusa: si chiude appena il gioco
+	// smette di mandarla. Sulla schermata dei risultati la ripete ogni 5 secondi,
+	// nella prova a tempo la manda una volta sola quando si esce.
+	finishedTimeout = 10 * time.Second
 	// Neanche i pacchetti di menù tengono aperta una sessione oltre questo tempo
 	// senza pacchetti suoi (per esempio se si esce senza finirla).
 	menuTimeout = 15 * time.Minute
@@ -51,6 +55,7 @@ type Service struct {
 	current     *session  // sessione in corso, nil se nessuna
 	lastPacket  time.Time // ultimo pacchetto della sessione in corso
 	lastAlive   time.Time // ultimo pacchetto qualsiasi, anche di menù: il gioco è aperto
+	finishedUID uint64    // ultima sessione chiusa con la classifica finale (vedi Handle)
 	warnedFmt   map[uint16]bool
 	subscribers map[chan []byte]struct{}
 	lastSent    []byte
@@ -158,6 +163,15 @@ func (s *Service) Handle(at time.Time, data []byte) {
 	if h.SessionUID == 0 {
 		return
 	}
+	// Una sessione chiusa con la classifica finale non si riapre per un suo
+	// pacchetto in ritardo (la classifica ripetuta), ma solo se ricomincia da
+	// capo con SSTA, come quando si rimanda la registrazione con cmd/record.
+	if h.SessionUID == s.finishedUID {
+		if code, _ := telemetry.EventCode(data); code != telemetry.EventSessionStarted {
+			return
+		}
+		s.finishedUID = 0
+	}
 	s.lastPacket = at
 
 	if s.current == nil || s.current.uid != h.SessionUID {
@@ -250,6 +264,9 @@ func (s *Service) endSession(at time.Time) {
 		return
 	}
 	s.current = nil
+	if cur.classification {
+		s.finishedUID = cur.uid
+	}
 	s.closeFile(cur)
 	end := at
 	if !s.lastPacket.IsZero() && s.lastPacket.Before(at) {
@@ -291,12 +308,16 @@ func (s *Service) tick(now time.Time) {
 	defer s.mu.Unlock()
 
 	if cur := s.current; cur != nil {
-		// Il gioco ancora aperto (anche solo nei menù) tiene aperta la sessione, finché non è finita.
-		alive := s.lastAlive
-		if cur.ended {
+		// Il gioco ancora aperto (anche solo nei menù) tiene aperta la sessione,
+		// finché non è finita (SEND). Dopo la classifica finale conta solo lei.
+		alive, timeout := s.lastAlive, sessionTimeout
+		switch {
+		case cur.classification:
+			alive, timeout = s.lastPacket, finishedTimeout
+		case cur.ended:
 			alive = s.lastPacket
 		}
-		if now.Sub(alive) > sessionTimeout || now.Sub(s.lastPacket) > menuTimeout {
+		if now.Sub(alive) > timeout || now.Sub(s.lastPacket) > menuTimeout {
 			s.endSession(now)
 		} else {
 			// Le scadenze della scelta dei piloti valgono anche se il gioco è in pausa.

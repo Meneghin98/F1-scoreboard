@@ -39,7 +39,8 @@ export function LivePage() {
   return (
     <>
       <SessionCard live={live} session={live.session} />
-      {live.status === 'paused' && (
+      {/* A sessione finita non arrivano più dati: il server la chiude poco dopo. */}
+      {live.status === 'paused' && !live.finished && (
         <p className="mb-4 text-sm text-muted">
           Il gioco non sta inviando dati (pausa, menù o impostazioni): si vede l'ultimo stato ricevuto.
         </p>

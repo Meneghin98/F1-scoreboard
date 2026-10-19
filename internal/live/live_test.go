@@ -356,6 +356,60 @@ func TestServicePauseInMenus(t *testing.T) {
 	}
 }
 
+// Con la classifica finale la sessione si chiude appena il gioco smette di
+// mandarla, e i suoi pacchetti in ritardo non ne aprono un'altra.
+func TestServiceClosesFinishedSession(t *testing.T) {
+	race := raceOnly(t, loadRecording(t), 42)
+	s, _ := newTestService(t, false)
+	base := time.Date(2026, 10, 16, 13, 31, 38, 0, time.UTC)
+
+	var classification []byte
+	var prev time.Time
+	for i, p := range race {
+		at := base.Add(p.At)
+		// Il ticker gira anche senza pacchetti: tra SEND e la classifica (24
+		// secondi) e tra una sua ripetizione e l'altra la sessione resta aperta.
+		if i > 0 && at.Sub(prev) > time.Second {
+			s.tick(at)
+			if s.current == nil {
+				t.Fatalf("sessione chiusa dopo %v senza pacchetti", at.Sub(prev))
+			}
+		}
+		s.Handle(at, p.Data)
+		prev = at
+		if p.Data[6] == byte(telemetry.PacketFinalClassification) {
+			classification = p.Data
+		}
+	}
+	if classification == nil || !s.current.classification {
+		t.Fatal("classifica finale non arrivata")
+	}
+
+	end := s.lastPacket
+	s.tick(end.Add(finishedTimeout - time.Second))
+	var snap Snapshot
+	json.Unmarshal(s.snapshotJSON(end.Add(finishedTimeout-time.Second)), &snap)
+	if s.current == nil || snap.Status != "paused" || !snap.Finished {
+		t.Fatalf("prima di finishedTimeout: sessione %v, stato %q", s.current != nil, snap.Status)
+	}
+	s.tick(end.Add(finishedTimeout + time.Second))
+	if s.current != nil {
+		t.Fatal("sessione ancora aperta dopo finishedTimeout")
+	}
+
+	// La classifica ripetuta in ritardo non riapre la sessione, che però può
+	// ricominciare da capo.
+	late := end.Add(time.Minute)
+	s.Handle(late, classification)
+	if s.current != nil {
+		t.Fatal("sessione riaperta da un pacchetto in ritardo")
+	}
+	s.Handle(late, telemetryPacket(t, telemetry.PacketEvent, 42, "SSTA"))
+	if records, _ := s.Sessions(); s.current == nil || len(records) != 2 {
+		t.Fatalf("sessione ricominciata: aperta %v, %d sessioni", s.current != nil, len(records))
+	}
+}
+
 func telemetryPacket(t *testing.T, id telemetry.PacketID, uid uint64, payload string) []byte {
 	t.Helper()
 	data := make([]byte, telemetry.HeaderSize, 45)
