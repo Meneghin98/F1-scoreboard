@@ -91,6 +91,11 @@ nella pagina Live con la classifica in tempo reale, e
 2 MB al minuto). Se la porta UDP è occupata (per esempio da `cmd/record`) il server parte
 comunque e riprova ogni 10 secondi.
 
+Quando non c'è una sessione, la pagina Live mostra cosa impostare nel gioco (con gli indirizzi IP
+del server) e i problemi di ricezione: porta UDP occupata o formato UDP non supportato. I
+pacchetti ricevuti aspettano in una coda prima di essere elaborati, così un rallentamento (per
+esempio una scrittura lenta sul disco) non ne fa perdere.
+
 | Endpoint                                  | Descrizione                                              |
 |-------------------------------------------|----------------------------------------------------------|
 | `GET /api/live`                           | Stato della sessione in corso: circuito, giro, piloti, distacchi, gomme |
@@ -109,7 +114,9 @@ i piloti già proposti (quelli che avevano lo stesso controller nella sessione p
    allo spegnimento del semaforo (fuori dalla gara, al secondo giro) o dopo 5 minuti. Cambiare un
    pilota ferma il conto alla rovescia.
 2. **A fine sessione** compare la classifica dei giocatori da confermare; senza interventi viene
-   salvata dopo 5 minuti (e comunque quando finisce la sessione).
+   salvata dopo 5 minuti (e comunque quando finisce la sessione). Se il salvataggio non riesce,
+   la pagina Live mostra l'errore e il server riprova da solo dopo 30 secondi; se si spegne di
+   colpo prima di salvare, la sessione viene salvata al riavvio.
 3. La sessione diventa una gara del **torneo in corso** o, se nessun torneo è in corso, di
    **Nessun torneo**. Un torneo si inizia e si termina dai pulsanti nell'header; terminato, le
    gare tornano in Nessun torneo, che non si può iniziare né eliminare.

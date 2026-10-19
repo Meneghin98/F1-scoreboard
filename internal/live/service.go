@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -57,6 +58,7 @@ type Service struct {
 	lastAlive   time.Time // ultimo pacchetto qualsiasi, anche di menù: il gioco è aperto
 	finishedUID uint64    // ultima sessione chiusa con la classifica finale (vedi Handle)
 	warnedFmt   map[uint16]bool
+	diag        diagnostics // stato della ricezione, mostrato nella pagina Live
 	subscribers map[chan []byte]struct{}
 	lastSent    []byte
 	stopped     bool // dopo lo spegnimento i pacchetti in ritardo vengono ignorati
@@ -114,7 +116,7 @@ func (s *Service) Run(ctx context.Context, addr string) {
 	s.deleteUnfinished(time.Now()) // prima dell'analisi, così non si leggono file da eliminare
 	go s.analyzePending()
 
-	listener := &Listener{Addr: addr, Handle: s.Handle}
+	listener := &Listener{Addr: addr, Handle: s.Handle, Ready: s.listening, Failed: s.listenFailed}
 	go listener.Run(ctx)
 
 	ticker := time.NewTicker(broadcastEvery)
@@ -131,10 +133,29 @@ func (s *Service) Run(ctx context.Context, addr string) {
 			return
 		case now := <-cleanup.C:
 			s.deleteUnfinished(now)
+			// Legge le registrazioni: in background, per non fermare gli aggiornamenti live.
+			go s.recoverPending()
 		case now := <-ticker.C:
 			s.tick(now)
 		}
 	}
+}
+
+// listening registra la porta UDP appena aperta.
+func (s *Service) listening(addr net.Addr) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.diag.err = ""
+	if udp, ok := addr.(*net.UDPAddr); ok {
+		s.diag.port = udp.Port
+	}
+}
+
+// listenFailed registra perché la porta UDP non si apre: la pagina Live lo mostra.
+func (s *Service) listenFailed(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.diag.port, s.diag.err = 0, err.Error()
 }
 
 // Handle elabora un pacchetto arrivato all'istante at.
@@ -155,6 +176,7 @@ func (s *Service) Handle(at time.Time, data []byte) {
 			s.warnedFmt[h.PacketFormat] = true
 			log.Printf("telemetria: formato %d non supportato, nel gioco imposta Formato UDP su 2025 o 2026", h.PacketFormat)
 		}
+		s.diag.badFormat, s.diag.badFormatAt = h.PacketFormat, at
 		return
 	}
 	s.lastAlive = at
@@ -199,7 +221,10 @@ func (s *Service) Handle(at time.Time, data []byte) {
 	}
 	if !cur.classification && s.tracker.Classification() != nil {
 		cur.classification = true
-		s.exec("UPDATE telemetry_sessions SET has_classification = 1 WHERE id = ?", cur.id)
+		// Le sessioni del weekend da qui aspettano di essere salvate in un torneo:
+		// se il server si spegne prima, al riavvio lo fa recoverPending.
+		pending := s.tracker.Session() != nil && sessionKind(s.tracker.Session().SessionType) != ""
+		s.exec("UPDATE telemetry_sessions SET has_classification = 1, pending_save = ? WHERE id = ?", pending, cur.id)
 		log.Printf("telemetria: sessione %016x: classifica finale ricevuta", cur.uid)
 	}
 	s.updateLineup(at)
@@ -276,8 +301,9 @@ func (s *Service) endSession(at time.Time) {
 		dbTime(end), cur.packets, s.fileSize(cur), cur.id)
 	// Il tracker ha ancora i dati di questa sessione: la successiva non è ancora iniziata.
 	// Se i risultati aspettavano ancora la conferma, si salvano con i piloti scelti finora.
+	// Se non riesce, la sessione resta segnata come da salvare: ci riprova recoverPending.
 	if l := cur.lineup; l != nil && l.stage == StageResults {
-		if err := s.saveLineup(cur); err != nil {
+		if err := s.saveLineup(cur, at); err != nil {
 			log.Printf("telemetria: salvataggio della gara: %v", err)
 		}
 	}
@@ -333,6 +359,12 @@ func (s *Service) tick(now time.Time) {
 
 	s.saveTrackMap()
 
+	// Senza browser collegati non serve preparare lo stato: chi si collega lo
+	// riceve subito da Subscribe.
+	if len(s.subscribers) == 0 {
+		s.lastSent = nil
+		return
+	}
 	msg := s.snapshotJSON(now)
 	if bytes.Equal(msg, s.lastSent) {
 		return
@@ -358,6 +390,7 @@ func (s *Service) snapshotJSON(now time.Time) []byte {
 	} else {
 		snap = emptySnapshot(status)
 	}
+	snap.Telemetry = s.diag.status(now)
 	msg, err := json.Marshal(snap)
 	if err != nil {
 		log.Printf("telemetria: %v", err)

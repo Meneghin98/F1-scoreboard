@@ -218,6 +218,10 @@ func TestLiveStream(t *testing.T) {
 	if ct := res.Header.Get("Content-Type"); ct != "text/event-stream" {
 		t.Fatalf("Content-Type %q", ct)
 	}
+	// Il client Go chiede gzip da solo e decomprime: lo stream arriva compresso.
+	if !res.Uncompressed {
+		t.Error("stream non compresso con gzip")
+	}
 	// Il primo evento arriva subito, con lo stato attuale.
 	line, err := bufio.NewReader(res.Body).ReadString('\n')
 	if err != nil || !strings.HasPrefix(line, `data: {"status":"waiting"`) {

@@ -1,4 +1,4 @@
-import { isLive, sessionSummary } from '../lib/live';
+import { isLive, sessionSummary, telemetryProblem } from '../lib/live';
 import { href } from '../lib/route';
 import { useLive } from '../lib/useLive';
 import { cx } from './ui';
@@ -9,14 +9,18 @@ export function LiveBadge() {
   if (!live) return null;
 
   const active = isLive(live);
+  const problem = active ? null : telemetryProblem(live.telemetry);
   return (
     <a
       href={href('live')}
-      className={cx('flex items-center gap-2 text-sm hover:text-fg', active ? 'font-semibold' : 'text-muted')}
-      title={active ? 'Apri la pagina Live' : 'Il server è in ascolto sulla porta UDP 20777'}
+      className={cx(
+        'flex items-center gap-2 text-sm hover:text-fg',
+        active ? 'font-semibold' : problem ? 'font-semibold text-accent-text' : 'text-muted',
+      )}
+      title={active ? 'Apri la pagina Live' : problem?.long ?? `Il server è in ascolto sulla porta UDP ${live.telemetry?.port || 20777}`}
     >
       <LiveDot active={live.status === 'live'} />
-      {active ? sessionSummary(live) : 'Telemetria in attesa'}
+      {active ? sessionSummary(live) : problem?.short ?? 'Telemetria in attesa'}
     </a>
   );
 }

@@ -1,5 +1,25 @@
 // Etichette per i dati della telemetria live.
-import type { LiveSession, LiveSnapshot } from './types';
+import type { LiveSession, LiveSnapshot, TelemetryStatus } from './types';
+
+// Problema che impedisce di ricevere la telemetria, in breve (per l'header) e
+// per esteso (per la pagina Live); null se non ce ne sono.
+export function telemetryProblem(t: TelemetryStatus | undefined): { short: string; long: string } | null {
+  if (t?.error) {
+    return {
+      short: 'Porta UDP non disponibile',
+      long: `La porta UDP della telemetria non si apre (${t.error}). Forse la usa un altro programma, ` +
+        'per esempio cmd/record: il server riprova da solo ogni 10 secondi.',
+    };
+  }
+  if (t?.badFormat) {
+    return {
+      short: `Formato UDP ${t.badFormat} non supportato`,
+      long: `Il gioco sta inviando la telemetria nel formato ${t.badFormat}, che non è supportato: ` +
+        'nelle impostazioni della telemetria imposta Formato UDP su 2025 (o 2026 con il DLC 2026 Season Pack).',
+    };
+  }
+  return null;
+}
 
 export const WEATHER = ['Sereno', 'Poco nuvoloso', 'Nuvoloso', 'Pioggia leggera', 'Pioggia forte', 'Temporale'];
 

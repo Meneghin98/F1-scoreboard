@@ -18,6 +18,9 @@ type Snapshot struct {
 	Finished bool         `json:"finished"` // classifica finale ricevuta
 	Lineup   *Lineup      `json:"lineup"`   // chi guida le auto dei giocatori, solo in gara
 	Events   []RaceEvent  `json:"events"`   // ultimi messaggi della direzione gara, dal più vecchio
+	// Telemetry dice se il server riceve la telemetria (porta, errori, indirizzi
+	// da impostare nel gioco). Solo nello stato live, non nei replay.
+	Telemetry *TelemetryStatus `json:"telemetry,omitempty"`
 }
 
 type SessionInfo struct {

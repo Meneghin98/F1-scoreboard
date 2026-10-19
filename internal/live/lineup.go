@@ -24,7 +24,12 @@ import (
 // modifica i piloti il conto alla rovescia si ferma e si aspetta la sua
 // conferma, ma se la sessione finisce prima i risultati vengono salvati comunque.
 
-const lineupTimeout = 5 * time.Minute
+const (
+	lineupTimeout = 5 * time.Minute
+	// Se il salvataggio dei risultati non riesce (per esempio il database è
+	// occupato) si riprova dopo questo tempo; intanto la pagina Live mostra l'errore.
+	saveRetry = 30 * time.Second
+)
 
 // Fasi della scelta dei piloti.
 const (
@@ -41,6 +46,7 @@ type lineup struct {
 	deadline time.Time // salvataggio automatico; zero se non previsto o se l'utente è intervenuto
 	saved    *LineupTournament
 	raceID   *int64
+	saveErr  string // perché l'ultimo salvataggio non è riuscito, vuoto se non ci sono stati errori
 }
 
 type lineupCar struct {
@@ -60,6 +66,9 @@ type Lineup struct {
 	// Tournament è il torneo in cui finirà la gara (o in cui è finita, se salvata).
 	Tournament *LineupTournament `json:"tournament"`
 	RaceID     *int64            `json:"raceId"` // gara creata nel torneo, dopo il salvataggio
+	// Error dice perché il salvataggio dei risultati non è riuscito (si riprova
+	// da soli dopo poco); vuoto se non ci sono stati errori.
+	Error string `json:"error"`
 }
 
 type LineupCar struct {
@@ -103,7 +112,7 @@ func (s *Service) updateLineup(at time.Time) {
 		l.stage, l.deadline = StageResults, at.Add(lineupTimeout)
 	}
 	if l.stage == StageResults && expired(l, at) {
-		if err := s.saveLineup(cur); err != nil {
+		if err := s.saveLineup(cur, at); err != nil {
 			log.Printf("telemetria: salvataggio della gara: %v", err)
 		}
 	}
@@ -161,10 +170,21 @@ func (l *lineup) assigned() map[int]*int64 {
 }
 
 // saveLineup salva i giocatori della sessione con i piloti scelti e, se la
-// gara ha la classifica finale, la aggiunge al torneo in corso (o in "Nessun torneo").
-func (s *Service) saveLineup(cur *session) error {
+// gara ha la classifica finale, la aggiunge al torneo in corso (o in "Nessun
+// torneo"). Se qualcosa va storto la fase resta quella dei risultati: si
+// riprova da soli dopo saveRetry, oppure confermando di nuovo.
+func (s *Service) saveLineup(cur *session, at time.Time) error {
 	l := cur.lineup
-	l.stage, l.deadline = StageSaved, time.Time{}
+	if err := s.storeLineup(cur); err != nil {
+		l.saveErr, l.deadline = err.Error(), at.Add(saveRetry)
+		return err
+	}
+	l.stage, l.deadline, l.saveErr = StageSaved, time.Time{}, ""
+	return nil
+}
+
+func (s *Service) storeLineup(cur *session) error {
+	l := cur.lineup
 	d := s.sessionData()
 	d.assigned = l.assigned()
 	if err := s.savePlayers(cur.id, d); err != nil {
@@ -176,7 +196,7 @@ func (s *Service) saveLineup(cur *session) error {
 	if ses == nil || d.classification == nil {
 		return nil
 	}
-	t, raceID, err := s.addRaceToTournament(cur.id, ses)
+	t, raceID, err := s.addRaceToTournament(cur.id, raceTypeOf(ses))
 	if err != nil {
 		return err
 	}
@@ -192,35 +212,54 @@ func (s *Service) sessionData() sessionData {
 	return sessionData{header: s.tracker.header, participants: s.tracker.Participants(), classification: s.tracker.Classification()}
 }
 
-// addRaceToTournament crea la gara nel torneo in corso (o in "Nessun torneo") e
-// le collega la sessione. Se la sessione è già collegata a una gara (a mano,
-// dalla pagina delle registrazioni) resta dov'è.
-func (s *Service) addRaceToTournament(sessionID int64, ses *telemetry.Session) (*LineupTournament, *int64, error) {
-	var raceID *int64
-	if err := s.db.QueryRow("SELECT race_id FROM telemetry_sessions WHERE id = ?", sessionID).Scan(&raceID); err != nil {
-		return nil, nil, err
-	}
-	if raceID != nil {
-		var t LineupTournament
-		err := s.db.QueryRow(`
-			SELECT t.id, t.name, t.free FROM races r JOIN tournaments t ON t.id = r.tournament_id WHERE r.id = ?`, *raceID).
-			Scan(&t.ID, &t.Name, &t.Free)
-		return &t, raceID, err
-	}
-
-	t, err := targetTournament(s.db)
-	if err != nil || t == nil {
-		return nil, nil, err
-	}
-	raceType := raceTypeFor(ses.SessionType)
-	if isSprint(ses) {
-		raceType = "sprint"
-	}
-	id, err := s.LinkNewRace(sessionID, t.ID, raceType)
+// addRaceToTournament mette la sessione in una gara del torneo in corso (o di
+// "Nessun torneo") e restituisce torneo e gara. Se la sessione è già collegata
+// a una gara (a mano, dalla pagina delle registrazioni) resta dov'è. Tutto
+// avviene in una transazione: chiamata due volte per la stessa sessione (dal
+// salvataggio e dal recupero dopo un'interruzione) crea una gara sola.
+func (s *Service) addRaceToTournament(sessionID int64, raceType string) (*LineupTournament, *int64, error) {
+	tx, err := s.db.Begin()
 	if err != nil {
 		return nil, nil, err
 	}
-	return t, &id, nil
+	defer tx.Rollback()
+
+	raceID, err := sessionRace(tx, sessionID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if raceID == nil {
+		target, err := targetTournament(tx)
+		if err != nil || target == nil {
+			return nil, nil, err
+		}
+		id, err := linkNewRace(tx, sessionID, target.ID, raceType)
+		if err != nil {
+			return nil, nil, err
+		}
+		raceID = &id
+	}
+	// La sessione è in un torneo: non aspetta più di essere salvata (vedi recoverPending).
+	if _, err := tx.Exec("UPDATE telemetry_sessions SET pending_save = 0 WHERE id = ?", sessionID); err != nil {
+		return nil, nil, err
+	}
+	var t LineupTournament
+	err = tx.QueryRow(`
+		SELECT t.id, t.name, t.free FROM races r JOIN tournaments t ON t.id = r.tournament_id WHERE r.id = ?`, *raceID).
+		Scan(&t.ID, &t.Name, &t.Free)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &t, raceID, tx.Commit()
+}
+
+// raceTypeOf restituisce il tipo della gara del torneo per la sessione ses:
+// come raceTypeFor, ma riconosce anche le sprint dalla struttura del weekend.
+func raceTypeOf(ses *telemetry.Session) string {
+	if isSprint(ses) {
+		return "sprint"
+	}
+	return raceTypeFor(ses.SessionType)
 }
 
 // isSprint dice se la gara è una sprint: nei weekend con la sprint (quelli con
@@ -269,7 +308,10 @@ func (s *Service) lineupView(snap *Snapshot, now time.Time) {
 		return
 	}
 	l := cur.lineup
-	v := &Lineup{Stage: l.stage, Kind: sessionKind(s.tracker.Session().SessionType), Cars: []LineupCar{}, Tournament: l.saved, RaceID: l.raceID}
+	v := &Lineup{
+		Stage: l.stage, Kind: sessionKind(s.tracker.Session().SessionType), Cars: []LineupCar{},
+		Tournament: l.saved, RaceID: l.raceID, Error: l.saveErr,
+	}
 	if !l.deadline.IsZero() {
 		secs := max(0, int(math.Ceil(l.deadline.Sub(now).Seconds())))
 		v.SecondsLeft = &secs
@@ -371,7 +413,7 @@ func (s *Service) SetLineup(choices []LineupChoice, confirm bool) error {
 		case StageDrivers:
 			l.stage, l.deadline = StageRacing, time.Time{}
 		case StageResults:
-			return s.saveLineup(cur)
+			return s.saveLineup(cur, time.Now())
 		}
 	}
 	return nil

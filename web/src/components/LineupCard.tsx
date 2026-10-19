@@ -99,7 +99,14 @@ export function LineupCard({ lineup }: { lineup: Lineup }) {
       {waiting && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <span className="text-sm text-muted">
-            <Countdown lineup={lineup} />
+            {lineup.error ? (
+              <span className="text-accent-text">
+                Salvataggio non riuscito ({lineup.error}): nuovo tentativo tra{' '}
+                <b className="tabular-nums">{formatClock(lineup.secondsLeft ?? 0)}</b>
+              </span>
+            ) : (
+              <Countdown lineup={lineup} />
+            )}
           </span>
           <Button size="sm" onClick={confirm}>{stage === 'drivers' ? 'Conferma piloti' : 'Conferma e salva'}</Button>
         </div>

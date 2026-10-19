@@ -1,8 +1,10 @@
 package api
 
 import (
+	"compress/gzip"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -61,6 +63,22 @@ func (s *Server) streamLive(w http.ResponseWriter, r *http.Request) error {
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-store")
 	h.Set("X-Accel-Buffering", "no") // evita il buffering di eventuali proxy
+	h.Set("Vary", "Accept-Encoding")
+
+	// Uno stato pesa qualche KB ed è quasi uguale al precedente: compresso
+	// diventa una frazione. Dopo ogni messaggio si svuota anche il compressore,
+	// altrimenti il browser lo riceverebbe solo a buffer pieno.
+	out, flush := io.Writer(w), flusher.Flush
+	if acceptsGzip(r) {
+		h.Set("Content-Encoding", "gzip")
+		gz, _ := gzip.NewWriterLevel(w, gzip.BestSpeed) // l'errore c'è solo con livelli non validi
+		defer gz.Close()
+		out = gz
+		flush = func() {
+			gz.Flush()
+			flusher.Flush()
+		}
+	}
 
 	updates, unsubscribe := s.live.Subscribe()
 	defer unsubscribe()
@@ -76,15 +94,15 @@ func (s *Server) streamLive(w http.ResponseWriter, r *http.Request) error {
 		case <-s.live.Done():
 			return nil
 		case msg := <-updates:
-			if _, err := fmt.Fprintf(w, "data: %s\n\n", msg); err != nil {
+			if _, err := fmt.Fprintf(out, "data: %s\n\n", msg); err != nil {
 				return nil // client disconnesso
 			}
 		case <-keepAlive.C:
-			if _, err := fmt.Fprint(w, ": keep-alive\n\n"); err != nil {
+			if _, err := fmt.Fprint(out, ": keep-alive\n\n"); err != nil {
 				return nil
 			}
 		}
-		flusher.Flush()
+		flush()
 	}
 }
 

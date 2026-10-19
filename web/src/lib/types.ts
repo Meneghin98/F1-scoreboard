@@ -245,6 +245,15 @@ export interface LiveSnapshot {
   finished: boolean;
   lineup: Lineup | null;
   events: RaceEvent[]; // ultimi messaggi della direzione gara, dal più vecchio
+  telemetry?: TelemetryStatus; // solo nello stato live, non nei replay
+}
+
+// Ricezione della telemetria (vedi internal/live/diagnostics.go).
+export interface TelemetryStatus {
+  port: number; // porta UDP in ascolto, 0 se non è aperta
+  error: string; // perché la porta non si apre
+  addresses: string[]; // indirizzi IP del server da impostare nel gioco, il principale per primo
+  badFormat: number; // formato UDP non supportato arrivato da poco, 0 se nessuno
 }
 
 // Chi guida le auto dei giocatori in gara (vedi internal/live/lineup.go).
@@ -274,6 +283,7 @@ export interface Lineup {
   cars: LineupCar[];
   tournament: { id: number; name: string; free: boolean } | null; // dove finisce (o è finita) la gara
   raceId: number | null;
+  error: string; // perché il salvataggio non è riuscito (si riprova da soli), vuoto se nessun errore
 }
 
 // Pianta del circuito ricostruita dalle posizioni delle auto (metri, X e Z del gioco).

@@ -10,10 +10,10 @@
 package telemetry
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 )
 
 // Valori di Header.PacketFormat supportati.
@@ -84,14 +84,28 @@ type Header struct {
 
 var ErrShortPacket = errors.New("pacchetto troppo corto")
 
-// ParseHeader legge l'header all'inizio di un pacchetto.
+// ParseHeader legge l'header all'inizio di un pacchetto. Si chiama per ogni
+// pacchetto (circa 200 al secondo, molti di più leggendo una registrazione):
+// i campi si leggono uno per uno, senza binary.Read che usa la reflection.
 func ParseHeader(packet []byte) (Header, error) {
-	var h Header
 	if len(packet) < HeaderSize {
-		return h, ErrShortPacket
+		return Header{}, ErrShortPacket
 	}
-	err := binary.Read(bytes.NewReader(packet[:HeaderSize]), binary.LittleEndian, &h)
-	return h, err
+	le := binary.LittleEndian
+	return Header{
+		PacketFormat:            le.Uint16(packet[0:]),
+		GameYear:                packet[2],
+		GameMajorVersion:        packet[3],
+		GameMinorVersion:        packet[4],
+		PacketVersion:           packet[5],
+		PacketID:                PacketID(packet[6]),
+		SessionUID:              le.Uint64(packet[7:]),
+		SessionTime:             math.Float32frombits(le.Uint32(packet[15:])),
+		FrameIdentifier:         le.Uint32(packet[19:]),
+		OverallFrameIdentifier:  le.Uint32(packet[23:]),
+		PlayerCarIndex:          packet[27],
+		SecondaryPlayerCarIndex: packet[28],
+	}, nil
 }
 
 // EventCode restituisce il codice di 4 lettere di un pacchetto Event (es. "SSTA"

@@ -37,7 +37,8 @@ type dbtx interface {
 
 // sessionData sono i pacchetti che servono per sapere chi ha giocato una sessione e come è finita.
 type sessionData struct {
-	header         telemetry.Header // l'ultimo: contiene gli indici delle auto dei giocatori
+	header         telemetry.Header   // l'ultimo: contiene gli indici delle auto dei giocatori
+	session        *telemetry.Session // serve per riconoscere le sprint (struttura del weekend)
 	participants   *telemetry.Participants
 	classification *telemetry.FinalClassification
 	// assigned sono i piloti scelti dalla pagina Live (indice dell'auto → pilota,
@@ -81,8 +82,10 @@ func analyzeFile(path string, uid uint64) (sessionData, error) {
 		if err != nil || h.SessionUID != uid {
 			continue
 		}
-		// Si decodificano solo i due pacchetti utili: sono pochi rispetto al totale.
-		if h.PacketID != telemetry.PacketParticipants && h.PacketID != telemetry.PacketFinalClassification {
+		// Si decodificano solo i pacchetti utili: sono pochi rispetto al totale.
+		switch h.PacketID {
+		case telemetry.PacketParticipants, telemetry.PacketFinalClassification, telemetry.PacketSession:
+		default:
 			continue
 		}
 		packet, err := telemetry.Parse(p.Data)
@@ -91,6 +94,8 @@ func analyzeFile(path string, uid uint64) (sessionData, error) {
 		}
 		d.header = h
 		switch packet := packet.(type) {
+		case *telemetry.Session:
+			d.session = packet
 		case *telemetry.Participants:
 			d.participants = packet
 		case *telemetry.FinalClassification:
@@ -141,6 +146,53 @@ func (s *Service) analyzePending() {
 	}
 	// Dopo l'analisi, così le gare create hanno subito i risultati.
 	s.adoptPending()
+	s.recoverPending()
+}
+
+// recoverPending salva nel torneo in corso (o in "Nessun torneo") le sessioni
+// finite con la classifica finale che non sono state salvate: il server si è
+// spento di colpo prima di farlo, oppure il salvataggio non è riuscito. Le
+// sessioni in corso non hanno ancora ended_at e restano fuori.
+func (s *Service) recoverPending() {
+	type pending struct {
+		id          int64
+		uid, file   string
+		sessionType *int
+	}
+	rows, err := s.db.Query("SELECT id, session_uid, file, session_type FROM telemetry_sessions WHERE pending_save = 1 AND ended_at IS NOT NULL")
+	if err != nil {
+		log.Printf("telemetria: %v", err)
+		return
+	}
+	var list []pending
+	for rows.Next() {
+		var p pending
+		if rows.Scan(&p.id, &p.uid, &p.file, &p.sessionType) == nil {
+			list = append(list, p)
+		}
+	}
+	rows.Close()
+
+	for _, p := range list {
+		raceType := ""
+		if p.sessionType != nil {
+			raceType = raceTypeFor(telemetry.SessionType(*p.sessionType))
+		}
+		// Le sprint si riconoscono dalla struttura del weekend, che è solo nella registrazione.
+		if uid, err := strconv.ParseUint(p.uid, 16, 64); err == nil {
+			if d, err := analyzeFile(filepath.Join(s.opts.Dir, p.file), uid); err == nil && d.session != nil {
+				raceType = raceTypeOf(d.session)
+			}
+		}
+		t, _, err := s.addRaceToTournament(p.id, raceType)
+		if err != nil {
+			log.Printf("telemetria: salvataggio della sessione %d nel torneo: %v", p.id, err)
+			continue
+		}
+		if t != nil {
+			log.Printf("telemetria: sessione %d rimasta in sospeso salvata nel torneo %q", p.id, t.Name)
+		}
+	}
 }
 
 // adoptPending mette in "Nessun torneo" le sessioni finite registrate prima
@@ -530,12 +582,20 @@ func (s *Service) LinkNewRace(sessionID, tournamentID int64, raceType string) (i
 		return 0, err
 	}
 	defer tx.Rollback()
+	raceID, err := linkNewRace(tx, sessionID, tournamentID, raceType)
+	if err != nil {
+		return 0, err
+	}
+	return raceID, tx.Commit()
+}
 
+// linkNewRace è LinkNewRace dentro una transazione già aperta.
+func linkNewRace(tx dbtx, sessionID, tournamentID int64, raceType string) (int64, error) {
 	var (
 		trackID, sessionType *int
 		startedAt            string
 	)
-	err = tx.QueryRow("SELECT track_id, session_type, started_at FROM telemetry_sessions WHERE id = ?", sessionID).
+	err := tx.QueryRow("SELECT track_id, session_type, started_at FROM telemetry_sessions WHERE id = ?", sessionID).
 		Scan(&trackID, &sessionType, &startedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, ErrSessionNotFound
@@ -579,7 +639,7 @@ func (s *Service) LinkNewRace(sessionID, tournamentID int64, raceType string) (i
 	if err := linkRace(tx, sessionID, &raceID); err != nil {
 		return 0, err
 	}
-	return raceID, tx.Commit()
+	return raceID, nil
 }
 
 // linkRace sposta la sessione su un'altra gara (o nessuna, con nil) e
@@ -613,6 +673,12 @@ func linkRace(tx dbtx, sessionID int64, raceID *int64) error {
 
 	if _, err := tx.Exec("UPDATE telemetry_sessions SET race_id = ? WHERE id = ?", raceID, sessionID); err != nil {
 		return err
+	}
+	if raceID != nil {
+		// Assegnata a una gara: non aspetta più di essere salvata (vedi recoverPending).
+		if _, err := tx.Exec("UPDATE telemetry_sessions SET pending_save = 0 WHERE id = ?", sessionID); err != nil {
+			return err
+		}
 	}
 	if wasSource {
 		// I risultati della gara di prima venivano da questa registrazione: non valgono più.

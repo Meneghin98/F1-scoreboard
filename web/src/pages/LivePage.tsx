@@ -1,7 +1,9 @@
-import { useState, type ReactNode } from 'react';
+import { Fragment, useState, type ReactNode } from 'react';
 import { formatClock, formatGap, formatLapTime } from '../lib/format';
-import { controllerLabel, isLive, isLoading, isPaused, SAFETY_CAR, teamColor, TYRE_CLASS, WEATHER } from '../lib/live';
-import type { LiveDriver, LiveSession, LiveSnapshot, PlayerCar, RaceEvent, TrackMap } from '../lib/types';
+import {
+  controllerLabel, isLive, isLoading, isPaused, SAFETY_CAR, teamColor, telemetryProblem, TYRE_CLASS, WEATHER,
+} from '../lib/live';
+import type { LiveDriver, LiveSession, LiveSnapshot, PlayerCar, RaceEvent, TelemetryStatus, TrackMap } from '../lib/types';
 import { useLive, usePedalHistory, type PedalSample } from '../lib/useLive';
 import { LiveDot } from '../components/LiveBadge';
 import { LineupCard } from '../components/LineupCard';
@@ -16,13 +18,7 @@ export function LivePage() {
   const pedals = usePedalHistory();
 
   if (!live) return <Empty>Connessione al server in corso…</Empty>;
-  if (!isLive(live)) {
-    return (
-      <Card>
-        <Empty>Nessuna sessione in corso.</Empty>
-      </Card>
-    );
-  }
+  if (!isLive(live)) return <WaitingCard telemetry={live.telemetry} />;
 
   if (isLoading(live.session)) {
     return (
@@ -52,6 +48,54 @@ export function LivePage() {
         <Empty>In attesa dei dati dei piloti…</Empty>
       )}
     </>
+  );
+}
+
+// Senza una sessione in corso: cosa impostare nel gioco perché la telemetria
+// arrivi qui, ed eventuali problemi di ricezione.
+function WaitingCard({ telemetry: t }: { telemetry?: TelemetryStatus }) {
+  const problem = telemetryProblem(t);
+  const [primary, ...others] = t?.addresses ?? [];
+  const settings: [string, ReactNode][] = [
+    ['Telemetria UDP', 'Attiva'],
+    ['Modalità broadcast UDP', 'Disattivata'],
+    [
+      'Indirizzo IP UDP',
+      <>
+        <span className="font-semibold">{primary ?? 'IP di questo PC'}</span>
+        {others.length > 0 && <span className="text-muted"> (oppure {others.join(', ')})</span>}
+        <span className="text-muted"> · 127.0.0.1 se il gioco gira su questo PC</span>
+      </>,
+    ],
+    ['Porta UDP', <span className="font-semibold">{t?.port || 20777}</span>],
+    ['Frequenza di invio UDP', '20 Hz'],
+    ['Formato UDP', '2025, oppure 2026 con il DLC 2026 Season Pack'],
+  ];
+
+  return (
+    <Card>
+      <div className="mb-4 flex items-center gap-3">
+        <LiveDot />
+        <div>
+          <h2 className="text-xl font-bold">Nessuna sessione in corso</h2>
+          <p className="text-sm text-muted">La classifica compare appena il gioco invia la telemetria, in pista o nel garage.</p>
+        </div>
+      </div>
+      {problem && (
+        <p className="mb-4 rounded-md border border-accent/60 bg-accent/10 px-3 py-2 text-sm">{problem.long}</p>
+      )}
+      <h3 className="mb-2 text-xs font-bold tracking-wider text-muted uppercase">
+        Nel gioco: Impostazioni → Impostazioni telemetria
+      </h3>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
+        {settings.map(([label, value]) => (
+          <Fragment key={label}>
+            <dt className="text-muted">{label}</dt>
+            <dd>{value}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </Card>
   );
 }
 
