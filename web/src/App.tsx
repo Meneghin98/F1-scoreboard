@@ -28,6 +28,24 @@ function tournamentLabel(t: Tournament): string {
   return t.name;
 }
 
+function GearIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="block size-5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 export function App() {
   const view = useView();
   // Le pagine a schermo intero non hanno header né menu e non caricano i
@@ -69,17 +87,31 @@ function MainApp({ view }: { view: View }) {
             </h1>
             <LiveBadge />
           </div>
-          <select
-            aria-label="Torneo"
-            title="Torneo mostrato in dashboard, classifica e gare"
-            className={fieldSmClass}
-            value={tournamentId ?? ''}
-            onChange={(e) => setSelectedId(Number(e.target.value))}
-          >
-            {tournaments?.length
-              ? tournaments.map((t) => <option key={t.id} value={t.id}>{tournamentLabel(t)}</option>)
-              : <option value="">Nessun torneo</option>}
-          </select>
+          <div className="flex items-center gap-2">
+            <select
+              aria-label="Torneo"
+              title="Torneo mostrato in dashboard, classifica e gare"
+              className={fieldSmClass}
+              value={tournamentId ?? ''}
+              onChange={(e) => setSelectedId(Number(e.target.value))}
+            >
+              {tournaments?.length
+                ? tournaments.map((t) => <option key={t.id} value={t.id}>{tournamentLabel(t)}</option>)
+                : <option value="">Nessun torneo</option>}
+            </select>
+            <a
+              href={href('system')}
+              aria-label={VIEW_LABELS.system}
+              title={VIEW_LABELS.system}
+              aria-current={view === 'system' ? 'page' : undefined}
+              className={cx(
+                'rounded-md p-1.5 transition-colors hover:bg-line hover:text-fg',
+                view === 'system' ? 'text-accent' : 'text-muted',
+              )}
+            >
+              <GearIcon />
+            </a>
+          </div>
         </div>
         <nav aria-label="Pagine" className="flex flex-wrap gap-1 border-b border-line px-4">
           {NAV_VIEWS.map((v) => (
@@ -101,6 +133,8 @@ function MainApp({ view }: { view: View }) {
       {/* Le pagine montano solo dopo aver caricato i tornei, per non chiedere un torneo salvato che non esiste più. */}
       {tournaments ? (
         <main className="mx-auto max-w-300 p-6">
+          {/* Sistema non è nella barra: il titolo dice dove ci si trova. */}
+          {view === 'system' && <h2 className="mb-4 text-xl font-bold">{VIEW_LABELS.system}</h2>}
           {parent && (
             <nav aria-label="Percorso" className="mb-4 flex items-center gap-2 text-sm">
               <a href={href(parent)} className="text-muted hover:text-fg">{VIEW_LABELS[parent]}</a>
