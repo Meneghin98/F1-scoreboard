@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -482,6 +483,8 @@ func TestTournamentRules(t *testing.T) {
 		PointsMode       string `json:"points_mode"`
 		PolePoints       int    `json:"pole_points"`
 		FastestLapPoints int    `json:"fastest_lap_points"`
+		RacePoints       []int  `json:"race_points"`
+		SprintPoints     []int  `json:"sprint_points"`
 		Leader           *struct {
 			Name   string `json:"name"`
 			Points int    `json:"points"`
@@ -497,6 +500,10 @@ func TestTournamentRules(t *testing.T) {
 		"punti negativi":       {"name": "X", "pole_points": -1},
 		"punti decimali":       {"name": "X", "fastest_lap_points": 1.5},
 		"troppi punti":         {"name": "X", "pole_points": 26},
+		"tabella vuota":        {"name": "X", "race_points": []int{}},
+		"tabella senza punti":  {"name": "X", "race_points": []int{0, 0}},
+		"tabella crescente":    {"name": "X", "race_points": []int{10, 12}},
+		"tabella decimale":     {"name": "X", "sprint_points": []float64{3.5}},
 	} {
 		expectStatus(t, call(t, srv, "POST", "/tournaments", body, nil), 400, name)
 	}
@@ -600,5 +607,23 @@ func TestTournamentRules(t *testing.T) {
 		if t2.Free {
 			expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", t2.ID), map[string]any{"pole_points": 1}, nil), 400, "regole di Nessun torneo")
 		}
+	}
+
+	// Tra i piloti con i punti scelti: Luca primo prende 10, Simone secondo 5, più pole e giro veloce.
+	// Gli zeri in fondo si tolgono e la tabella F1 resta il default.
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", cup.ID), map[string]any{
+		"points_mode": "players", "race_points": []int{10, 5, 0}, "sprint_points": []int{8, 7, 6, 5, 4, 3, 2, 1},
+	}, &cup), 200, "punti per posizione")
+	if !slices.Equal(cup.RacePoints, []int{10, 5}) || cup.SprintPoints != nil {
+		t.Fatalf("tabelle dei punti %v %v", cup.RacePoints, cup.SprintPoints)
+	}
+	call(t, srv, "GET", fmt.Sprintf("/tournaments/%d/standings", cup.ID), nil, &st)
+	if luca, simone := st.Standings[0], st.Standings[1]; luca.Points != 10 || simone.Points != 3+5+1 {
+		t.Fatalf("classifica con i punti scelti %+v", st.Standings)
+	}
+	// Cambiando altro, le tabelle restano.
+	call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", cup.ID), map[string]any{"pole_points": 0}, &cup)
+	if !slices.Equal(cup.RacePoints, []int{10, 5}) {
+		t.Errorf("tabella dopo la modifica %v", cup.RacePoints)
 	}
 }

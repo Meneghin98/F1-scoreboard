@@ -24,7 +24,8 @@ type Tournament struct {
 	Active     bool    `json:"active"`     // in corso: le gare finite vengono salvate qui
 	Races      int     `json:"races"`      // gare del torneo
 	Recordings int     `json:"recordings"` // registrazioni collegate alle sue gare
-	// Regole di punteggio: nel JSON diventano points_mode, pole_points e fastest_lap_points.
+	// Regole di punteggio: nel JSON diventano points_mode, pole_points, fastest_lap_points,
+	// race_points e sprint_points.
 	scoring.Rules
 	// Leader è il primo in classifica, solo nell'elenco dei tornei: nil se non
 	// ci sono ancora risultati, e sempre per "Nessun torneo".
@@ -42,25 +43,33 @@ type TournamentLeader struct {
 const tournamentColumns = "id, name, created_at, free, started_at, ended_at, started_at IS NOT NULL AND ended_at IS NULL, " +
 	"(SELECT COUNT(*) FROM races WHERE races.tournament_id = tournaments.id), " +
 	"(SELECT COUNT(*) FROM telemetry_sessions s JOIN races r ON r.id = s.race_id WHERE r.tournament_id = tournaments.id), " +
-	"points_mode, pole_points, fastest_lap_points"
+	"points_mode, pole_points, fastest_lap_points, race_points, sprint_points"
 
 // scanTournament legge una riga selezionata con tournamentColumns.
 func scanTournament(row interface{ Scan(...any) error }, t *Tournament) error {
 	return row.Scan(&t.ID, &t.Name, &t.CreatedAt, &t.Free, &t.StartedAt, &t.EndedAt, &t.Active, &t.Races, &t.Recordings,
-		&t.Mode, &t.PolePoints, &t.FastestLapPoints)
+		&t.Mode, &t.PolePoints, &t.FastestLapPoints, &t.RacePoints, &t.SprintPoints)
 }
 
 // rulesInput sono le regole di punteggio come arrivano nel body di un torneo:
 // i campi assenti restano come sono (per un torneo nuovo, quelli di default).
 type rulesInput struct {
-	PointsMode       *string  `json:"points_mode"`
-	PolePoints       *float64 `json:"pole_points"` // float per poter rifiutare i decimali con un messaggio chiaro
-	FastestLapPoints *float64 `json:"fastest_lap_points"`
+	PointsMode       *string   `json:"points_mode"`
+	PolePoints       *float64  `json:"pole_points"` // float per poter rifiutare i decimali con un messaggio chiaro
+	FastestLapPoints *float64  `json:"fastest_lap_points"`
+	RacePoints       []float64 `json:"race_points"` // assenti o null: restano come sono
+	SprintPoints     []float64 `json:"sprint_points"`
 }
 
 // maxBonusPoints è il massimo dei punti per la pole e per il giro veloce:
 // più di una vittoria non avrebbe senso.
 const maxBonusPoints = 25
+
+// Limiti delle tabelle dei punti per posizione: una griglia ha 22 auto.
+const (
+	maxTablePositions = 22
+	maxPositionPoints = 100
+)
 
 // apply controlla le regole del body e le applica a rules.
 func (in rulesInput) apply(rules scoring.Rules) (scoring.Rules, error) {
@@ -89,7 +98,54 @@ func (in rulesInput) apply(rules scoring.Rules) (scoring.Rules, error) {
 		}
 		*b.dst = int(*b.value)
 	}
+	tables := []struct {
+		values   []float64
+		dst      *scoring.PointsTable
+		raceType string
+		what     string
+	}{
+		{in.RacePoints, &rules.RacePoints, "race", "il Gran Premio"},
+		{in.SprintPoints, &rules.SprintPoints, "sprint", "la sprint"},
+	}
+	for _, tb := range tables {
+		if tb.values == nil {
+			continue
+		}
+		table, err := pointsTable(tb.values, tb.raceType, tb.what)
+		if err != nil {
+			return rules, err
+		}
+		*tb.dst = table
+	}
 	return rules, nil
+}
+
+// pointsTable controlla una tabella dei punti per posizione. Gli zeri in fondo
+// si tolgono; la tabella F1 diventa nil, così resta il default.
+func pointsTable(values []float64, raceType, what string) (scoring.PointsTable, error) {
+	if len(values) > maxTablePositions {
+		return nil, errorf(http.StatusBadRequest, "La tabella dei punti per %s ha più di %d posizioni", what, maxTablePositions)
+	}
+	table := make(scoring.PointsTable, len(values))
+	for i, v := range values {
+		if v < 0 || v > maxPositionPoints || v != math.Trunc(v) {
+			return nil, errorf(http.StatusBadRequest, "I punti per %s devono essere numeri interi da 0 a %d", what, maxPositionPoints)
+		}
+		if i > 0 && v > values[i-1] {
+			return nil, errorf(http.StatusBadRequest, "Nei punti per %s il %d° non può prendere più del %d°", what, i+1, i)
+		}
+		table[i] = int(v)
+	}
+	for len(table) > 0 && table[len(table)-1] == 0 {
+		table = table[:len(table)-1]
+	}
+	if len(table) == 0 {
+		return nil, errorf(http.StatusBadRequest, "Nei punti per %s almeno il primo deve prendere punti", what)
+	}
+	if slices.Equal(table, scoring.Points[raceType]) {
+		return nil, nil
+	}
+	return table, nil
 }
 
 type Player struct {
@@ -240,9 +296,10 @@ func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error 
 	}
 	var t Tournament
 	err = scanTournament(tx.QueryRow(`
-		INSERT INTO tournaments (name, started_at, points_mode, pole_points, fastest_lap_points)
-		VALUES (?, CASE WHEN ? THEN datetime('now') END, ?, ?, ?)
-		RETURNING `+tournamentColumns, name, body.Start, rules.Mode, rules.PolePoints, rules.FastestLapPoints), &t)
+		INSERT INTO tournaments (name, started_at, points_mode, pole_points, fastest_lap_points, race_points, sprint_points)
+		VALUES (?, CASE WHEN ? THEN datetime('now') END, ?, ?, ?, ?, ?)
+		RETURNING `+tournamentColumns, name, body.Start, rules.Mode, rules.PolePoints, rules.FastestLapPoints,
+		rules.RacePoints, rules.SprintPoints), &t)
 	if err != nil {
 		return err
 	}
@@ -291,8 +348,11 @@ func (s *Server) updateTournament(w http.ResponseWriter, r *http.Request) error 
 		return err
 	}
 	err = scanTournament(tx.QueryRow(`
-		UPDATE tournaments SET name = ?, points_mode = ?, pole_points = ?, fastest_lap_points = ? WHERE id = ?
-		RETURNING `+tournamentColumns, name, rules.Mode, rules.PolePoints, rules.FastestLapPoints, id), &t)
+		UPDATE tournaments
+		SET name = ?, points_mode = ?, pole_points = ?, fastest_lap_points = ?, race_points = ?, sprint_points = ?
+		WHERE id = ?
+		RETURNING `+tournamentColumns, name, rules.Mode, rules.PolePoints, rules.FastestLapPoints,
+		rules.RacePoints, rules.SprintPoints, id), &t)
 	if err != nil {
 		return err
 	}
@@ -896,8 +956,10 @@ func (s *Server) getStandings(w http.ResponseWriter, r *http.Request) error {
 // rulesOf restituisce le regole di punteggio di un torneo.
 func (s *Server) rulesOf(tournamentID int64) (scoring.Rules, error) {
 	var rules scoring.Rules
-	err := s.db.QueryRow("SELECT points_mode, pole_points, fastest_lap_points FROM tournaments WHERE id = ?", tournamentID).
-		Scan(&rules.Mode, &rules.PolePoints, &rules.FastestLapPoints)
+	err := s.db.QueryRow(`
+		SELECT points_mode, pole_points, fastest_lap_points, race_points, sprint_points
+		FROM tournaments WHERE id = ?`, tournamentID).
+		Scan(&rules.Mode, &rules.PolePoints, &rules.FastestLapPoints, &rules.RacePoints, &rules.SprintPoints)
 	return rules, err
 }
 

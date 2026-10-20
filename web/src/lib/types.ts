@@ -11,6 +11,10 @@ export interface ScoringRules {
   points_mode: PointsMode;
   pole_points: number; // al primo della qualifica
   fastest_lap_points: number; // al giro più veloce di un Gran Premio, se non si ritira
+  // Punti per posizione, dal 1° in giù, solo in modalità players: null vale la tabella F1.
+  // Inviando null la tabella resta com'è.
+  race_points: number[] | null;
+  sprint_points: number[] | null;
 }
 
 export interface Tournament extends ScoringRules {

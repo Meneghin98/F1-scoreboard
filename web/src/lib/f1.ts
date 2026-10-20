@@ -36,8 +36,16 @@ export const countsForPoints = (type: RaceType) => type === 'race' || type === '
 export const givesPoints = (type: RaceType, rules: ScoringRules) =>
   countsForPoints(type) || (type === 'qualifying' && rules.pole_points > 0);
 
+// Punti F1 2025 dal 1° posto in giù (come scoring.Points).
+export const F1_POINTS = {
+  race: [25, 18, 15, 12, 10, 8, 6, 4, 2, 1],
+  sprint: [8, 7, 6, 5, 4, 3, 2, 1],
+};
+
 // Regolamento F1 2025: le regole di un torneo nuovo.
-export const DEFAULT_RULES: ScoringRules = { points_mode: 'absolute', pole_points: 0, fastest_lap_points: 0 };
+export const DEFAULT_RULES: ScoringRules = {
+  points_mode: 'absolute', pole_points: 0, fastest_lap_points: 0, race_points: null, sprint_points: null,
+};
 
 // Modalità di punteggio, con la spiegazione da mostrare a chi sceglie.
 export const POINTS_MODES: { value: PointsMode; label: string; hint: string }[] = [
@@ -49,13 +57,16 @@ export const POINTS_MODES: { value: PointsMode; label: string; hint: string }[] 
   {
     value: 'players',
     label: 'Posizione tra i piloti',
-    hint: 'Le auto della IA non contano: il primo dei piloti prende 25 punti, il secondo 18 e così via.',
+    hint: 'Le auto della IA non contano: le posizioni si contano tra i soli piloti, con i punti della F1 o con quelli scelti qui sotto.',
   },
 ];
 
-// Le regole in breve: "Punti per posizione tra i piloti · pole +3 · giro veloce +1".
+// Le regole in breve: "Punti per posizione tra i piloti · Gran Premio 10-5-2 · pole +3 · giro veloce +1".
 export function rulesSummary(rules: ScoringRules): string {
-  const parts = [rules.points_mode === 'players' ? 'Punti per posizione tra i piloti' : "Punti per posizione d'arrivo, IA compresa"];
+  const players = rules.points_mode === 'players';
+  const parts = [players ? 'Punti per posizione tra i piloti' : "Punti per posizione d'arrivo, IA compresa"];
+  if (players && rules.race_points) parts.push(`Gran Premio ${rules.race_points.join('-')}`);
+  if (players && rules.sprint_points) parts.push(`sprint ${rules.sprint_points.join('-')}`);
   if (rules.pole_points) parts.push(`pole +${rules.pole_points}`);
   if (rules.fastest_lap_points) parts.push(`giro veloce +${rules.fastest_lap_points}`);
   return parts.join(' · ');

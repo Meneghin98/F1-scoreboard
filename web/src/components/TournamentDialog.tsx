@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
-import { DEFAULT_RULES, POINTS_MODES } from '../lib/f1';
+import { DEFAULT_RULES, F1_POINTS, POINTS_MODES } from '../lib/f1';
 import { useToast } from '../lib/toast';
 import type { PointsMode, ScoringRules, Tournament } from '../lib/types';
-import { Button, cx, Dialog, fieldClass } from './ui';
+import { Button, cx, Dialog, fieldClass, fieldSmClass } from './ui';
 
 interface Props {
   open: boolean;
@@ -27,6 +27,7 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
   const { run } = useToast();
   const [saving, setSaving] = useState(false);
   const current: ScoringRules = tournament ?? DEFAULT_RULES;
+  const [mode, setMode] = useState(current.points_mode);
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -36,6 +37,8 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
       points_mode: form.get('points_mode') as PointsMode,
       pole_points: Number(form.get('pole_points')),
       fastest_lap_points: Number(form.get('fastest_lap_points')),
+      race_points: pointsTable(form, 'race_points'),
+      sprint_points: pointsTable(form, 'sprint_points'),
     };
     setSaving(true);
     run(async () => {
@@ -72,6 +75,7 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
                 name="points_mode"
                 value={m.value}
                 defaultChecked={current.points_mode === m.value}
+                onChange={() => setMode(m.value)}
                 className="mt-0.5 size-4 shrink-0 accent-accent"
               />
               <span>
@@ -81,6 +85,13 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
             </label>
           ))}
         </div>
+      </fieldset>
+
+      {/* Disabilitati in modalità assoluta: non finiscono nel form e le tabelle salvate restano. */}
+      <fieldset disabled={mode !== 'players'} hidden={mode !== 'players'} className="mt-4 flex flex-col gap-3">
+        <legend className="mb-2 text-sm text-muted">Punti per posizione tra i piloti (0 per non darne)</legend>
+        <PointsTableField name="race_points" label="Gran Premio" values={current.race_points} f1={F1_POINTS.race} />
+        <PointsTableField name="sprint_points" label="Sprint" values={current.sprint_points} f1={F1_POINTS.sprint} />
       </fieldset>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
@@ -111,6 +122,43 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
         <Button disabled={saving}>{tournament ? 'Salva' : 'Crea torneo'}</Button>
       </div>
     </form>
+  );
+}
+
+// Valori di una tabella dei punti dal form; null se i campi sono disabilitati,
+// così il server lascia la tabella com'è.
+function pointsTable(form: FormData, name: string): number[] | null {
+  const values = form.getAll(name);
+  return values.length ? values.map(Number) : null;
+}
+
+// Un campo per ogni posizione, con i punti del torneo o quelli della F1. Il
+// server toglie gli zeri in fondo: qui si mostrano almeno le posizioni della F1.
+function PointsTableField({ name, label, values, f1 }: { name: string; label: string; values: number[] | null; f1: number[] }) {
+  const table = values ?? f1;
+  const positions = Math.max(table.length, f1.length);
+  return (
+    <div className="text-sm">
+      <span className="mb-1 block font-semibold">{label}</span>
+      <div className="grid grid-cols-5 gap-2">
+        {Array.from({ length: positions }, (_, i) => (
+          <label key={i} className="flex items-center gap-1">
+            <span className="w-6 text-right text-xs text-muted">{i + 1}°</span>
+            <input
+              type="number"
+              name={name}
+              min={0}
+              max={100}
+              step={1}
+              required
+              defaultValue={table[i] ?? 0}
+              aria-label={`${label}, punti al ${i + 1}°`}
+              className={cx(fieldSmClass, 'w-full min-w-0')}
+            />
+          </label>
+        ))}
+      </div>
+    </div>
   );
 }
 

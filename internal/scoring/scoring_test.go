@@ -20,7 +20,7 @@ func TestPointsFor(t *testing.T) {
 		{"race", nil, false, 0},
 	}
 	for _, tt := range tests {
-		if got := PointsFor(tt.raceType, tt.position, tt.dnf); got != tt.want {
+		if got := (Rules{}).PointsFor(tt.raceType, tt.position, tt.dnf); got != tt.want {
 			t.Errorf("PointsFor(%s, %v, %v) = %d, atteso %d", tt.raceType, tt.position, tt.dnf, got, tt.want)
 		}
 	}
@@ -246,5 +246,45 @@ func TestFastestLapAmongPlayers(t *testing.T) {
 	}, Rules{Mode: ModePlayers})
 	if st[0].Name != "A" || st[0].Fastest != 0 || st[1].Fastest != 1 || st[1].PerRace[1].Bonus != 0 {
 		t.Errorf("classifica %+v", st)
+	}
+}
+
+// In modalità ModePlayers si possono scegliere i punti per posizione; in
+// modalità ModeAbsolute vale sempre la tabella F1.
+func TestCustomPointsTable(t *testing.T) {
+	results := []Result{
+		{RaceID: 1, RaceType: "race", PlayerID: 1, Name: "A", Position: pos(5)},
+		{RaceID: 1, RaceType: "race", PlayerID: 2, Name: "B", Position: pos(8)},
+		{RaceID: 1, RaceType: "race", PlayerID: 3, Name: "C", Position: pos(9)},
+		{RaceID: 2, RaceType: "sprint", PlayerID: 2, Name: "B", Position: pos(1)},
+	}
+	rules := Rules{Mode: ModePlayers, RacePoints: PointsTable{10, 6}, SprintPoints: PointsTable{3}}
+	points := map[string]int{}
+	for _, s := range Standings(results, rules) {
+		points[s.Name] = s.Points
+	}
+	if points["A"] != 10 || points["B"] != 6+3 || points["C"] != 0 {
+		t.Errorf("punti con la tabella scelta %v", points)
+	}
+
+	rules.Mode = ModeAbsolute
+	if got := rules.PointsFor("race", pos(1), false); got != 25 {
+		t.Errorf("in modalità assoluta il primo prende %d punti, attesi 25", got)
+	}
+}
+
+func TestPointsTableDatabase(t *testing.T) {
+	var p PointsTable
+	if err := p.Scan("10,6,3"); err != nil || len(p) != 3 || p[2] != 3 {
+		t.Fatalf("Scan = %v, %v", p, err)
+	}
+	if v, _ := p.Value(); v != "10,6,3" {
+		t.Errorf("Value = %v", v)
+	}
+	if err := p.Scan(""); err != nil || p != nil {
+		t.Errorf("il testo vuoto deve dare nil: %v, %v", p, err)
+	}
+	if v, _ := PointsTable(nil).Value(); v != "" {
+		t.Errorf("Value di nil = %q", v)
 	}
 }

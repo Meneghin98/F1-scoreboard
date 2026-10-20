@@ -4,7 +4,10 @@ package scoring
 
 import (
 	"cmp"
+	"database/sql/driver"
+	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -32,6 +35,59 @@ type Rules struct {
 	Mode             string `json:"points_mode"`        // ModeAbsolute ("" vale lo stesso) o ModePlayers
 	PolePoints       int    `json:"pole_points"`        // al primo della qualifica
 	FastestLapPoints int    `json:"fastest_lap_points"` // al giro più veloce di un Gran Premio, se non si ritira
+	// Punti per posizione di Gran Premi e sprint, solo in modalità ModePlayers:
+	// tra pochi piloti la tabella F1 può non andare bene. nil vale quella F1.
+	RacePoints   PointsTable `json:"race_points"`
+	SprintPoints PointsTable `json:"sprint_points"`
+}
+
+// Table restituisce i punti per posizione di un tipo di gara con queste regole.
+func (r Rules) Table(raceType string) []int {
+	if r.Mode == ModePlayers {
+		if raceType == "race" && r.RacePoints != nil {
+			return r.RacePoints
+		}
+		if raceType == "sprint" && r.SprintPoints != nil {
+			return r.SprintPoints
+		}
+	}
+	return Points[raceType]
+}
+
+// PointsTable sono i punti dal 1° posto in giù. Nel database è il testo
+// "10,6,3"; il testo vuoto è nil, cioè la tabella F1.
+type PointsTable []int
+
+func (p *PointsTable) Scan(src any) error {
+	var text string
+	switch v := src.(type) {
+	case string:
+		text = v
+	case []byte:
+		text = string(v)
+	default:
+		return fmt.Errorf("tabella dei punti: tipo %T non valido", src)
+	}
+	*p = nil
+	if text == "" {
+		return nil
+	}
+	for _, field := range strings.Split(text, ",") {
+		n, err := strconv.Atoi(field)
+		if err != nil {
+			return fmt.Errorf("tabella dei punti %q: %w", text, err)
+		}
+		*p = append(*p, n)
+	}
+	return nil
+}
+
+func (p PointsTable) Value() (driver.Value, error) {
+	fields := make([]string, len(p))
+	for i, n := range p {
+		fields[i] = strconv.Itoa(n)
+	}
+	return strings.Join(fields, ","), nil
 }
 
 // Counts dice se un tipo di gara dà punti con queste regole: Gran Premi e
@@ -47,11 +103,11 @@ func (r Rules) Counts(raceType string) bool {
 
 // PointsFor restituisce i punti della tabella per un piazzamento, senza bonus.
 // position è nil se il pilota non è classificato.
-func PointsFor(raceType string, position *int, dnf bool) int {
+func (r Rules) PointsFor(raceType string, position *int, dnf bool) int {
 	if dnf || position == nil || *position < 1 {
 		return 0
 	}
-	table := Points[raceType]
+	table := r.Table(raceType)
 	if *position > len(table) {
 		return 0
 	}
@@ -123,7 +179,7 @@ func ScoreRace(results []Result, rules Rules) []Score {
 		if raceType == "race" && sc.FastestLap && sc.Position != nil {
 			sc.Bonus += rules.FastestLapPoints
 		}
-		sc.Points = PointsFor(raceType, sc.Position, r.DNF) + sc.Bonus
+		sc.Points = rules.PointsFor(raceType, sc.Position, r.DNF) + sc.Bonus
 	}
 	return scores
 }

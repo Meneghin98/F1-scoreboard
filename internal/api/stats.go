@@ -101,7 +101,7 @@ func (s *Server) loadStats() (*statsData, error) {
 	rows, err = s.db.Query(`
 		SELECT r.race_id, ra.tournament_id, r.player_id, ra.type, ra.track, ra.date, r.position, r.dnf, r.fastest_lap, r.best_lap_ms,
 		       t.free, t.ended_at IS NOT NULL, t.started_at IS NOT NULL AND t.ended_at IS NULL, t.name,
-		       t.points_mode, t.pole_points, t.fastest_lap_points
+		       t.points_mode, t.pole_points, t.fastest_lap_points, t.race_points, t.sprint_points
 		FROM results r JOIN races ra ON ra.id = r.race_id JOIN tournaments t ON t.id = ra.tournament_id
 		ORDER BY ra.date IS NULL, ra.date, ra.id`)
 	if err != nil {
@@ -112,7 +112,7 @@ func (s *Server) loadStats() (*statsData, error) {
 		var r statResult
 		err := rows.Scan(&r.raceID, &r.tournamentID, &r.playerID, &r.raceType, &r.track, &r.date, &r.position, &r.dnf,
 			&r.fastest, &r.bestLap, &r.free, &r.ended, &r.active, &r.tournamentName,
-			&r.rules.Mode, &r.rules.PolePoints, &r.rules.FastestLapPoints)
+			&r.rules.Mode, &r.rules.PolePoints, &r.rules.FastestLapPoints, &r.rules.RacePoints, &r.rules.SprintPoints)
 		if err != nil {
 			return nil, err
 		}
