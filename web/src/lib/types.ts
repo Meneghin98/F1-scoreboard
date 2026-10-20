@@ -6,12 +6,17 @@ export type RaceType = 'race' | 'sprint' | 'qualifying' | 'practice';
 // alla posizione tra i soli piloti, come se la IA non ci fosse.
 export type PointsMode = 'absolute' | 'players';
 
+// Tabella dei punti per posizione in modalità players (vedi scoring.Presets e POINTS_PRESETS):
+// custom usa i punti di race_points e sprint_points.
+export type PointsPreset = 'f1' | 'rank_down' | 'all_or_nothing' | 'custom';
+
 // Regole di punteggio di un torneo (vedi scoring.Rules).
 export interface ScoringRules {
   points_mode: PointsMode;
   pole_points: number; // al primo della qualifica
   fastest_lap_points: number; // al giro più veloce di un Gran Premio, se non si ritira
-  // Punti per posizione, dal 1° in giù, solo in modalità players: null vale la tabella F1.
+  points_preset: PointsPreset;
+  // Punti per posizione con la tabella custom, dal 1° in giù: null vale la tabella F1.
   // Inviando null la tabella resta com'è.
   race_points: number[] | null;
   sprint_points: number[] | null;

@@ -20,7 +20,7 @@ func TestPointsFor(t *testing.T) {
 		{"race", nil, false, 0},
 	}
 	for _, tt := range tests {
-		if got := (Rules{}).PointsFor(tt.raceType, tt.position, tt.dnf); got != tt.want {
+		if got := (Rules{}).PointsFor(tt.raceType, 20, tt.position, tt.dnf); got != tt.want {
 			t.Errorf("PointsFor(%s, %v, %v) = %d, atteso %d", tt.raceType, tt.position, tt.dnf, got, tt.want)
 		}
 	}
@@ -258,7 +258,7 @@ func TestCustomPointsTable(t *testing.T) {
 		{RaceID: 1, RaceType: "race", PlayerID: 3, Name: "C", Position: pos(9)},
 		{RaceID: 2, RaceType: "sprint", PlayerID: 2, Name: "B", Position: pos(1)},
 	}
-	rules := Rules{Mode: ModePlayers, RacePoints: PointsTable{10, 6}, SprintPoints: PointsTable{3}}
+	rules := Rules{Mode: ModePlayers, Preset: PresetCustom, RacePoints: PointsTable{10, 6}, SprintPoints: PointsTable{3}}
 	points := map[string]int{}
 	for _, s := range Standings(results, rules) {
 		points[s.Name] = s.Points
@@ -268,7 +268,7 @@ func TestCustomPointsTable(t *testing.T) {
 	}
 
 	rules.Mode = ModeAbsolute
-	if got := rules.PointsFor("race", pos(1), false); got != 25 {
+	if got := rules.PointsFor("race", 20, pos(1), false); got != 25 {
 		t.Errorf("in modalità assoluta il primo prende %d punti, attesi 25", got)
 	}
 }
@@ -286,5 +286,33 @@ func TestPointsTableDatabase(t *testing.T) {
 	}
 	if v, _ := PointsTable(nil).Value(); v != "" {
 		t.Errorf("Value di nil = %q", v)
+	}
+}
+
+// Le tabelle già pronte: Rank Down dipende da quanti piloti corrono la gara.
+func TestPresets(t *testing.T) {
+	results := []Result{
+		{RaceID: 1, RaceType: "race", PlayerID: 1, Name: "A", Position: pos(3)},
+		{RaceID: 1, RaceType: "race", PlayerID: 2, Name: "B", Position: pos(7)},
+		{RaceID: 1, RaceType: "race", PlayerID: 3, Name: "C", DNF: true},
+		{RaceID: 2, RaceType: "sprint", PlayerID: 2, Name: "B", Position: pos(2)},
+		{RaceID: 2, RaceType: "sprint", PlayerID: 1, Name: "A", Position: pos(4)},
+	}
+	tests := map[string]map[string]int{
+		PresetF1:           {"A": 25 + 7, "B": 18 + 8, "C": 0},
+		PresetRankDown:     {"A": 3 + 1, "B": 2 + 2, "C": 0},
+		PresetAllOrNothing: {"A": 25, "B": 8, "C": 0},
+		"":                 {"A": 25 + 7, "B": 18 + 8, "C": 0},
+	}
+	for preset, want := range tests {
+		got := map[string]int{}
+		for _, s := range Standings(results, Rules{Mode: ModePlayers, Preset: preset}) {
+			got[s.Name] = s.Points
+		}
+		for name, points := range want {
+			if got[name] != points {
+				t.Errorf("%q: %s ha %d punti, attesi %d", preset, name, got[name], points)
+			}
+		}
 	}
 }

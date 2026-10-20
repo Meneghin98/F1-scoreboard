@@ -483,6 +483,7 @@ func TestTournamentRules(t *testing.T) {
 		PointsMode       string `json:"points_mode"`
 		PolePoints       int    `json:"pole_points"`
 		FastestLapPoints int    `json:"fastest_lap_points"`
+		PointsPreset     string `json:"points_preset"`
 		RacePoints       []int  `json:"race_points"`
 		SprintPoints     []int  `json:"sprint_points"`
 		Leader           *struct {
@@ -492,7 +493,7 @@ func TestTournamentRules(t *testing.T) {
 	}
 	var std, cup tournament
 	expectStatus(t, call(t, srv, "POST", "/tournaments", map[string]any{"name": "Standard"}, &std), 201, "torneo senza regole")
-	if std.PointsMode != "absolute" || std.PolePoints != 0 || std.FastestLapPoints != 0 {
+	if std.PointsMode != "absolute" || std.PolePoints != 0 || std.FastestLapPoints != 0 || std.PointsPreset != "f1" {
 		t.Fatalf("regole di default %+v", std)
 	}
 	for name, body := range map[string]map[string]any{
@@ -504,6 +505,7 @@ func TestTournamentRules(t *testing.T) {
 		"tabella senza punti":  {"name": "X", "race_points": []int{0, 0}},
 		"tabella crescente":    {"name": "X", "race_points": []int{10, 12}},
 		"tabella decimale":     {"name": "X", "sprint_points": []float64{3.5}},
+		"tabella sconosciuta":  {"name": "X", "points_preset": "a caso"},
 	} {
 		expectStatus(t, call(t, srv, "POST", "/tournaments", body, nil), 400, name)
 	}
@@ -612,7 +614,7 @@ func TestTournamentRules(t *testing.T) {
 	// Tra i piloti con i punti scelti: Luca primo prende 10, Simone secondo 5, più pole e giro veloce.
 	// Gli zeri in fondo si tolgono e la tabella F1 resta il default.
 	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", cup.ID), map[string]any{
-		"points_mode": "players", "race_points": []int{10, 5, 0}, "sprint_points": []int{8, 7, 6, 5, 4, 3, 2, 1},
+		"points_mode": "players", "points_preset": "custom", "race_points": []int{10, 5, 0}, "sprint_points": []int{8, 7, 6, 5, 4, 3, 2, 1},
 	}, &cup), 200, "punti per posizione")
 	if !slices.Equal(cup.RacePoints, []int{10, 5}) || cup.SprintPoints != nil {
 		t.Fatalf("tabelle dei punti %v %v", cup.RacePoints, cup.SprintPoints)
@@ -623,7 +625,14 @@ func TestTournamentRules(t *testing.T) {
 	}
 	// Cambiando altro, le tabelle restano.
 	call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", cup.ID), map[string]any{"pole_points": 0}, &cup)
-	if !slices.Equal(cup.RacePoints, []int{10, 5}) {
-		t.Errorf("tabella dopo la modifica %v", cup.RacePoints)
+	if !slices.Equal(cup.RacePoints, []int{10, 5}) || cup.PointsPreset != "custom" {
+		t.Errorf("tabella dopo la modifica %s %v", cup.PointsPreset, cup.RacePoints)
+	}
+
+	// Con Rank Down in una gara di 2 piloti il primo prende 2 punti e il secondo 1 (più il giro veloce).
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", cup.ID), map[string]any{"points_preset": "rank_down"}, &cup), 200, "Rank Down")
+	call(t, srv, "GET", fmt.Sprintf("/tournaments/%d/standings", cup.ID), nil, &st)
+	if luca, simone := st.Standings[0], st.Standings[1]; luca.Points != 2 || simone.Points != 1+1 {
+		t.Fatalf("classifica con Rank Down %+v", st.Standings)
 	}
 }

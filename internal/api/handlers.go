@@ -25,7 +25,7 @@ type Tournament struct {
 	Races      int     `json:"races"`      // gare del torneo
 	Recordings int     `json:"recordings"` // registrazioni collegate alle sue gare
 	// Regole di punteggio: nel JSON diventano points_mode, pole_points, fastest_lap_points,
-	// race_points e sprint_points.
+	// points_preset, race_points e sprint_points.
 	scoring.Rules
 	// Leader è il primo in classifica, solo nell'elenco dei tornei: nil se non
 	// ci sono ancora risultati, e sempre per "Nessun torneo".
@@ -43,12 +43,12 @@ type TournamentLeader struct {
 const tournamentColumns = "id, name, created_at, free, started_at, ended_at, started_at IS NOT NULL AND ended_at IS NULL, " +
 	"(SELECT COUNT(*) FROM races WHERE races.tournament_id = tournaments.id), " +
 	"(SELECT COUNT(*) FROM telemetry_sessions s JOIN races r ON r.id = s.race_id WHERE r.tournament_id = tournaments.id), " +
-	"points_mode, pole_points, fastest_lap_points, race_points, sprint_points"
+	"points_mode, pole_points, fastest_lap_points, points_preset, race_points, sprint_points"
 
 // scanTournament legge una riga selezionata con tournamentColumns.
 func scanTournament(row interface{ Scan(...any) error }, t *Tournament) error {
 	return row.Scan(&t.ID, &t.Name, &t.CreatedAt, &t.Free, &t.StartedAt, &t.EndedAt, &t.Active, &t.Races, &t.Recordings,
-		&t.Mode, &t.PolePoints, &t.FastestLapPoints, &t.RacePoints, &t.SprintPoints)
+		&t.Mode, &t.PolePoints, &t.FastestLapPoints, &t.Preset, &t.RacePoints, &t.SprintPoints)
 }
 
 // rulesInput sono le regole di punteggio come arrivano nel body di un torneo:
@@ -57,6 +57,7 @@ type rulesInput struct {
 	PointsMode       *string   `json:"points_mode"`
 	PolePoints       *float64  `json:"pole_points"` // float per poter rifiutare i decimali con un messaggio chiaro
 	FastestLapPoints *float64  `json:"fastest_lap_points"`
+	PointsPreset     *string   `json:"points_preset"`
 	RacePoints       []float64 `json:"race_points"` // assenti o null: restano come sono
 	SprintPoints     []float64 `json:"sprint_points"`
 }
@@ -80,6 +81,12 @@ func (in rulesInput) apply(rules scoring.Rules) (scoring.Rules, error) {
 		default:
 			return rules, errorf(http.StatusBadRequest, "Modalità di punteggio \"%s\" non valida", *in.PointsMode)
 		}
+	}
+	if in.PointsPreset != nil {
+		if _, ok := scoring.Presets[*in.PointsPreset]; !ok && *in.PointsPreset != scoring.PresetCustom {
+			return rules, errorf(http.StatusBadRequest, "Tabella dei punti \"%s\" non valida", *in.PointsPreset)
+		}
+		rules.Preset = *in.PointsPreset
 	}
 	bonus := []struct {
 		value *float64
@@ -279,7 +286,7 @@ func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	rules, err := body.apply(scoring.Rules{Mode: scoring.ModeAbsolute})
+	rules, err := body.apply(scoring.Rules{Mode: scoring.ModeAbsolute, Preset: scoring.PresetF1})
 	if err != nil {
 		return err
 	}
@@ -296,10 +303,10 @@ func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error 
 	}
 	var t Tournament
 	err = scanTournament(tx.QueryRow(`
-		INSERT INTO tournaments (name, started_at, points_mode, pole_points, fastest_lap_points, race_points, sprint_points)
-		VALUES (?, CASE WHEN ? THEN datetime('now') END, ?, ?, ?, ?, ?)
+		INSERT INTO tournaments (name, started_at, points_mode, pole_points, fastest_lap_points, points_preset, race_points, sprint_points)
+		VALUES (?, CASE WHEN ? THEN datetime('now') END, ?, ?, ?, ?, ?, ?)
 		RETURNING `+tournamentColumns, name, body.Start, rules.Mode, rules.PolePoints, rules.FastestLapPoints,
-		rules.RacePoints, rules.SprintPoints), &t)
+		rules.Preset, rules.RacePoints, rules.SprintPoints), &t)
 	if err != nil {
 		return err
 	}
@@ -349,10 +356,10 @@ func (s *Server) updateTournament(w http.ResponseWriter, r *http.Request) error 
 	}
 	err = scanTournament(tx.QueryRow(`
 		UPDATE tournaments
-		SET name = ?, points_mode = ?, pole_points = ?, fastest_lap_points = ?, race_points = ?, sprint_points = ?
+		SET name = ?, points_mode = ?, pole_points = ?, fastest_lap_points = ?, points_preset = ?, race_points = ?, sprint_points = ?
 		WHERE id = ?
 		RETURNING `+tournamentColumns, name, rules.Mode, rules.PolePoints, rules.FastestLapPoints,
-		rules.RacePoints, rules.SprintPoints, id), &t)
+		rules.Preset, rules.RacePoints, rules.SprintPoints, id), &t)
 	if err != nil {
 		return err
 	}
@@ -957,9 +964,9 @@ func (s *Server) getStandings(w http.ResponseWriter, r *http.Request) error {
 func (s *Server) rulesOf(tournamentID int64) (scoring.Rules, error) {
 	var rules scoring.Rules
 	err := s.db.QueryRow(`
-		SELECT points_mode, pole_points, fastest_lap_points, race_points, sprint_points
+		SELECT points_mode, pole_points, fastest_lap_points, points_preset, race_points, sprint_points
 		FROM tournaments WHERE id = ?`, tournamentID).
-		Scan(&rules.Mode, &rules.PolePoints, &rules.FastestLapPoints, &rules.RacePoints, &rules.SprintPoints)
+		Scan(&rules.Mode, &rules.PolePoints, &rules.FastestLapPoints, &rules.Preset, &rules.RacePoints, &rules.SprintPoints)
 	return rules, err
 }
 

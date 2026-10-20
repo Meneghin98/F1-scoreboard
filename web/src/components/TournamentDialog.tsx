@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { api } from '../lib/api';
-import { DEFAULT_RULES, F1_POINTS, POINTS_MODES } from '../lib/f1';
+import { DEFAULT_RULES, F1_POINTS, POINTS_MODES, POINTS_PRESETS } from '../lib/f1';
 import { useToast } from '../lib/toast';
-import type { PointsMode, ScoringRules, Tournament } from '../lib/types';
+import type { PointsMode, PointsPreset, ScoringRules, Tournament } from '../lib/types';
 import { Button, cx, Dialog, fieldClass, fieldSmClass } from './ui';
 
 interface Props {
@@ -28,6 +28,7 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
   const [saving, setSaving] = useState(false);
   const current: ScoringRules = tournament ?? DEFAULT_RULES;
   const [mode, setMode] = useState(current.points_mode);
+  const [preset, setPreset] = useState(current.points_preset);
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -37,6 +38,8 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
       points_mode: form.get('points_mode') as PointsMode,
       pole_points: Number(form.get('pole_points')),
       fastest_lap_points: Number(form.get('fastest_lap_points')),
+      // Senza la select (modalità assoluta) la tabella resta quella salvata.
+      points_preset: (form.get('points_preset') as PointsPreset | null) ?? current.points_preset,
       race_points: pointsTable(form, 'race_points'),
       sprint_points: pointsTable(form, 'sprint_points'),
     };
@@ -87,11 +90,24 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
         </div>
       </fieldset>
 
-      {/* Disabilitati in modalità assoluta: non finiscono nel form e le tabelle salvate restano. */}
-      <fieldset disabled={mode !== 'players'} hidden={mode !== 'players'} className="mt-4 flex flex-col gap-3">
-        <legend className="mb-2 text-sm text-muted">Punti per posizione tra i piloti (0 per non darne)</legend>
-        <PointsTableField name="race_points" label="Gran Premio" values={current.race_points} f1={F1_POINTS.race} />
-        <PointsTableField name="sprint_points" label="Sprint" values={current.sprint_points} f1={F1_POINTS.sprint} />
+      {/* Campi disabilitati quando non servono: non finiscono nel form e le scelte salvate restano. */}
+      <fieldset disabled={mode !== 'players'} hidden={mode !== 'players'} className="mt-4">
+        <label className="mb-1 block text-sm text-muted" htmlFor="points-preset">Tabella dei punti tra i piloti</label>
+        <select
+          id="points-preset"
+          name="points_preset"
+          value={preset}
+          onChange={(e) => setPreset(e.target.value as PointsPreset)}
+          className={cx(fieldClass, 'w-full')}
+        >
+          {POINTS_PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </select>
+        <p className="mt-1 text-xs text-muted">{POINTS_PRESETS.find((p) => p.value === preset)?.hint}</p>
+
+        <fieldset disabled={preset !== 'custom'} hidden={preset !== 'custom'} className="mt-3 flex flex-col gap-3">
+          <PointsTableField name="race_points" label="Gran Premio" values={current.race_points} f1={F1_POINTS.race} />
+          <PointsTableField name="sprint_points" label="Sprint" values={current.sprint_points} f1={F1_POINTS.sprint} />
+        </fieldset>
       </fieldset>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
