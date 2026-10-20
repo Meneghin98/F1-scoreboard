@@ -130,7 +130,7 @@ export function TournamentsPage({ tournaments, selectedId, onSelect, onChanged }
 
       <TournamentDialog
         open={creating}
-        defaultName={`Torneo F1 2025 #${tournaments.filter((t) => !t.free).length + 1}`}
+        defaultName={`Torneo ${new Date().toLocaleDateString('it-IT')}`}
         canStart={!active}
         onClose={() => setCreating(false)}
         onSaved={async (t) => {
