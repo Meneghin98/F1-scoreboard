@@ -59,7 +59,7 @@ func main() {
 
 	// La telemetria è sempre in ascolto: appena il gioco invia dati la sessione
 	// viene rilevata e registrata, senza configurazioni.
-	liveService := live.NewService(db, live.Options{Dir: sessionsDir, Record: record})
+	liveService := live.NewService(db, live.Options{Dir: sessionsDir, Record: record, PrepareReplays: true})
 	go liveService.Run(ctx, telemetryAddr)
 
 	// Un backup del database al giorno, tenendo gli ultimi backupKeep (0 = nessuno).

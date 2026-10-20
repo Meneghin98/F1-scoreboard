@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -29,6 +30,13 @@ const (
 	replayIdle = 10 * time.Minute
 	// Replay tenuti in memoria al massimo: oltre si libera quello usato meno di recente.
 	replayCacheSize = 2
+	// Un fotogramma ogni replayKeyEvery si comprime da solo (fotogramma chiave);
+	// gli altri usano come dizionario il fotogramma chiave precedente: due stati
+	// vicini sono quasi uguali, e così occupano un quarto dello spazio.
+	replayKeyEvery = 40
+	// Livello di compressione dei fotogrammi: il primo che usa il dizionario
+	// (con BestSpeed Go lo ignora), e più veloce dei successivi.
+	replayLevel = 2
 )
 
 // Replay è una registrazione pronta da riprodurre.
@@ -43,8 +51,10 @@ type Replay struct {
 }
 
 type replayFrame struct {
-	at   time.Duration
-	data []byte // Snapshot in JSON, compresso con flate: in chiaro un'ora di gara occuperebbe 100 MB
+	at time.Duration
+	// Snapshot in JSON, compresso con flate (vedi replayKeyEvery): in chiaro
+	// un'ora di gara occuperebbe 200 MB.
+	data []byte
 }
 
 // PedalSample è acceleratore e freno di un giocatore all'istante T (millisecondi dall'inizio).
@@ -102,7 +112,7 @@ func (r *Replay) Frame(at time.Duration) (ReplayFrame, error) {
 	f := ReplayFrame{T: at.Milliseconds(), Snapshot: json.RawMessage(`{"status":"waiting","session":null,"drivers":[],"players":[],"events":[]}`), Pedals: []PedalSample{}}
 	// Ultimo fotogramma non successivo ad at.
 	if i := sort.Search(len(r.frames), func(i int) bool { return r.frames[i].at > at }); i > 0 {
-		data, err := io.ReadAll(flate.NewReader(bytes.NewReader(r.frames[i-1].data)))
+		data, err := r.frameJSON(i - 1)
 		if err != nil {
 			return f, err
 		}
@@ -115,6 +125,29 @@ func (r *Replay) Frame(at time.Duration) (ReplayFrame, error) {
 		f.Pedals = r.pedals[lo:hi]
 	}
 	return f, nil
+}
+
+// frameJSON decomprime il fotogramma i: prima il suo fotogramma chiave, che
+// gli fa da dizionario, poi lui.
+func (r *Replay) frameJSON(i int) ([]byte, error) {
+	k := i - i%replayKeyEvery
+	key, err := inflate(r.frames[k].data, nil)
+	if err != nil || k == i {
+		return key, err
+	}
+	return inflate(r.frames[i].data, key)
+}
+
+// inflate decomprime dati compressi con flate, con il dizionario dict (o senza, se nil).
+func inflate(data, dict []byte) ([]byte, error) {
+	var zr io.ReadCloser
+	if dict == nil {
+		zr = flate.NewReader(bytes.NewReader(data))
+	} else {
+		zr = flate.NewReaderDict(bytes.NewReader(data), dict)
+	}
+	defer zr.Close()
+	return io.ReadAll(zr)
 }
 
 // buildReplay ricostruisce gli stati della sessione uid dai pacchetti restituiti
@@ -134,7 +167,7 @@ func buildReplay(next func() (recording.Packet, error), uid uint64, players map[
 		prev      []byte
 		lastLap   int
 		lastEvent int // ID dell'ultimo messaggio della direzione gara già sulla timeline
-		zw, _     = flate.NewWriter(nil, flate.BestSpeed)
+		frames    frameCompressor
 		snapshot  = func(at time.Duration) error {
 			status := "live"
 			if at-last >= waitingAfter {
@@ -163,13 +196,11 @@ func buildReplay(next func() (recording.Packet, error), uid uint64, players map[
 				return err
 			}
 			if !bytes.Equal(msg, prev) {
-				var buf bytes.Buffer
-				zw.Reset(&buf)
-				zw.Write(msg)
-				if err := zw.Close(); err != nil {
+				data, err := frames.compress(msg)
+				if err != nil {
 					return err
 				}
-				r.frames = append(r.frames, replayFrame{at: at, data: buf.Bytes()})
+				r.frames = append(r.frames, replayFrame{at: at, data: data})
 				prev = msg
 			}
 			return nil
@@ -245,6 +276,41 @@ func buildReplay(next func() (recording.Packet, error), uid uint64, players map[
 	return r, nil
 }
 
+// frameCompressor comprime i fotogrammi del replay nell'ordine in cui
+// arrivano: il primo di ogni gruppo di replayKeyEvery da solo, gli altri con
+// lui come dizionario (vedi Replay.frameJSON per l'operazione inversa).
+type frameCompressor struct {
+	n     int           // fotogrammi compressi finora
+	key   *flate.Writer // per i fotogrammi chiave
+	delta *flate.Writer // per gli altri: ha come dizionario l'ultimo fotogramma chiave
+}
+
+func (c *frameCompressor) compress(msg []byte) ([]byte, error) {
+	var err error
+	w := c.delta
+	if c.n%replayKeyEvery == 0 {
+		if c.key == nil {
+			c.key, err = flate.NewWriter(nil, replayLevel)
+		}
+		w = c.key
+		if err == nil {
+			// Il dizionario si sceglie solo creando il compressore: ne serve uno nuovo per ogni gruppo.
+			c.delta, err = flate.NewWriterDict(nil, replayLevel, msg)
+		}
+		if err != nil {
+			return nil, err
+		}
+	}
+	c.n++
+	var buf bytes.Buffer
+	w.Reset(&buf)
+	w.Write(msg)
+	if err := w.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 // --- Replay in memoria -------------------------------------------------------
 
 type replayEntry struct {
@@ -312,6 +378,8 @@ func (s *Service) forgetReplay(id int64) {
 	s.replayMu.Unlock()
 }
 
+// loadReplay prepara il replay della sessione id leggendo la registrazione,
+// o lo rilegge dal file in cui è stato salvato, se vale ancora.
 func (s *Service) loadReplay(id int64) (*Replay, error) {
 	var file, uidHex string
 	err := s.db.QueryRow("SELECT file, session_uid FROM telemetry_sessions WHERE id = ?", id).Scan(&file, &uidHex)
@@ -353,7 +421,53 @@ func (s *Service) loadReplay(id int64) (*Replay, error) {
 		return nil, err
 	}
 
-	f, err := os.Open(filepath.Join(s.opts.Dir, file))
+	path := filepath.Join(s.opts.Dir, file)
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, ErrSessionNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	// Il replay salvato vale se è dello stesso eseguibile, della stessa
+	// registrazione e con gli stessi piloti (vedi replaycache.go).
+	header := replayHeader{Executable: executableID(), Recording: info.Size(), Players: players}
+	cache := path + replayExt
+	cached := func() *Replay {
+		if header.Executable == "" {
+			return nil
+		}
+		return readReplay(cache, header)
+	}
+	if r := cached(); r != nil {
+		return r, nil
+	}
+
+	// Un replay alla volta: è un lavoro pesante. Se intanto lo stesso replay è
+	// stato preparato (a fine sessione, in background) lo si rilegge dal file.
+	s.replayBuild <- struct{}{}
+	defer func() { <-s.replayBuild }()
+	if r := cached(); r != nil {
+		return r, nil
+	}
+	start := time.Now()
+	r, err := s.buildFromFile(path, uid, players)
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("telemetria: replay della sessione %d preparato in %s", id, time.Since(start).Round(100*time.Millisecond))
+	if header.Executable != "" {
+		if err := saveReplay(cache, header, r); err != nil {
+			// Non è grave: la prossima volta si prepara di nuovo.
+			log.Printf("telemetria: salvataggio del replay della sessione %d: %v", id, err)
+		}
+	}
+	return r, nil
+}
+
+// buildFromFile prepara il replay della sessione uid leggendo la registrazione in path.
+func (s *Service) buildFromFile(path string, uid uint64, players map[int]scoreboardPlayer) (*Replay, error) {
+	f, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, ErrSessionNotFound
 	}
@@ -365,6 +479,15 @@ func (s *Service) loadReplay(id int64) (*Replay, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Se il server si sta spegnendo la lettura si interrompe, invece di farlo aspettare.
+	next := func() (recording.Packet, error) {
+		select {
+		case <-s.quit:
+			return recording.Packet{}, errStopping
+		default:
+			return rec.Next()
+		}
+	}
 	seed := func(ses *telemetry.Session) *outline {
 		o, err := loadOutline(s.db, ses.TrackID, int(ses.TrackLength))
 		if err != nil {
@@ -372,5 +495,5 @@ func (s *Service) loadReplay(id int64) (*Replay, error) {
 		}
 		return o
 	}
-	return buildReplay(rec.Next, uid, players, seed)
+	return buildReplay(next, uid, players, seed)
 }

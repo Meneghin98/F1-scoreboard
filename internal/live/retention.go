@@ -118,7 +118,7 @@ func (s *Service) deleteOldRecordings(now time.Time) (deleted int, freed int64) 
 			log.Printf("telemetria: eliminazione della registrazione %s: %v", o.file, err)
 			continue
 		}
-		s.forgetReplay(o.id)
+		s.dropReplay(o.id, o.file) // senza registrazione il replay salvato non serve più
 		deleted++
 		freed += info.Size()
 	}

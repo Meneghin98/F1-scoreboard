@@ -655,6 +655,10 @@ func (s *Service) SetSessionPlayers(sessionID int64, players map[int]*int64) err
 	if err != nil {
 		return err
 	}
+	var file string
+	if err := tx.QueryRow("SELECT file FROM telemetry_sessions WHERE id = ?", sessionID).Scan(&file); err != nil {
+		return err
+	}
 	for carIndex, playerID := range players {
 		if playerID != nil {
 			var one int
@@ -697,7 +701,7 @@ func (s *Service) SetSessionPlayers(sessionID int64, players map[int]*int64) err
 		return err
 	}
 	// Il replay mostra i nomi dei piloti: va ripreparato.
-	s.forgetReplay(sessionID)
+	s.dropReplay(sessionID, file)
 	return nil
 }
 
@@ -930,7 +934,7 @@ func (s *Service) DeleteSession(sessionID int64) error {
 }
 
 func (s *Service) removeSession(sessionID int64, file string) error {
-	s.forgetReplay(sessionID)
+	s.dropReplay(sessionID, file)
 	if err := os.Remove(filepath.Join(s.opts.Dir, file)); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

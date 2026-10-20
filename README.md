@@ -143,14 +143,22 @@ pagina Registrazioni si può spostare in un altro, non togliere. Quando la si sp
 rimasta vuota in Nessun torneo viene eliminata. Eliminando una gara o un torneo, le sue
 registrazioni passano in Nessun torneo; eliminando la gara da Nessun torneo, la registrazione
 resta senza torneo. Prove libere (FP) e qualifiche (Q, anche lo Sprint Shootout) compaiono tra
-le gare con i piazzamenti, ma non danno punti e non entrano in classifica. Le sessioni finite
-registrate prima di questa regola sono state spostate in Nessun torneo al primo avvio.
+le gare con i piazzamenti, ma non danno punti e non entrano in classifica (le qualifiche sì, se il
+torneo dà punti per la pole: vedi [Punteggio](#punteggio)). Le sessioni finite registrate prima
+di questa regola sono state spostate in Nessun torneo al primo avvio.
 
 Nella pagina Gare le gare con i risultati presi da una registrazione hanno l'etichetta "Dalla
 telemetria" e il link al replay. I risultati si possono correggere a mano: da quel momento
 cambiare i piloti della registrazione non li aggiorna più, finché non si ripristinano con
 "Ripristina risultati". Le pagine si aggiornano da sole quando i dati cambiano (una gara salvata
 dalla telemetria, una modifica fatta da un altro PC).
+
+Il **replay** mostra una registrazione come la pagina Live, con una timeline per spostarsi.
+Prepararlo vuol dire rileggere tutta la registrazione: su un Raspberry Pi Zero 2 W, per un'ora di
+gara, decine di secondi. Per questo il server prepara il replay delle sessioni del weekend appena
+finiscono e lo salva accanto alla registrazione (`<file>.replay`, meno di un decimo della sua
+dimensione): aprirlo è immediato. Il file si rifà da solo dopo un aggiornamento del server o se
+cambiano i piloti.
 
 Se il gioco gira su un altro dispositivo (console o altro PC), su Windows serve una regola del
 firewall per la porta UDP 20777 (vedi sotto per l'IP da impostare nel gioco).

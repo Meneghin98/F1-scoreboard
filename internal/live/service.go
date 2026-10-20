@@ -45,6 +45,9 @@ const (
 type Options struct {
 	Dir    string // cartella delle registrazioni
 	Record bool   // registra ogni sessione su file
+	// PrepareReplays prepara e salva il replay delle sessioni del weekend appena
+	// finiscono, così aprirlo è immediato (vedi replaycache.go).
+	PrepareReplays bool
 }
 
 // Service riceve la telemetria, tiene lo stato live e registra le sessioni.
@@ -77,6 +80,12 @@ type Service struct {
 	// Replay preparati dalle registrazioni, per sessione (vedi replay.go).
 	replayMu sync.Mutex
 	replays  map[int64]*replayEntry
+	// replayBuild lascia preparare un replay alla volta: è un lavoro pesante.
+	replayBuild chan struct{}
+	// background conta i replay in preparazione dopo la fine di una sessione:
+	// allo spegnimento si aspettano, dopo averli interrotti chiudendo quit.
+	background sync.WaitGroup
+	quit       chan struct{}
 
 	done chan struct{}
 }
@@ -107,6 +116,8 @@ func NewService(db *sql.DB, opts Options) *Service {
 		warnedFmt:   map[uint16]bool{},
 		subscribers: map[chan []byte]struct{}{},
 		replays:     map[int64]*replayEntry{},
+		replayBuild: make(chan struct{}, 1),
+		quit:        make(chan struct{}),
 		dataVersion: 1,
 		done:        make(chan struct{}),
 	}
@@ -149,10 +160,12 @@ func (s *Service) Run(ctx context.Context, addr string) {
 	for {
 		select {
 		case <-ctx.Done():
+			close(s.quit) // interrompe i replay in preparazione
 			s.mu.Lock()
 			s.stopped = true
 			s.endSession(time.Now())
 			s.mu.Unlock()
+			s.background.Wait()
 			return
 		case now := <-cleanup.C:
 			s.deleteUnfinished(now)
@@ -342,6 +355,14 @@ func (s *Service) endSession(at time.Time) {
 	}
 	s.dataChangedLocked() // la sessione compare tra le registrazioni come terminata
 	log.Printf("telemetria: sessione %016x terminata (%d pacchetti)", cur.uid, cur.packets)
+
+	// Il replay delle sessioni del weekend si prepara subito: chi lo apre, magari
+	// appena finita la gara, non deve aspettare.
+	if s.opts.PrepareReplays && s.opts.Record && cur.classification && !s.stopped {
+		if ses := s.tracker.Session(); ses != nil && sessionKind(ses.SessionType) != "" {
+			s.prepareReplay(cur.id)
+		}
+	}
 }
 
 func (s *Service) fileSize(cur *session) int64 {

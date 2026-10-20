@@ -32,24 +32,13 @@ iniziare la parte successiva il lavoro precedente deve essere su git).
 | `af0a12c` | 4     | Statistiche (funzionalità 1): dati dalla classifica finale (`telemetry_players.best_lap_ms` ecc., riletti all'avvio con `backfillStats`), giro veloce nei risultati (dalla registrazione o a mano), pole e giri veloci in classifica, pagina Statistiche (carriera, record dei circuiti, testa a testa) e profilo del pilota (`#/player/{id}`) |
 | `ad134cf` | —     | Colori dei piloti nei dati di esempio (`cmd/seed`) |
 | `fb0f237` | 5     | Regole di punteggio per torneo (funzionalità 2): migrazione `011`, `scoring.Rules` e `scoring.ScoreRace` (posizioni tra i piloti, bonus pole e giro veloce), `Rules.Counts`, campi `scored_position`/`scored_fastest_lap`/`bonus` nei risultati, `TournamentDialog` per creare e per le impostazioni, segni POLE/GV in classifica |
-| "Aggiungi backup, pagina Sistema e conservazione delle registrazioni" | 6 | Backup (funzionalità 3): `internal/backup` (`VACUUM INTO`, download e uno al giorno in `data/backups`, `BACKUP_DIR`/`BACKUP_KEEP`), `internal/disk` (spazio libero con build tag, `golang.org/x/sys` ora diretta), migrazione `012` (`settings`), `live/retention.go` (file delle registrazioni eliminati dopo N giorni, ogni ora), API `/api/backup`, `/api/backups`, `/api/system`, `/api/settings`, pagina Sistema (`#/system`), `time/tzdata` e nota su `TZ` |
+| `4d5a282` | 6     | Backup (funzionalità 3): `internal/backup` (`VACUUM INTO`, download e uno al giorno in `data/backups`, `BACKUP_DIR`/`BACKUP_KEEP`), `internal/disk` (spazio libero con build tag, `golang.org/x/sys` ora diretta), migrazione `012` (`settings`), `live/retention.go` (file delle registrazioni eliminati dopo N giorni, ogni ora), API `/api/backup`, `/api/backups`, `/api/system`, `/api/settings`, pagina Sistema (`#/system`), `time/tzdata` e nota su `TZ` |
+| "Prepara il replay a fine sessione e salvalo su disco" | 7 | Replay più veloce: `live/replaycache.go` (`<file>.replay` in gob, intestazione con eseguibile, dimensione della registrazione e piloti; `Options.PrepareReplays`, `prepareReplay` a fine sessione, `dropReplay`), un replay preparato alla volta (`replayBuild`), interruzione allo spegnimento (`quit`, `background`); fotogrammi compressi con un fotogramma chiave ogni 40 come dizionario (4 volte più piccoli) |
 
 Tutti i punti della sezione "Logica da correggere" dell'analisi sono fatti. Prossima migrazione
 libera: **`013`**.
 
 ## Da fare
-
-### Parte 7 — Replay più veloce
-
-Preparare il replay di un'ora di gara su un Raspberry Pi Zero 2 W può richiedere decine di secondi.
-
-- a fine sessione (sessioni del weekend con classifica) preparare il replay in background e
-  salvarlo accanto alla registrazione (`<file>.replay`, gob di fotogrammi, pedali, giri, eventi,
-  analisi e pianta), con un'intestazione che identifica l'eseguibile (`os.Executable()`, data di
-  modifica e dimensione): dopo ogni nuova build il file non vale più e si rifà;
-- `loadReplay` usa il file se è valido, altrimenti prepara il replay e lo salva;
-- eliminare il file in `removeSession` e quando cambiano i piloti (`SetSessionPlayers` chiama già
-  `forgetReplay`).
 
 ### Parte 8 — Overlay per lo streaming (funzionalità 5) e linter
 
