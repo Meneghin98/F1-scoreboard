@@ -49,41 +49,50 @@ const (
 	PresetF1           = "f1"
 	PresetRankDown     = "rank_down"
 	PresetAllOrNothing = "all_or_nothing"
+	PresetPushAndPay   = "push_and_pay"
 	PresetCustom       = "custom" // i punti scelti a mano, in Rules.RacePoints e Rules.SprintPoints
 )
 
-// Presets sono le tabelle dei punti già pronte: data una gara e il numero dei
-// piloti che la corrono, restituiscono i punti dal 1° posto in giù. Per
-// aggiungerne una basta una voce qui e una in POINTS_PRESETS nel frontend.
-var Presets = map[string]func(raceType string, drivers int) []int{
-	// I punti della F1.
-	PresetF1: func(raceType string, _ int) []int { return Points[raceType] },
-	// Tanti punti quanti i piloti al primo, uno in meno a ogni posizione: con 4 piloti 4-3-2-1.
-	PresetRankDown: func(_ string, drivers int) []int {
-		table := make([]int, drivers)
-		for i := range table {
-			table[i] = drivers - i
-		}
-		return table
-	},
-	// Solo il vincitore prende punti, quanti ne prende il vincitore in F1.
-	PresetAllOrNothing: func(raceType string, _ int) []int { return Points[raceType][:1] },
+// Table sono i punti per posizione di una gara.
+type Table struct {
+	Points []int // dal 1° posto in giù
+	Others int   // a chi arriva dopo, a chi non è classificato e ai ritirati: anche negativi
 }
 
-// Table restituisce i punti per posizione di un tipo di gara con queste regole;
-// drivers è il numero dei piloti della gara.
-func (r Rules) Table(raceType string, drivers int) []int {
+// Presets sono le tabelle dei punti già pronte: data una gara e il numero dei
+// piloti che la corrono, restituiscono i suoi punti. Per aggiungerne una basta
+// una voce qui e una in POINTS_PRESETS nel frontend.
+var Presets = map[string]func(raceType string, drivers int) Table{
+	// I punti della F1.
+	PresetF1: func(raceType string, _ int) Table { return Table{Points: Points[raceType]} },
+	// Tanti punti quanti i piloti al primo, uno in meno a ogni posizione: con 4 piloti 4-3-2-1.
+	PresetRankDown: func(_ string, drivers int) Table {
+		points := make([]int, drivers)
+		for i := range points {
+			points[i] = drivers - i
+		}
+		return Table{Points: points}
+	},
+	// Solo il vincitore prende punti, quanti ne prende il vincitore in F1.
+	PresetAllOrNothing: func(raceType string, _ int) Table { return Table{Points: Points[raceType][:1]} },
+	// Il vincitore prende 2 punti, tutti gli altri ne perdono uno, ritirati compresi.
+	PresetPushAndPay: func(string, int) Table { return Table{Points: []int{2}, Others: -1} },
+}
+
+// TableFor restituisce i punti per posizione di un tipo di gara con queste
+// regole; drivers è il numero dei piloti della gara.
+func (r Rules) TableFor(raceType string, drivers int) Table {
 	if r.Mode != ModePlayers {
-		return Points[raceType]
+		return Table{Points: Points[raceType]}
 	}
 	if r.Preset == PresetCustom {
 		if raceType == "race" && r.RacePoints != nil {
-			return r.RacePoints
+			return Table{Points: r.RacePoints}
 		}
 		if raceType == "sprint" && r.SprintPoints != nil {
-			return r.SprintPoints
+			return Table{Points: r.SprintPoints}
 		}
-		return Points[raceType]
+		return Table{Points: Points[raceType]}
 	}
 	preset, ok := Presets[r.Preset]
 	if !ok {
@@ -142,14 +151,11 @@ func (r Rules) Counts(raceType string) bool {
 // PointsFor restituisce i punti della tabella per un piazzamento, senza bonus.
 // drivers è il numero dei piloti della gara, position è nil se il pilota non è classificato.
 func (r Rules) PointsFor(raceType string, drivers int, position *int, dnf bool) int {
-	if dnf || position == nil || *position < 1 {
-		return 0
+	table := r.TableFor(raceType, drivers)
+	if dnf || position == nil || *position < 1 || *position > len(table.Points) {
+		return table.Others
 	}
-	table := r.Table(raceType, drivers)
-	if *position > len(table) {
-		return 0
-	}
-	return table[*position-1]
+	return table.Points[*position-1]
 }
 
 // Result è un singolo risultato di gara, con i dati del pilota che servono alla classifica.

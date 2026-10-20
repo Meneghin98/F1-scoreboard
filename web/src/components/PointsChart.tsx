@@ -16,12 +16,15 @@ export function PointsChart({ races, standings, labels }: { races: Race[]; stand
     let total = 0;
     return { standing: s, points: [0, ...races.map((r) => (total += s.perRace[r.id]?.points ?? 0))] };
   });
-  const maxPoints = Math.max(1, ...series.map((s) => s.points.at(-1) ?? 0));
+  // Con tabelle come Push & Pay i punti scendono anche sotto zero: la scala va dal minimo al massimo.
+  const all = series.flatMap((s) => s.points);
+  const maxPoints = Math.max(1, ...all);
+  const minPoints = Math.min(0, ...all);
   const plotW = WIDTH - PAD.left - PAD.right;
   const plotH = HEIGHT - PAD.top - PAD.bottom;
   const x = (i: number) => PAD.left + (i / races.length) * plotW;
-  const y = (points: number) => PAD.top + plotH - (points / maxPoints) * plotH;
-  const ticks = niceTicks(maxPoints);
+  const y = (points: number) => PAD.top + plotH - ((points - minPoints) / (maxPoints - minPoints)) * plotH;
+  const ticks = niceTicks(minPoints, maxPoints);
 
   function onMove(e: PointerEvent<SVGSVGElement>) {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -105,11 +108,11 @@ export function PointsChart({ races, standings, labels }: { races: Race[]; stand
   );
 }
 
-// Valori della griglia orizzontale: circa quattro, a passi "tondi" (5, 10, 25, 50…).
-function niceTicks(max: number): number[] {
-  const steps = [5, 10, 25, 50, 100, 200, 250, 500, 1000];
-  const step = steps.find((s) => max / s <= 5) ?? 1000;
+// Valori della griglia orizzontale: circa quattro, a passi "tondi" (1, 2, 5, 10, 25…), sempre con lo zero.
+function niceTicks(min: number, max: number): number[] {
+  const steps = [1, 2, 5, 10, 25, 50, 100, 200, 250, 500, 1000];
+  const step = steps.find((s) => (max - min) / s <= 5) ?? 1000;
   const ticks = [];
-  for (let t = 0; t <= max; t += step) ticks.push(t);
+  for (let t = Math.ceil(min / step) * step; t <= max; t += step) ticks.push(t);
   return ticks;
 }

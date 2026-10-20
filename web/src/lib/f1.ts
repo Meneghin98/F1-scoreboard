@@ -72,6 +72,11 @@ export const POINTS_PRESETS: { value: PointsPreset; label: string; hint: string 
     hint: 'Al primo tanti punti quanti i piloti in gara, uno in meno a ogni posizione: con 4 piloti 4-3-2-1.',
   },
   { value: 'all_or_nothing', label: 'All or Nothing', hint: 'Solo il vincitore prende punti: 25 nei Gran Premi, 8 nelle sprint.' },
+  {
+    value: 'push_and_pay',
+    label: 'Push & Pay',
+    hint: 'Il vincitore prende 2 punti, tutti gli altri ne perdono 1, ritirati compresi: si può andare sotto zero.',
+  },
   { value: 'custom', label: 'Custom', hint: 'Scegli i punti di ogni posizione (0 per non darne).' },
 ];
 

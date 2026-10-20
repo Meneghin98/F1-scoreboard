@@ -289,7 +289,8 @@ func TestPointsTableDatabase(t *testing.T) {
 	}
 }
 
-// Le tabelle già pronte: Rank Down dipende da quanti piloti corrono la gara.
+// Le tabelle già pronte: Rank Down dipende da quanti piloti corrono la gara,
+// con Push & Pay anche i ritirati perdono un punto.
 func TestPresets(t *testing.T) {
 	results := []Result{
 		{RaceID: 1, RaceType: "race", PlayerID: 1, Name: "A", Position: pos(3)},
@@ -302,6 +303,7 @@ func TestPresets(t *testing.T) {
 		PresetF1:           {"A": 25 + 7, "B": 18 + 8, "C": 0},
 		PresetRankDown:     {"A": 3 + 1, "B": 2 + 2, "C": 0},
 		PresetAllOrNothing: {"A": 25, "B": 8, "C": 0},
+		PresetPushAndPay:   {"A": 2 - 1, "B": -1 + 2, "C": -1},
 		"":                 {"A": 25 + 7, "B": 18 + 8, "C": 0},
 	}
 	for preset, want := range tests {

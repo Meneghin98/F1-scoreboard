@@ -8,7 +8,7 @@ export type PointsMode = 'absolute' | 'players';
 
 // Tabella dei punti per posizione in modalità players (vedi scoring.Presets e POINTS_PRESETS):
 // custom usa i punti di race_points e sprint_points.
-export type PointsPreset = 'f1' | 'rank_down' | 'all_or_nothing' | 'custom';
+export type PointsPreset = 'f1' | 'rank_down' | 'all_or_nothing' | 'push_and_pay' | 'custom';
 
 // Regole di punteggio di un torneo (vedi scoring.Rules).
 export interface ScoringRules {
