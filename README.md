@@ -1,4 +1,4 @@
-# F1 2025 Scoreboard
+# F1 Scoreboard
 
 Segnapunti web per i tornei tra amici su F1 25.
 

@@ -82,7 +82,7 @@ function MainApp({ view }: { view: View }) {
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <h1 className="text-2xl font-bold tracking-wide">
               <a href={href('dashboard')}>
-                <span className="font-black text-accent italic">F1</span> 2025 Scoreboard
+                <span className="font-black text-accent italic">F1</span> Scoreboard
               </a>
             </h1>
             <LiveBadge />
