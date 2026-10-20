@@ -1,11 +1,12 @@
+import { useState } from 'react';
 import { api } from '../lib/api';
 import { formatClock } from '../lib/format';
 import { teamColor } from '../lib/live';
 import { href } from '../lib/route';
 import { useToast } from '../lib/toast';
-import type { Lineup, LineupCar, Player } from '../lib/types';
+import type { Lineup, LineupCar, LineupStage, Player } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
-import { Button, Card, cx, dnfClass, fieldSmClass, rankClass } from './ui';
+import { Button, cx, dnfClass, fieldSmClass, rankClass } from './ui';
 
 function title({ stage, kind }: Lineup): string {
   if (stage === 'drivers') return 'Chi guida?';
@@ -14,15 +15,57 @@ function title({ stage, kind }: Lineup): string {
   return kind === 'race' ? 'Gara salvata' : 'Sessione salvata';
 }
 
+// Si aspetta una conferma: la scheda della sessione si evidenzia.
+export function lineupWaiting({ stage }: Lineup): boolean {
+  return stage === 'drivers' || stage === 'results';
+}
+
+// A piloti confermati la scelta si riduce a un riepilogo nella riga delle
+// previsioni; si riapre a richiesta e torna ridotta a ogni cambio di fase.
+// Restituisce se mostrare il riepilogo e come aprire (true) o chiudere la scelta.
+export function useLineupSummary(stage: LineupStage | undefined): [boolean, (editing: boolean) => void] {
+  const [editing, setEditing] = useState(false);
+  const [prevStage, setPrevStage] = useState(stage);
+  if (stage !== prevStage) {
+    setPrevStage(stage);
+    setEditing(false);
+  }
+  return [stage === 'racing' && !editing, setEditing];
+}
+
+// Riepilogo su una riga di chi guida cosa, a piloti confermati.
+export function LineupSummary({ lineup, onEdit }: { lineup: Lineup; onEdit: () => void }) {
+  return (
+    <span className="flex min-w-0 flex-1 basis-64 items-center gap-x-4">
+      <span className="shrink-0 text-muted">Piloti</span>
+      <ul className="flex min-w-0 items-center gap-x-4 overflow-hidden">
+        {lineup.cars.map((car) => (
+          <li key={car.carIndex} className="flex min-w-0 items-center gap-2">
+            <span className="h-3.5 w-1 shrink-0 rounded-full" style={{ background: teamColor(car.team) }} />
+            <span className="truncate">
+              <span className="font-semibold">{car.playerName || <span className="text-muted">Nessun pilota</span>}</span>
+              <span className="ml-2 text-muted">{car.name || `Auto ${car.carIndex + 1}`}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <button type="button" className="shrink-0 text-muted underline hover:text-fg" onClick={onEdit}>
+        Modifica
+      </button>
+    </span>
+  );
+}
+
 // Chi tiene in mano i controller: il gioco non lo sa, quindi lo si sceglie qui.
 // Senza interventi il server conferma da solo (alla partenza o dopo 5 minuti)
 // e a fine sessione salva i risultati nel torneo in corso o in "Nessun torneo".
 // Vale per tutte le sessioni del weekend; prove libere e qualifiche non danno punti.
-export function LineupCard({ lineup }: { lineup: Lineup }) {
+// È la parte bassa della scheda della sessione; onDone richiude la scelta già confermata.
+export function LineupSection({ lineup, onDone }: { lineup: Lineup; onDone: () => void }) {
   const { run } = useToast();
   const { data: players } = useLoad(() => api.players(), []);
   const { stage, kind, cars, tournament } = lineup;
-  const waiting = stage === 'drivers' || stage === 'results'; // si aspetta una conferma
+  const waiting = lineupWaiting(lineup);
 
   // Scegliere un pilota che guida già l'altra auto scambia i due piloti.
   function choose(car: LineupCar, playerId: number | null) {
@@ -37,19 +80,22 @@ export function LineupCard({ lineup }: { lineup: Lineup }) {
   }
 
   return (
-    <Card className={cx(waiting && 'border-accent')}>
+    <div className="w-full border-t border-line pt-3">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-lg font-bold">{title(lineup)}</h2>
-        <span className="text-sm text-muted">
-          {tournament && (stage !== 'saved' && tournament.free ? (
-            'Nessun torneo in corso'
-          ) : (
-            <>
-              {stage === 'saved' ? 'Salvata in ' : 'Verrà salvata in '}
-              <span className="font-semibold text-fg">{tournament.name}</span>
-            </>
-          ))}
-          {kind !== 'race' && ' · non assegna punti'}
+        <h2 className="font-bold">{title(lineup)}</h2>
+        <span className="flex items-center gap-3">
+          <span className="text-sm text-muted">
+            {tournament && (stage !== 'saved' && tournament.free ? (
+              'Nessun torneo in corso'
+            ) : (
+              <>
+                {stage === 'saved' ? 'Salvata in ' : 'Verrà salvata in '}
+                <span className="font-semibold text-fg">{tournament.name}</span>
+              </>
+            ))}
+            {kind !== 'race' && ' · non assegna punti'}
+          </span>
+          {stage === 'racing' && <Button variant="ghost" size="sm" onClick={onDone}>Fatto</Button>}
         </span>
       </div>
 
@@ -116,7 +162,7 @@ export function LineupCard({ lineup }: { lineup: Lineup }) {
           Per correggere i piloti usa la pagina <a className="underline" href={href('recordings')}>Registrazioni</a>.
         </p>
       )}
-    </Card>
+    </div>
   );
 }
 

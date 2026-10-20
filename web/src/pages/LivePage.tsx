@@ -8,7 +8,7 @@ import { useLive, usePedalHistory, type PedalSample } from '../lib/useLive';
 import { href } from '../lib/route';
 import { DuelCard } from '../components/DuelCard';
 import { LiveDot } from '../components/LiveBadge';
-import { LineupCard } from '../components/LineupCard';
+import { LineupSection, LineupSummary, lineupWaiting, useLineupSummary } from '../components/LineupSection';
 import { PlayerCarCard } from '../components/PlayerCarCard';
 import { RaceControlCard } from '../components/RaceControlCard';
 import { TrackMapCard } from '../components/TrackMapCard';
@@ -18,6 +18,7 @@ import { Button, buttonClass, Card, ColorDot, cx, Empty, rankClass, Table, TeamT
 export function LivePage() {
   const live = useLive();
   const pedals = usePedalHistory();
+  const [summary, setEditing] = useLineupSummary(live?.lineup?.stage);
 
   if (!live) return <Empty>Connessione al server in corso…</Empty>;
   if (!isLive(live)) return <WaitingCard telemetry={live.telemetry} />;
@@ -39,6 +40,9 @@ export function LivePage() {
       <SessionCard
         live={live}
         session={live.session}
+        className={cx(live.lineup && lineupWaiting(live.lineup) && 'border-accent')}
+        summary={live.lineup && summary && <LineupSummary lineup={live.lineup} onEdit={() => setEditing(true)} />}
+        footer={live.lineup && !summary && <LineupSection lineup={live.lineup} onDone={() => setEditing(false)} />}
         actions={
           <a href={href('tv')} className={buttonClass('ghost', 'sm')} title="Classifica e mappa a schermo intero, per la TV">
             Modalità TV
@@ -51,7 +55,6 @@ export function LivePage() {
           Il gioco non sta inviando dati (pausa, menù o impostazioni): si vede l'ultimo stato ricevuto.
         </p>
       )}
-      {live.lineup && <LineupCard lineup={live.lineup} />}
       {live.drivers.length ? (
         <LiveBoard session={live.session} drivers={live.drivers} players={live.players} events={live.events} finished={live.finished} pedals={pedals} />
       ) : (
@@ -174,12 +177,16 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
 }
 
 // indicator sostituisce il pallino verde della diretta (il replay mostra il suo);
-// actions sono pulsanti da mostrare in fondo a destra.
-export function SessionCard({ live, session: s, indicator, actions }: {
+// actions sono pulsanti da mostrare in fondo a destra; summary va a sinistra nella
+// riga delle previsioni (i piloti confermati), footer sotto a tutto (la scelta dei piloti).
+export function SessionCard({ live, session: s, indicator, actions, summary, footer, className }: {
   live: LiveSnapshot;
   session: LiveSession;
   indicator?: ReactNode;
   actions?: ReactNode;
+  summary?: ReactNode;
+  footer?: ReactNode;
+  className?: string;
 }) {
   let progress = '';
   if (live.finished) progress = 'Finita';
@@ -194,9 +201,10 @@ export function SessionCard({ live, session: s, indicator, actions }: {
   const yellow = s.marshalZones.some((z) => z.flag === 3);
   // Le previsioni oltre la fine della sessione non servono.
   const forecast = live.finished ? [] : s.forecast.filter((f) => !s.timeLeft || f.offset * 60 <= s.timeLeft);
+  const pitWindow = s.isRace && s.pitWindowIdeal > 0 && !live.finished;
 
   return (
-    <Card className="flex flex-wrap items-center justify-between gap-4">
+    <Card className={cx('flex flex-wrap items-center justify-between gap-4', className)}>
       <div className="flex items-center gap-3">
         {indicator ?? <LiveDot active={live.status === 'live'} />}
         <div>
@@ -218,29 +226,36 @@ export function SessionCard({ live, session: s, indicator, actions }: {
         {progress && <span className="text-lg font-extrabold tabular-nums">{progress}</span>}
         {actions}
       </div>
-      {(forecast.length > 0 || (s.isRace && s.pitWindowIdeal > 0 && !live.finished)) && (
+      {(forecast.length > 0 || pitWindow || summary) && (
         <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-1 border-t border-line pt-3 text-sm">
-          {forecast.length > 0 && (
-            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span className="text-muted">Previsioni</span>
-              {forecast.map((f) => (
-                <span key={f.offset} title={`Pista ${f.trackTemp}°C · Aria ${f.airTemp}°C`}>
-                  <span className="text-muted tabular-nums">+{f.offset}′</span> {WEATHER[f.weather]}
-                  {f.rain > 0 && <span className="text-sky-400 tabular-nums"> {f.rain}%</span>}
+          {summary}
+          {(forecast.length > 0 || pitWindow) && (
+            // Piloti a sinistra, meteo e pit stop a destra, divisi da una riga verticale.
+            <span className={cx('ml-auto flex flex-wrap items-center gap-x-4 gap-y-1', summary && 'border-l border-line pl-4')}>
+              {forecast.length > 0 && (
+                <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-muted">Previsioni</span>
+                  {forecast.map((f) => (
+                    <span key={f.offset} title={`Pista ${f.trackTemp}°C · Aria ${f.airTemp}°C`}>
+                      <span className="text-muted tabular-nums">+{f.offset}′</span> {WEATHER[f.weather]}
+                      {f.rain > 0 && <span className="text-sky-400 tabular-nums"> {f.rain}%</span>}
+                    </span>
+                  ))}
                 </span>
-              ))}
-            </span>
-          )}
-          {s.isRace && s.pitWindowIdeal > 0 && !live.finished && (
-            <span>
-              <span className="text-muted">Finestra pit stop</span>{' '}
-              <span className="font-semibold tabular-nums">
-                giri {s.pitWindowIdeal}–{s.pitWindowLatest}
-              </span>
+              )}
+              {pitWindow && (
+                <span>
+                  <span className="text-muted">Finestra pit stop</span>{' '}
+                  <span className="font-semibold tabular-nums">
+                    giri {s.pitWindowIdeal}–{s.pitWindowLatest}
+                  </span>
+                </span>
+              )}
             </span>
           )}
         </div>
       )}
+      {footer}
     </Card>
   );
 }
