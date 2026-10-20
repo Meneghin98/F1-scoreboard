@@ -24,9 +24,10 @@ export const VIEW_LABELS: Record<View, string> = {
   overlay: 'Overlay',
 };
 
-// Pagine nella barra di navigazione, in ordine. Sistema non c'è: si apre con l'ingranaggio nell'header.
+// Pagine nella barra di navigazione, nello stesso ordine delle card della dashboard.
+// Sistema non c'è: si apre con l'ingranaggio nell'header.
 export const NAV_VIEWS: View[] = [
-  'dashboard', 'standings', 'races', 'stats', 'players', 'tournaments', 'live', 'recordings',
+  'dashboard', 'live', 'standings', 'races', 'players', 'recordings', 'tournaments', 'stats',
 ];
 
 // Pagina della barra a cui appartiene una pagina che non c'è (il replay sta sotto le registrazioni).
