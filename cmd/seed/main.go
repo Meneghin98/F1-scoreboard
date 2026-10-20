@@ -21,17 +21,18 @@ import (
 
 type player struct {
 	name, team string
+	color      string  // i colori della tavolozza dei piloti, nell'ordine (vedi api.playerColors)
 	skill      float64 // più alto = tende ad arrivare più avanti
 }
 
 var players = []player{
-	{"Simone", "Ferrari", 0.9},
-	{"Luca", "McLaren", 1.0},
-	{"Marco", "Red Bull Racing", 0.8},
-	{"Giulia", "Mercedes", 0.85},
-	{"Andrea", "Aston Martin", 0.6},
-	{"Chiara", "Williams", 0.65},
-	{"Davide", "Alpine", 0.5},
+	{"Simone", "Ferrari", "#e8443a", 0.9},
+	{"Luca", "McLaren", "#3987e5", 1.0},
+	{"Marco", "Red Bull Racing", "#f5a524", 0.8},
+	{"Giulia", "Mercedes", "#22b573", 0.85},
+	{"Andrea", "Aston Martin", "#a970ff", 0.6},
+	{"Chiara", "Williams", "#ff6fae", 0.65},
+	{"Davide", "Alpine", "#2fc6d6", 0.5},
 }
 
 type race struct {
@@ -100,9 +101,9 @@ func seed(db *sql.DB) error {
 	for i, p := range players {
 		// I piloti potrebbero esistere già (il controllo riguarda solo i tornei).
 		err := tx.QueryRow(`
-			INSERT INTO players (name, team) VALUES (?, ?)
+			INSERT INTO players (name, team, color) VALUES (?, ?, ?)
 			ON CONFLICT (name) DO UPDATE SET name = excluded.name
-			RETURNING id`, p.name, p.team).Scan(&playerIDs[i])
+			RETURNING id`, p.name, p.team, p.color).Scan(&playerIDs[i])
 		if err != nil {
 			return err
 		}
