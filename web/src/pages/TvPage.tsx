@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DuelCard } from '../components/DuelCard';
 import { LiveDot } from '../components/LiveBadge';
 import { EVENT_KIND } from '../components/RaceControlCard';
@@ -50,7 +50,10 @@ export function TvPage() {
         <>
           <TvHeader live={live} session={live.session} />
           <div className="grid min-h-0 flex-1 grid-cols-[minmax(30rem,2fr)_3fr] gap-4">
-            <TvStandings session={live.session} drivers={live.drivers} />
+            <div className="flex min-h-0 flex-col gap-4">
+              <TvStandings session={live.session} drivers={live.drivers} />
+              <TvEvents events={live.events} />
+            </div>
             <div className="flex min-h-0 flex-col gap-4">
               <TrackMapCard
                 className="mb-0 min-h-0 flex-1"
@@ -60,7 +63,6 @@ export function TvPage() {
                 marshalZones={live.session.marshalZones}
               />
               {live.players.length === 2 && <DuelCard session={live.session} drivers={live.drivers} className="mb-0 flex-none" />}
-              <TvEvents events={live.events} />
             </div>
           </div>
         </>
@@ -98,12 +100,53 @@ function TvHeader({ live, session: s }: { live: LiveSnapshot; session: LiveSessi
   );
 }
 
+// Altezza minima di una riga della classifica, in em del suo testo: sotto si nascondono piloti.
+const MIN_ROW_EM = 1.5;
+
+// Se la classifica non ci sta tutta si tengono i giocatori, il primo e chi è
+// più vicino ai giocatori (a pari distanza chi sta davanti).
+function visibleDrivers(drivers: LiveDriver[], capacity: number): LiveDriver[] {
+  if (drivers.length <= capacity) return drivers;
+  const players = drivers.filter((d) => d.controller > 0).map((d) => d.position);
+  const priority = (d: LiveDriver) => {
+    if (d.controller > 0) return -2;
+    if (d.position === 1) return -1;
+    return players.length ? Math.min(...players.map((p) => Math.abs(p - d.position))) : d.position;
+  };
+  const kept = new Set(
+    [...drivers]
+      .sort((a, b) => priority(a) - priority(b) || a.position - b.position)
+      .slice(0, Math.max(capacity, players.length))
+      .map((d) => d.carIndex),
+  );
+  return drivers.filter((d) => kept.has(d.carIndex));
+}
+
 // Classifica a caratteri grandi: posizione, pilota, distacco e gomme.
 function TvStandings({ session, drivers }: { session: LiveSession; drivers: LiveDriver[] }) {
   const fastest = Math.min(...drivers.map((d) => d.bestLapMs).filter(Boolean));
+  // Quante righe ci stanno: l'altezza della scheda dipende dalla pagina, non dalle righe.
+  const ref = useRef<HTMLDivElement>(null);
+  const [capacity, setCapacity] = useState(Number.POSITIVE_INFINITY);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => {
+      const row = el.firstElementChild;
+      if (!row) return;
+      const style = getComputedStyle(el);
+      const height = el.clientHeight - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom);
+      const rowHeight = Number.parseFloat(getComputedStyle(row).fontSize) * MIN_ROW_EM;
+      setCapacity(Math.max(1, Math.floor(height / rowHeight)));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const shown = visibleDrivers(drivers, capacity);
+
   return (
-    <Card className="mb-0 flex min-h-0 flex-col p-2">
-      {drivers.map((d) => {
+    <Card ref={ref} className="mb-0 flex min-h-0 flex-1 flex-col p-2">
+      {shown.map((d, i) => {
         const gap = d.position === 1
           ? (session.isRace ? `Giro ${d.lap}` : formatLapTime(d.bestLapMs))
           : session.isRace ? formatGap(d.gapToLeaderMs) : d.bestLapMs ? formatGap(d.bestLapMs - fastest) : '–';
@@ -113,6 +156,8 @@ function TvStandings({ session, drivers }: { session: LiveSession; drivers: Live
             className={cx(
               'flex min-h-0 flex-1 items-center gap-3 rounded-md px-3 text-[clamp(0.9rem,2.1vh,1.6rem)]',
               d.controller > 0 && 'bg-surface-2',
+              // Piloti nascosti tra questa riga e la precedente.
+              i > 0 && d.position !== shown[i - 1].position + 1 && 'rounded-t-none border-t border-dashed border-line',
             )}
           >
             <span className={cx(rankClass(d.position), 'w-[2.2em] text-right')}>{d.position}</span>
