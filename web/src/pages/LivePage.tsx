@@ -165,7 +165,6 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
           marshalZones={session.marshalZones}
           loadMap={loadMap}
         />
-        {players.length === 2 && <DuelCard session={session} drivers={drivers} className="mb-0" />}
         {players.map((car) => (
           <PlayerCarCard
             key={car.controller}
@@ -178,6 +177,7 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
             className={cx('mb-0', expanded && 'hidden')}
           />
         ))}
+        {players.length === 2 && <DuelCard session={session} drivers={drivers} className="mb-0" />}
         {/* Con la classifica estesa restano solo lei e il duello, sulla stessa riga e alti uguali. */}
         <RaceControlCard
           events={events}
