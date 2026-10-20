@@ -149,3 +149,19 @@ func TestNames(t *testing.T) {
 		t.Error("team e stati")
 	}
 }
+
+// Un ritiro fa calare NumActiveCars, ma le auto restano al loro posto: in
+// split-screen il giocatore 2 è l'ultima auto e non deve sparire.
+func TestParticipantsNumCars(t *testing.T) {
+	p := &Participants{NumActiveCars: 19, Cars: make([]Participant, 22)}
+	for i := range 20 {
+		p.Cars[i].Name = "PILOTA"
+	}
+	if got := p.NumCars(); got != 20 {
+		t.Errorf("con un ritiro: %d auto, attese 20", got)
+	}
+	p.NumActiveCars = 20
+	if got := p.NumCars(); got != 20 {
+		t.Errorf("senza ritiri: %d auto, attese 20", got)
+	}
+}

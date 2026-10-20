@@ -23,7 +23,7 @@ func (h Header) PacketHeader() Header { return h }
 type Vector3 struct{ X, Y, Z float32 }
 
 // NumCars restituisce quante auto contengono gli array dei pacchetti nel formato indicato.
-// Le posizioni oltre le auto attive sono vuote: vedi Participants.NumActiveCars.
+// Le posizioni oltre le auto della sessione sono vuote: vedi Participants.NumCars.
 func NumCars(format uint16) int {
 	if format == Format2026 {
 		return 24

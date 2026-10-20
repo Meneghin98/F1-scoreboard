@@ -29,6 +29,20 @@ type Participants struct {
 	Cars          []Participant
 }
 
+// NumCars restituisce quante posizioni dell'array sono occupate da un'auto
+// della sessione. NumActiveCars non basta: cala quando un'auto si ritira, ma
+// l'auto resta al suo posto e quelle dopo non si spostano. Le posizioni mai
+// usate sono vuote, quindi si conta fino all'ultima auto con un nome.
+func (p *Participants) NumCars() int {
+	n := min(int(p.NumActiveCars), len(p.Cars))
+	for i := len(p.Cars) - 1; i >= n; i-- {
+		if p.Cars[i].Name != "" {
+			return i + 1
+		}
+	}
+	return n
+}
+
 func decodeParticipants(h Header, r *reader, cars int) *Participants {
 	p := &Participants{Header: h, NumActiveCars: r.u8(), Cars: make([]Participant, cars)}
 	for i := range p.Cars {

@@ -263,7 +263,7 @@ func (s *Service) savePlayers(sessionID int64, d sessionData) error {
 	}
 	var cars *int
 	if p := d.participants; p != nil {
-		n := int(p.NumActiveCars)
+		n := p.NumCars()
 		cars = &n
 		taken := map[int64]bool{} // un pilota non può guidare due auto nella stessa gara
 		for _, id := range d.assigned {

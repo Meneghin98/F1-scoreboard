@@ -335,7 +335,7 @@ func printSession(n int, s *sessionSummary) {
 	fmt.Printf("\nSessione %d: %s (da %s a %s, id %016x)\n", n, title, formatDuration(s.start), formatDuration(s.end), s.uid)
 
 	if s.participants != nil {
-		fmt.Printf("  %d piloti\n", s.participants.NumActiveCars)
+		fmt.Printf("  %d piloti\n", s.participants.NumCars())
 	}
 	if s.classification == nil {
 		fmt.Println("  nessuna classifica finale")
