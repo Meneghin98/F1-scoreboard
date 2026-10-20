@@ -145,13 +145,28 @@ function ReplayPlayer({ sessionId, info }: { sessionId: number; info: ReplayInfo
     return () => window.removeEventListener('keydown', listener);
   }, []);
 
+  // I controlli restano fermi in alto: quando la pagina scorre fino a un elemento (per esempio
+  // la scheda di un'auto appena aperta) deve fermarsi sotto di loro, non dietro.
+  const controls = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = controls.current;
+    if (!el) return;
+    const root = document.documentElement;
+    const observer = new ResizeObserver(() => { root.style.scrollPaddingTop = `${el.offsetHeight}px`; });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      root.style.scrollPaddingTop = '';
+    };
+  }, []);
+
   const lap = lapAt(info.laps, pos);
   const speedLabel = (s: number) => `${s.toLocaleString('it-IT')}×`;
 
   return (
     <>
       {/* Resta in vista anche scorrendo la classifica estesa. */}
-      <Card className="sticky top-0 z-10 flex flex-col gap-3 shadow-lg shadow-bg/60">
+      <Card ref={controls} className="sticky top-0 z-10 flex flex-col gap-3 shadow-lg shadow-bg/60">
         <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
