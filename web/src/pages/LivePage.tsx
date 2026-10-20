@@ -12,7 +12,7 @@ import { LineupSection, LineupSummary, lineupWaiting, useLineupSummary } from '.
 import { PlayerCarCard } from '../components/PlayerCarCard';
 import { RaceControlCard } from '../components/RaceControlCard';
 import { TrackMapCard } from '../components/TrackMapCard';
-import { Button, buttonClass, Card, ColorDot, cx, Empty, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
+import { Button, buttonClass, Card, ColorDot, cx, Empty, rankClass, Table, Td, Th, Tr } from '../components/ui';
 
 // Classifica della sessione in corso, aggiornata in tempo reale dalla telemetria.
 export function LivePage() {
@@ -134,7 +134,9 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
   return (
     // Solo la mappa ha una dimensione fissa: la classifica si allunga quanto serve per tutti i piloti.
     <div className={cx('mb-4 grid items-start gap-4', !expanded && 'md:grid-cols-[20rem_1fr]')}>
-      <Card className="mb-0 p-0">
+      {/* min-w-0: senza, la colonna della griglia si allarga quanto la tabella estesa
+          e la fa uscire dalla pagina invece di farla scorrere. */}
+      <Card className="mb-0 min-w-0 p-0">
         <div className="flex items-center justify-between border-b border-line px-4 py-2">
           <h2 className="font-bold">Classifica</h2>
           <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)}>
@@ -319,27 +321,30 @@ function fastestSectors(drivers: LiveDriver[]): number[] {
   });
 }
 
+// Classifica estesa. Per stare nella pagina senza scorrere: celle più strette,
+// intestazioni brevi (il nome completo nel tooltip), la scuderia sotto il nome
+// del pilota e i nomi che si accorciano se manca spazio.
 function DriversTable({ session, drivers }: { session: LiveSession; drivers: LiveDriver[] }) {
   const fastest = fastestLap(drivers);
   const sectors = fastestSectors(drivers);
 
   return (
-    <Table>
+    <Table className="[&_td]:px-2 [&_th]:px-2 [&_tr>:first-child]:pl-4 [&_tr>:last-child]:pr-4">
       <thead>
         <tr>
           <Th>Pos</Th>
           <Th>Pilota</Th>
           {session.isRace && <Th num>Giro</Th>}
-          <Th num>Distacco</Th>
-          <Th num>Intervallo</Th>
-          <Th num>Ultimo giro</Th>
+          <Th num title="Distacco dal primo">Dist.</Th>
+          <Th num title="Distacco dall'auto davanti">Int.</Th>
+          <Th num title="Ultimo giro">Ultimo</Th>
           <Th num title="Settori dell'ultimo giro: viola il migliore della sessione, verde il migliore personale">
             Settori
           </Th>
-          <Th num>Miglior giro</Th>
+          <Th num title="Miglior giro">Migliore</Th>
           <Th>Gomme</Th>
-          <Th num>Soste</Th>
-          <Th num title="Velocità massima allo speed trap">Vel. max</Th>
+          <Th num title="Soste ai box">Soste</Th>
+          <Th num title="Velocità massima allo speed trap">Vel.</Th>
           <Th>Stato</Th>
         </tr>
       </thead>
@@ -352,16 +357,26 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
                 {d.position}
                 {session.isRace && <PositionsGained driver={d} />}
               </Td>
-              <Td className={cx(d.controller > 0 && 'font-bold')}>
-                <span className="mr-2 inline-block w-6 text-right text-sm text-muted tabular-nums">{d.raceNumber || ''}</span>
-                {d.name} <TeamTag team={d.team || null} />
-                {d.controller > 0 && <PlayerTag driver={d} className="ml-2" />}
+              {/* max-w-0 e w-full: la colonna prende lo spazio che resta e il nome si accorcia. */}
+              <Td className={cx('w-full max-w-0', d.controller > 0 && 'font-bold')}>
+                <span className="flex items-center gap-2">
+                  <span className="w-6 shrink-0 text-right text-sm text-muted tabular-nums">{d.raceNumber || ''}</span>
+                  <span className="h-8 w-1 shrink-0 rounded-full" style={{ background: teamColor(d.team) }} />
+                  {/* Nome sopra, scuderia sotto: la riga si alza ma la colonna resta stretta. */}
+                  <span className="flex min-w-0 flex-col leading-tight">
+                    <span className="flex items-center gap-2">
+                      <span className="truncate">{d.name}</span>
+                      {d.controller > 0 && <PlayerTag driver={d} />}
+                    </span>
+                    {d.team && <span className="truncate text-xs font-normal text-muted">{d.team}</span>}
+                  </span>
+                </span>
               </Td>
               {session.isRace && <Td num>{d.lap}</Td>}
               <Td num>{toLeader}</Td>
               <Td num className="text-muted">{toAhead}</Td>
               <Td num>{formatLapTime(d.lastLapMs)}</Td>
-              <Td num className="text-sm whitespace-nowrap">
+              <Td num className="text-sm">
                 <Sectors driver={d} fastest={sectors} />
               </Td>
               <Td num className={cx(d.bestLapMs && d.bestLapMs === fastest && 'font-bold text-purple-400')}>
@@ -370,7 +385,8 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
               <Td><Tyre compound={d.tyre} age={d.tyreAge} stints={d.stints} /></Td>
               <Td num>{d.pitStops}</Td>
               <Td num className="text-sm text-muted">{d.speedTrap ? Math.round(d.speedTrap) : '–'}</Td>
-              <Td><DriverStatus driver={d} /></Td>
+              {/* Lo stato può andare a capo: di solito è vuoto, a volte ha più voci. */}
+              <Td className="min-w-24 whitespace-normal"><DriverStatus driver={d} /></Td>
             </Tr>
           );
         })}
@@ -413,7 +429,7 @@ function PositionsGained({ driver: d }: { driver: LiveDriver }) {
 function Sectors({ driver: d, fastest }: { driver: LiveDriver; fastest: number[] }) {
   if (!d.lastSectors.some(Boolean)) return <span className="text-muted">–</span>;
   return (
-    <span className="inline-flex gap-2">
+    <span className="inline-flex gap-1.5">
       {d.lastSectors.map((ms, s) => (
         <span
           key={s}
@@ -471,5 +487,5 @@ function DriverStatus({ driver: d }: { driver: LiveDriver }) {
   }
   // "In pista" è lo stato normale: si mostrano solo gli altri (arrivato, ritirato…).
   if (d.status !== 'In pista') parts.push(<span key="status" className="text-muted">{d.status}</span>);
-  return <span className="flex gap-2 text-sm">{parts}</span>;
+  return <span className="flex flex-wrap gap-x-2 text-sm">{parts}</span>;
 }
