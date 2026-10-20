@@ -24,6 +24,8 @@ type Tournament struct {
 	Active     bool    `json:"active"`     // in corso: le gare finite vengono salvate qui
 	Races      int     `json:"races"`      // gare del torneo
 	Recordings int     `json:"recordings"` // registrazioni collegate alle sue gare
+	// Regole di punteggio: nel JSON diventano points_mode, pole_points e fastest_lap_points.
+	scoring.Rules
 	// Leader è il primo in classifica, solo nell'elenco dei tornei: nil se non
 	// ci sono ancora risultati, e sempre per "Nessun torneo".
 	Leader *TournamentLeader `json:"leader,omitempty"`
@@ -39,11 +41,55 @@ type TournamentLeader struct {
 // indicano la tabella per nome invece che con un alias.
 const tournamentColumns = "id, name, created_at, free, started_at, ended_at, started_at IS NOT NULL AND ended_at IS NULL, " +
 	"(SELECT COUNT(*) FROM races WHERE races.tournament_id = tournaments.id), " +
-	"(SELECT COUNT(*) FROM telemetry_sessions s JOIN races r ON r.id = s.race_id WHERE r.tournament_id = tournaments.id)"
+	"(SELECT COUNT(*) FROM telemetry_sessions s JOIN races r ON r.id = s.race_id WHERE r.tournament_id = tournaments.id), " +
+	"points_mode, pole_points, fastest_lap_points"
 
 // scanTournament legge una riga selezionata con tournamentColumns.
 func scanTournament(row interface{ Scan(...any) error }, t *Tournament) error {
-	return row.Scan(&t.ID, &t.Name, &t.CreatedAt, &t.Free, &t.StartedAt, &t.EndedAt, &t.Active, &t.Races, &t.Recordings)
+	return row.Scan(&t.ID, &t.Name, &t.CreatedAt, &t.Free, &t.StartedAt, &t.EndedAt, &t.Active, &t.Races, &t.Recordings,
+		&t.Mode, &t.PolePoints, &t.FastestLapPoints)
+}
+
+// rulesInput sono le regole di punteggio come arrivano nel body di un torneo:
+// i campi assenti restano come sono (per un torneo nuovo, quelli di default).
+type rulesInput struct {
+	PointsMode       *string  `json:"points_mode"`
+	PolePoints       *float64 `json:"pole_points"` // float per poter rifiutare i decimali con un messaggio chiaro
+	FastestLapPoints *float64 `json:"fastest_lap_points"`
+}
+
+// maxBonusPoints è il massimo dei punti per la pole e per il giro veloce:
+// più di una vittoria non avrebbe senso.
+const maxBonusPoints = 25
+
+// apply controlla le regole del body e le applica a rules.
+func (in rulesInput) apply(rules scoring.Rules) (scoring.Rules, error) {
+	if in.PointsMode != nil {
+		switch *in.PointsMode {
+		case scoring.ModeAbsolute, scoring.ModePlayers:
+			rules.Mode = *in.PointsMode
+		default:
+			return rules, errorf(http.StatusBadRequest, "Modalità di punteggio \"%s\" non valida", *in.PointsMode)
+		}
+	}
+	bonus := []struct {
+		value *float64
+		dst   *int
+		what  string
+	}{
+		{in.PolePoints, &rules.PolePoints, "la pole"},
+		{in.FastestLapPoints, &rules.FastestLapPoints, "il giro veloce"},
+	}
+	for _, b := range bonus {
+		if b.value == nil {
+			continue
+		}
+		if v := *b.value; v < 0 || v > maxBonusPoints || v != math.Trunc(v) {
+			return rules, errorf(http.StatusBadRequest, "I punti per %s devono essere un numero intero da 0 a %d", b.what, maxBonusPoints)
+		}
+		*b.dst = int(*b.value)
+	}
+	return rules, nil
 }
 
 type Player struct {
@@ -91,9 +137,14 @@ type RaceResult struct {
 	PlayerID   int64  `json:"player_id"`
 	Position   *int   `json:"position"`
 	DNF        bool   `json:"dnf"`
-	Points     int    `json:"points"`
-	FastestLap bool   `json:"fastest_lap"` // giro più veloce della gara
+	FastestLap bool   `json:"fastest_lap"` // giro più veloce della gara, IA compresa, come salvato
 	BestLapMS  *int64 `json:"best_lap_ms"` // miglior giro, solo dalle registrazioni
+
+	// Come conta il risultato con le regole del torneo (vedi scoring.ScoreRace).
+	Points           int  `json:"points"`             // compresi i bonus
+	ScoredPosition   *int `json:"scored_position"`    // posizione che dà i punti: tra i soli piloti in modalità "players"
+	ScoredFastestLap bool `json:"scored_fastest_lap"` // giro più veloce: tra i soli piloti in modalità "players"
+	Bonus            int  `json:"bonus"`              // punti per la pole o il giro veloce, già compresi in Points
 }
 
 type RaceWithResults struct {
@@ -149,23 +200,30 @@ func (s *Server) listTournaments(w http.ResponseWriter, r *http.Request) error {
 		if err != nil {
 			return err
 		}
-		if st := scoring.Standings(results); len(st) > 0 {
+		if st := scoring.Standings(results, t.Rules); len(st) > 0 {
 			t.Leader = &TournamentLeader{Name: st[0].Name, Color: st[0].Color, Points: st[0].Points}
 		}
 	}
 	return writeJSON(w, http.StatusOK, tournaments)
 }
 
-// createTournament crea un torneo. Body: { "name": "...", "start": true } per iniziarlo subito.
+// createTournament crea un torneo, con "start" per iniziarlo subito. Le regole
+// di punteggio sono facoltative: senza, vale il regolamento F1 2025.
+// Body: { "name": "...", "start": true, "points_mode": "players", "pole_points": 3, "fastest_lap_points": 1 }
 func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error {
 	var body struct {
 		Name  string `json:"name"`
 		Start bool   `json:"start"`
+		rulesInput
 	}
 	if err := readJSON(r, &body); err != nil {
 		return err
 	}
 	name, err := requireText(body.Name, "nome")
+	if err != nil {
+		return err
+	}
+	rules, err := body.apply(scoring.Rules{Mode: scoring.ModeAbsolute})
 	if err != nil {
 		return err
 	}
@@ -182,8 +240,9 @@ func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error 
 	}
 	var t Tournament
 	err = scanTournament(tx.QueryRow(`
-		INSERT INTO tournaments (name, started_at) VALUES (?, CASE WHEN ? THEN datetime('now') END)
-		RETURNING `+tournamentColumns, name, body.Start), &t)
+		INSERT INTO tournaments (name, started_at, points_mode, pole_points, fastest_lap_points)
+		VALUES (?, CASE WHEN ? THEN datetime('now') END, ?, ?, ?)
+		RETURNING `+tournamentColumns, name, body.Start, rules.Mode, rules.PolePoints, rules.FastestLapPoints), &t)
 	if err != nil {
 		return err
 	}
@@ -193,29 +252,51 @@ func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error 
 	return writeJSON(w, http.StatusCreated, t)
 }
 
-// updateTournament rinomina un torneo. Body: { "name": "..." }
+// updateTournament cambia nome e regole di punteggio di un torneo: i campi
+// assenti restano come sono. La classifica si ricalcola con le nuove regole.
+// Body come per createTournament, senza "start".
 func (s *Server) updateTournament(w http.ResponseWriter, r *http.Request) error {
 	id, err := s.pathID(r, "tournaments", "Torneo")
 	if err != nil {
 		return err
 	}
 	var body struct {
-		Name string `json:"name"`
+		Name *string `json:"name"`
+		rulesInput
 	}
 	if err := readJSON(r, &body); err != nil {
 		return err
 	}
-	name, err := requireText(body.Name, "nome")
+
+	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 	var t Tournament
-	err = scanTournament(s.db.QueryRow("UPDATE tournaments SET name = ? WHERE id = ? AND free = 0 RETURNING "+tournamentColumns,
-		name, id), &t)
-	if errors.Is(err, sql.ErrNoRows) {
-		return errorf(http.StatusBadRequest, "\"Nessun torneo\" non si può rinominare")
+	if err := scanTournament(tx.QueryRow("SELECT "+tournamentColumns+" FROM tournaments WHERE id = ?", id), &t); err != nil {
+		return err
 	}
+	if t.Free {
+		return errorf(http.StatusBadRequest, "\"Nessun torneo\" non si può modificare: raccoglie le gare giocate fuori dai tornei")
+	}
+	name := t.Name
+	if body.Name != nil {
+		if name, err = requireText(*body.Name, "nome"); err != nil {
+			return err
+		}
+	}
+	rules, err := body.apply(t.Rules)
 	if err != nil {
+		return err
+	}
+	err = scanTournament(tx.QueryRow(`
+		UPDATE tournaments SET name = ?, points_mode = ?, pole_points = ?, fastest_lap_points = ? WHERE id = ?
+		RETURNING `+tournamentColumns, name, rules.Mode, rules.PolePoints, rules.FastestLapPoints, id), &t)
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	return writeJSON(w, http.StatusOK, t)
@@ -472,6 +553,10 @@ func (s *Server) listRaces(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	rules, err := s.rulesOf(tournamentID)
+	if err != nil {
+		return err
+	}
 	races, err := s.racesOf(tournamentID)
 	if err != nil {
 		return err
@@ -509,8 +594,14 @@ func (s *Server) listRaces(w http.ResponseWriter, r *http.Request) error {
 		if results == nil {
 			results = []RaceResult{}
 		}
-		for i := range results {
-			results[i].Points = scoring.PointsFor(race.Type, results[i].Position, results[i].DNF)
+		// I punti di ognuno dipendono anche dagli altri risultati della gara.
+		input := make([]scoring.Result, len(results))
+		for i, res := range results {
+			input[i] = scoring.Result{RaceType: race.Type, Position: res.Position, DNF: res.DNF, FastestLap: res.FastestLap, BestLapMS: res.BestLapMS}
+		}
+		for i, sc := range scoring.ScoreRace(input, rules) {
+			res := &results[i]
+			res.Points, res.ScoredPosition, res.ScoredFastestLap, res.Bonus = sc.Points, sc.Position, sc.FastestLap, sc.Bonus
 		}
 		// Ordine di arrivo, con i non classificati in fondo.
 		slices.SortStableFunc(results, func(a, b RaceResult) int {
@@ -787,8 +878,9 @@ func (s *Server) getStandings(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	// In classifica solo le gare che danno punti, non prove libere e qualifiche.
-	races = slices.DeleteFunc(races, func(r Race) bool { return !scoring.Counts(r.Type) })
+	// In classifica solo le gare che danno punti: niente prove libere, e le
+	// qualifiche solo se il torneo dà punti per la pole.
+	races = slices.DeleteFunc(races, func(r Race) bool { return !tournament.Rules.Counts(r.Type) })
 	results, err := s.resultsOf(tournamentID)
 	if err != nil {
 		return err
@@ -797,14 +889,22 @@ func (s *Server) getStandings(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, http.StatusOK, map[string]any{
 		"tournament": tournament,
 		"races":      races,
-		"standings":  scoring.Standings(results),
+		"standings":  scoring.Standings(results, tournament.Rules),
 	})
+}
+
+// rulesOf restituisce le regole di punteggio di un torneo.
+func (s *Server) rulesOf(tournamentID int64) (scoring.Rules, error) {
+	var rules scoring.Rules
+	err := s.db.QueryRow("SELECT points_mode, pole_points, fastest_lap_points FROM tournaments WHERE id = ?", tournamentID).
+		Scan(&rules.Mode, &rules.PolePoints, &rules.FastestLapPoints)
+	return rules, err
 }
 
 // resultsOf restituisce tutti i risultati di un torneo, con i dati dei piloti.
 func (s *Server) resultsOf(tournamentID int64) ([]scoring.Result, error) {
 	rows, err := s.db.Query(`
-		SELECT r.race_id, ra.type, r.player_id, p.name, p.team, COALESCE(p.color, ''), r.position, r.dnf, r.fastest_lap
+		SELECT r.race_id, ra.type, r.player_id, p.name, p.team, COALESCE(p.color, ''), r.position, r.dnf, r.fastest_lap, r.best_lap_ms
 		FROM results r
 		JOIN races ra ON ra.id = r.race_id
 		JOIN players p ON p.id = r.player_id
@@ -817,7 +917,9 @@ func (s *Server) resultsOf(tournamentID int64) ([]scoring.Result, error) {
 	var results []scoring.Result
 	for rows.Next() {
 		var res scoring.Result
-		if err := rows.Scan(&res.RaceID, &res.RaceType, &res.PlayerID, &res.Name, &res.Team, &res.Color, &res.Position, &res.DNF, &res.FastestLap); err != nil {
+		err := rows.Scan(&res.RaceID, &res.RaceType, &res.PlayerID, &res.Name, &res.Team, &res.Color, &res.Position, &res.DNF,
+			&res.FastestLap, &res.BestLapMS)
+		if err != nil {
 			return nil, err
 		}
 		results = append(results, res)

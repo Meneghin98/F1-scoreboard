@@ -18,7 +18,7 @@ internal/telemetry/     parser dei pacchetti di telemetria (formati 2025 e 2026)
 internal/recording/     formato dei file di registrazione (.f1rec.gz)
 internal/live/          ascolto UDP, stato live della sessione, registrazione automatica
 internal/api/           handler HTTP delle API REST
-internal/scoring/       punteggi F1 2025 e calcolo della classifica
+internal/scoring/       punteggi F1 2025, regole dei tornei e calcolo della classifica
 internal/store/         apertura del DB e migrazioni (migrations/NNN_*.sql)
 web/src/                frontend React (pages/, components/, components/ui/ e lib/)
 web/dist/               build del frontend, incorporata nel binario (non versionata)
@@ -125,8 +125,8 @@ i piloti già proposti (quelli che avevano lo stesso controller nella sessione p
 3. La sessione diventa una gara del **torneo in corso** o, se nessun torneo è in corso, di
    **Nessun torneo**. Se nel torneo c'è già la gara in calendario (stesso circuito e tipo, ancora
    senza risultati) la sessione va lì, altrimenti ne viene creata una nuova. Un torneo si crea,
-   si inizia, si termina e si rinomina dalla pagina Tornei; terminato, le gare tornano in Nessun
-   torneo, che non si può iniziare né eliminare.
+   si inizia, si termina e se ne cambiano nome e regole di punteggio dalla pagina Tornei;
+   terminato, le gare tornano in Nessun torneo, che non si può iniziare né eliminare.
 
 Ogni sessione del weekend finita (con la classifica finale) appartiene sempre a un torneo: dalla
 pagina Registrazioni si può spostare in un altro, non togliere. Quando la si sposta, la gara
@@ -193,7 +193,9 @@ La versione corrente è salvata in `PRAGMA user_version`. Per modificare lo sche
 nuovo file con il numero successivo (es. `002_telemetria.sql`): i file già esistenti non vanno
 mai modificati. I database creati dalla vecchia versione Node.js vengono adottati senza modifiche.
 
-## Punteggio (regolamento F1 2025)
+## Punteggio
+
+Di default vale il regolamento F1 2025:
 
 | Tipo        | Punti dal 1° in giù               |
 |-------------|-----------------------------------|
@@ -203,16 +205,31 @@ mai modificati. I database creati dalla vecchia versione Node.js vengono adottat
 Il punto per il giro veloce non c'è più dal 2025. A parità di punti vale il countback sui
 piazzamenti nei Gran Premi (più vittorie, poi più secondi posti, ecc.).
 
-La classifica mostra anche le **pole** (qualifiche vinte) e i **giri veloci** nei Gran Premi. Il
-giro veloce arriva dalla registrazione (chi ha fatto il miglior giro della gara, IA compresa) o si
-segna a mano nell'editor dei risultati.
+Ogni torneo ha le sue **regole di punteggio**: si scelgono quando lo si crea e si cambiano da
+"Impostazioni" nella pagina Tornei. La classifica si ricalcola da sola, anche per le gare già corse.
+
+- **Punti in base alla posizione d'arrivo** (default), IA compresa come nel gioco: chi arriva 11°
+  dietro a dieci auto della IA non prende punti. In alternativa **in base alla posizione tra i
+  piloti**: in ogni gara le posizioni si ricalcolano tra i soli piloti del segnapunti (i ritirati
+  restano ritirati), poi si applica la tabella. Vittorie, podi e countback del torneo seguono le
+  stesse posizioni; nella pagina Gare compaiono accanto a quelle d'arrivo.
+- **Punti per la pole** (0 = nessuno): al primo della qualifica, o al primo dei piloti nell'altra
+  modalità. Con i punti per la pole le qualifiche entrano nelle colonne della classifica.
+- **Punti per il giro veloce** (0 = nessuno): solo nei Gran Premi e solo a chi arriva al traguardo.
+  Con le posizioni d'arrivo vanno a chi ha fatto il giro più veloce della gara; tra i piloti, al
+  miglior tempo dei piloti (nelle gare inserite a mano, senza tempi, a chi è segnato).
+
+La classifica mostra anche le **pole** (qualifiche vinte) e i **giri veloci** nei Gran Premi, con
+un segno sui punti bonus. Il giro veloce arriva dalla registrazione (chi ha fatto il miglior giro
+della gara, IA compresa) o si segna a mano nell'editor dei risultati.
 
 ## Statistiche
 
 La pagina **Statistiche** raccoglie tutte le gare di tutti i tornei:
 
-- **Carriera**: titoli, punti (somma delle classifiche dei tornei), vittorie, podi, pole, giri
-  veloci, ritiri, media e miglior piazzamento di ogni pilota;
+- **Carriera**: titoli, punti (somma delle classifiche dei tornei, ognuna con le sue regole),
+  vittorie, podi, pole, giri veloci, ritiri, media e miglior piazzamento di ogni pilota. Questi
+  ultimi sono quelli d'arrivo, IA compresa, anche nei tornei con i punti tra i piloti;
 - **Record dei circuiti**: il giro più veloce dei piloti su ogni circuito, in qualunque sessione
   registrata, con il link al replay;
 - **Testa a testa**: quante volte ogni pilota è arrivato davanti a ciascun altro.

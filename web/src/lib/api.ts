@@ -1,6 +1,6 @@
 import type {
-  Player, PlayerProfile, Race, RaceType, RaceWithResults, ResultInput, SessionRaceInput, SessionRecord, StandingsResponse,
-  StatsResponse, Tournament,
+  Player, PlayerProfile, Race, RaceType, RaceWithResults, ResultInput, ScoringRules, SessionRaceInput, SessionRecord,
+  StandingsResponse, StatsResponse, Tournament,
   ReplayFrame, ReplayInfo, Track, TrackMap,
 } from './types';
 
@@ -31,8 +31,10 @@ export const api = {
   tracks: () => request<Track[]>('/tracks'),
 
   tournaments: () => request<Tournament[]>('/tournaments'),
-  createTournament: (name: string, start: boolean) => request<Tournament>('/tournaments', 'POST', { name, start }),
-  updateTournament: (id: number, name: string) => request<Tournament>(`/tournaments/${id}`, 'PUT', { name }),
+  createTournament: (name: string, start: boolean, rules: ScoringRules) =>
+    request<Tournament>('/tournaments', 'POST', { name, start, ...rules }),
+  updateTournament: (id: number, name: string, rules: ScoringRules) =>
+    request<Tournament>(`/tournaments/${id}`, 'PUT', { name, ...rules }),
   deleteTournament: (id: number) => request<Deleted>(`/tournaments/${id}`, 'DELETE'),
   startTournament: (id: number) => request<Tournament>(`/tournaments/${id}/start`, 'POST'),
   endTournament: (id: number) => request<Tournament>(`/tournaments/${id}/end`, 'POST'),

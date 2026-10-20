@@ -1,10 +1,10 @@
 import { useState, type FormEvent } from 'react';
 import { api, type RaceInput } from '../lib/api';
 import { useConfirm } from '../lib/confirm';
-import { countsForPoints, RACE_TYPES, raceTypeLabel } from '../lib/f1';
+import { givesPoints, RACE_TYPES, raceTypeLabel } from '../lib/f1';
 import { formatDate, formatLapTime, raceLabels } from '../lib/format';
 import { href } from '../lib/route';
-import type { Player, RaceType, RaceWithResults } from '../lib/types';
+import type { Player, RaceType, RaceWithResults, ScoringRules, Tournament } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
 import { ResultsEditor } from '../components/ResultsEditor';
@@ -13,8 +13,10 @@ import { Button, buttonClass, Card, cx, dnfClass, Empty, fieldClass, Loading, ra
 // Cosa si sta modificando di una gara: i risultati o circuito, tipo e data.
 type Editing = { raceId: number; what: 'results' | 'details' } | null;
 
-// free: il torneo è "Nessun torneo" (eliminando una gara, la registrazione resta senza torneo).
-export function RacesPage({ tournamentId, free }: { tournamentId: number; free: boolean }) {
+// Le gare del torneo con i risultati, e i punti calcolati con le sue regole.
+// In "Nessun torneo" (free), eliminando una gara la registrazione resta senza torneo.
+export function RacesPage({ tournament }: { tournament: Tournament }) {
+  const { id: tournamentId, free } = tournament;
   const { run, toast } = useToast();
   const confirm = useConfirm();
   const [editing, setEditing] = useState<Editing>(null);
@@ -91,6 +93,7 @@ export function RacesPage({ tournamentId, free }: { tournamentId: number; free: 
         <RaceList
           races={data[0]}
           players={data[1]}
+          rules={tournament}
           editing={editing}
           onEdit={setEditing}
           onDelete={handleDelete}
@@ -138,6 +141,7 @@ function raceInput(form: HTMLFormElement): RaceInput {
 interface RaceListProps {
   races: RaceWithResults[];
   players: Player[];
+  rules: ScoringRules; // regole di punteggio del torneo
   editing: Editing;
   onEdit: (editing: Editing) => void;
   onDelete: (race: RaceWithResults) => void;
@@ -146,7 +150,7 @@ interface RaceListProps {
   onSaved: () => Promise<void>;
 }
 
-function RaceList({ races, players, editing, onEdit, onDelete, onResync, onSaveDetails, onSaved }: RaceListProps) {
+function RaceList({ races, players, rules, editing, onEdit, onDelete, onResync, onSaveDetails, onSaved }: RaceListProps) {
   const labels = raceLabels(races);
   const playerName = (id: number) => players.find((p) => p.id === id)?.name ?? '?';
 
@@ -172,7 +176,7 @@ function RaceList({ races, players, editing, onEdit, onDelete, onResync, onSaveD
           <div className="flex flex-wrap items-center justify-between gap-4">
             <h3 className="flex flex-wrap items-center gap-x-2 text-lg font-bold">
               <span className="text-muted">{labels.get(race.id)}</span> {race.track}
-              {race.type !== 'race' && <TypeBadge type={race.type} />}
+              {race.type !== 'race' && <TypeBadge type={race.type} rules={rules} />}
               {race.date && <span className="text-muted">· {formatDate(race.date)}</span>}
               {source && (
                 <span
@@ -220,7 +224,7 @@ function RaceList({ races, players, editing, onEdit, onDelete, onResync, onSaveD
             onSaved={onSaved}
           />
         ) : race.results.length ? (
-          <ResultsTable race={race} playerName={playerName} />
+          <ResultsTable race={race} rules={rules} playerName={playerName} />
         ) : <p className="mt-2 text-muted">Nessun risultato inserito.</p>}
       </Card>
     );
@@ -228,15 +232,19 @@ function RaceList({ races, players, editing, onEdit, onDelete, onResync, onSaveD
 }
 
 // Risultati di una gara: posizione, pilota, giro veloce e punti. Il miglior
-// giro c'è solo per le gare prese da una registrazione.
-function ResultsTable({ race, playerName }: { race: RaceWithResults; playerName: (id: number) => string }) {
-  const points = countsForPoints(race.type);
+// giro c'è solo per le gare prese da una registrazione. Nei tornei in modalità
+// "players" i punti seguono la posizione tra i piloti, mostrata accanto.
+function ResultsTable({ race, rules, playerName }: { race: RaceWithResults; rules: ScoringRules; playerName: (id: number) => string }) {
+  const points = givesPoints(race.type, rules);
+  const playersMode = rules.points_mode === 'players';
   const laps = race.results.some((r) => r.best_lap_ms);
   return (
     <Table>
       <thead>
         <tr>
-          <Th>Pos</Th><Th>Pilota</Th>
+          <Th>Pos</Th>
+          {points && playersMode && <Th num title="Posizione tra i soli piloti, che dà i punti">Tra i piloti</Th>}
+          <Th>Pilota</Th>
           {laps && <Th num>Miglior giro</Th>}
           {points && <Th num>Punti</Th>}
         </tr>
@@ -245,16 +253,29 @@ function ResultsTable({ race, playerName }: { race: RaceWithResults; playerName:
         {race.results.map((r) => (
           <Tr key={r.player_id}>
             <Td className={r.dnf ? dnfClass : rankClass(r.position)}>{r.dnf ? 'DNF' : r.position}</Td>
+            {points && playersMode && <Td num className={rankClass(r.scored_position)}>{r.scored_position ?? '–'}</Td>}
             <Td>
               {playerName(r.player_id)}
-              {r.fastest_lap && (
-                <span className="ml-2 rounded bg-purple-950 px-1.5 py-0.5 text-xs font-bold text-purple-400" title="Giro più veloce della gara">
+              {r.scored_fastest_lap && (
+                <span
+                  className="ml-2 rounded bg-purple-950 px-1.5 py-0.5 text-xs font-bold text-purple-400"
+                  title={playersMode ? 'Giro più veloce tra i piloti' : 'Giro più veloce della gara'}
+                >
                   GV
                 </span>
               )}
             </Td>
-            {laps && <Td num className={cx(r.fastest_lap && 'font-bold text-purple-400')}>{formatLapTime(r.best_lap_ms ?? 0)}</Td>}
-            {points && <Td num>{r.points}</Td>}
+            {laps && <Td num className={cx(r.scored_fastest_lap && 'font-bold text-purple-400')}>{formatLapTime(r.best_lap_ms ?? 0)}</Td>}
+            {points && (
+              <Td num>
+                {r.points}
+                {r.bonus > 0 && (
+                  <span className="ml-1 text-xs text-muted" title="Punti bonus, già compresi">
+                    (+{r.bonus} {race.type === 'qualifying' ? 'pole' : 'GV'})
+                  </span>
+                )}
+              </Td>
+            )}
           </Tr>
         ))}
       </tbody>
@@ -262,16 +283,17 @@ function ResultsTable({ race, playerName }: { race: RaceWithResults; playerName:
   );
 }
 
-// Etichetta del tipo per tutto ciò che non è un Gran Premio; prove libere e
-// qualifiche in grigio, perché non danno punti.
-function TypeBadge({ type }: { type: RaceType }) {
+// Etichetta del tipo per tutto ciò che non è un Gran Premio; in grigio le
+// sessioni che non danno punti (prove libere, e qualifiche senza punti per la pole).
+function TypeBadge({ type, rules }: { type: RaceType; rules: ScoringRules }) {
+  const points = givesPoints(type, rules);
   return (
     <span
       className={cx(
         'inline-block rounded px-2 py-0.5 align-middle text-xs font-bold uppercase',
-        countsForPoints(type) ? 'bg-sprint-bg text-sprint' : 'bg-surface-2 text-muted',
+        points ? 'bg-sprint-bg text-sprint' : 'bg-surface-2 text-muted',
       )}
-      title={countsForPoints(type) ? undefined : 'Non assegna punti'}
+      title={points ? undefined : 'Non assegna punti'}
     >
       {raceTypeLabel(type)}
     </span>

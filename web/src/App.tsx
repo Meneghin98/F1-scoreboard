@@ -106,7 +106,7 @@ export function App() {
               {/* key: cambiando torneo la pagina riparte da zero (es. chiude l'editor dei risultati). */}
               {view === 'dashboard' && <DashboardPage key={tournamentId} tournamentId={tournamentId} />}
               {view === 'standings' && <StandingsPage key={tournamentId} tournamentId={tournamentId!} />}
-              {view === 'races' && <RacesPage key={tournamentId} tournamentId={tournamentId!} free={!!current?.free} />}
+              {view === 'races' && current && <RacesPage key={tournamentId} tournament={current} />}
               {view === 'stats' && <StatsPage />}
               {view === 'players' && <PlayersPage />}
               {view === 'player' && (

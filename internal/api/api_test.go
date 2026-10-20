@@ -448,3 +448,135 @@ func TestTournamentLeader(t *testing.T) {
 		}
 	}
 }
+
+// Le regole di punteggio si scelgono creando il torneo e si cambiano dopo: la
+// classifica e i punti delle gare si ricalcolano con le nuove regole.
+func TestTournamentRules(t *testing.T) {
+	srv := newTestServer(t)
+	type tournament struct {
+		ID               int    `json:"id"`
+		Name             string `json:"name"`
+		Free             bool   `json:"free"`
+		PointsMode       string `json:"points_mode"`
+		PolePoints       int    `json:"pole_points"`
+		FastestLapPoints int    `json:"fastest_lap_points"`
+		Leader           *struct {
+			Name   string `json:"name"`
+			Points int    `json:"points"`
+		} `json:"leader"`
+	}
+	var std, cup tournament
+	expectStatus(t, call(t, srv, "POST", "/tournaments", map[string]any{"name": "Standard"}, &std), 201, "torneo senza regole")
+	if std.PointsMode != "absolute" || std.PolePoints != 0 || std.FastestLapPoints != 0 {
+		t.Fatalf("regole di default %+v", std)
+	}
+	for name, body := range map[string]map[string]any{
+		"modalità sconosciuta": {"name": "X", "points_mode": "ia"},
+		"punti negativi":       {"name": "X", "pole_points": -1},
+		"punti decimali":       {"name": "X", "fastest_lap_points": 1.5},
+		"troppi punti":         {"name": "X", "pole_points": 26},
+	} {
+		expectStatus(t, call(t, srv, "POST", "/tournaments", body, nil), 400, name)
+	}
+	expectStatus(t, call(t, srv, "POST", "/tournaments",
+		map[string]any{"name": "Coppa", "points_mode": "players", "pole_points": 3, "fastest_lap_points": 1}, &cup), 201, "torneo con regole")
+	if cup.PointsMode != "players" || cup.PolePoints != 3 || cup.FastestLapPoints != 1 {
+		t.Fatalf("regole %+v", cup)
+	}
+
+	// Simone e Luca corrono con la IA: in qualifica partono 4° e 7°, in gara arrivano 12° e 9°.
+	for _, name := range []string{"Simone", "Luca"} {
+		call(t, srv, "POST", "/players", map[string]string{"name": name}, nil)
+	}
+	var quali, race struct {
+		ID int `json:"id"`
+	}
+	call(t, srv, "POST", fmt.Sprintf("/tournaments/%d/races", cup.ID), map[string]string{"track": "Monza", "type": "qualifying"}, &quali)
+	call(t, srv, "POST", fmt.Sprintf("/tournaments/%d/races", cup.ID), map[string]string{"track": "Monza"}, &race)
+	call(t, srv, "PUT", fmt.Sprintf("/races/%d/results", quali.ID), map[string]any{"results": []result{
+		{PlayerID: 1, Position: pos(4)}, {PlayerID: 2, Position: pos(7)},
+	}}, nil)
+	call(t, srv, "PUT", fmt.Sprintf("/races/%d/results", race.ID), map[string]any{"results": []map[string]any{
+		{"player_id": 1, "position": 12, "fastest_lap": true}, {"player_id": 2, "position": 9},
+	}}, nil)
+
+	type standings struct {
+		Races []struct {
+			ID   int    `json:"id"`
+			Type string `json:"type"`
+		} `json:"races"`
+		Standings []struct {
+			Name    string `json:"name"`
+			Points  int    `json:"points"`
+			Wins    int    `json:"wins"`
+			Poles   int    `json:"poles"`
+			PerRace map[string]struct {
+				Points   int  `json:"points"`
+				Position *int `json:"position"`
+				Bonus    int  `json:"bonus"`
+			} `json:"perRace"`
+		} `json:"standings"`
+	}
+	var st standings
+	call(t, srv, "GET", fmt.Sprintf("/tournaments/%d/standings", cup.ID), nil, &st)
+	// Tra i piloti: Luca vince la gara (25), Simone fa la pole (+3) e il giro veloce (18 + 1).
+	if len(st.Races) != 2 || st.Races[0].Type != "qualifying" {
+		t.Fatalf("con i punti per la pole la qualifica entra in classifica: %+v", st.Races)
+	}
+	luca, simone := st.Standings[0], st.Standings[1]
+	if luca.Name != "Luca" || luca.Points != 25 || luca.Wins != 1 || simone.Points != 3+18+1 || simone.Poles != 1 {
+		t.Fatalf("classifica %+v", st.Standings)
+	}
+	if r := simone.PerRace[fmt.Sprint(race.ID)]; r.Points != 19 || *r.Position != 2 || r.Bonus != 1 {
+		t.Errorf("gara di Simone %+v", r)
+	}
+	// Anche i punti di carriera vengono dalle classifiche dei tornei, con le loro regole.
+	var stats struct {
+		Career []struct {
+			Name   string `json:"name"`
+			Points int    `json:"points"`
+		} `json:"career"`
+	}
+	call(t, srv, "GET", "/stats", nil, &stats)
+	if len(stats.Career) != 2 || stats.Career[0].Name != "Luca" || stats.Career[0].Points != 25 || stats.Career[1].Points != 22 {
+		t.Errorf("carriera %+v", stats.Career)
+	}
+
+	var races []struct {
+		ID      int `json:"id"`
+		Results []struct {
+			PlayerID         int  `json:"player_id"`
+			Position         *int `json:"position"`
+			Points           int  `json:"points"`
+			ScoredPosition   *int `json:"scored_position"`
+			ScoredFastestLap bool `json:"scored_fastest_lap"`
+			Bonus            int  `json:"bonus"`
+		} `json:"results"`
+	}
+	call(t, srv, "GET", fmt.Sprintf("/tournaments/%d/races", cup.ID), nil, &races)
+	if r := races[1].Results[1]; r.PlayerID != 1 || *r.Position != 12 || *r.ScoredPosition != 2 || r.Points != 19 || !r.ScoredFastestLap || r.Bonus != 1 {
+		t.Errorf("risultato di Simone %+v", r)
+	}
+
+	// Si cambia solo la modalità: i bonus restano. Con le posizioni assolute nessuno fa punti in gara.
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", cup.ID), map[string]any{"points_mode": "absolute"}, &cup), 200, "cambia modalità")
+	if cup.Name != "Coppa" || cup.PointsMode != "absolute" || cup.PolePoints != 3 {
+		t.Fatalf("torneo modificato %+v", cup)
+	}
+	call(t, srv, "GET", fmt.Sprintf("/tournaments/%d/standings", cup.ID), nil, &st)
+	if s := st.Standings[0]; s.Name != "Luca" || s.Points != 2 {
+		t.Fatalf("classifica assoluta %+v", st.Standings)
+	}
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", cup.ID), map[string]any{"pole_points": 30}, nil), 400, "troppi punti")
+
+	var list []tournament
+	call(t, srv, "GET", "/tournaments", nil, &list)
+	for _, t2 := range list {
+		if t2.ID == cup.ID && (t2.Leader == nil || t2.Leader.Name != "Luca" || t2.Leader.Points != 2) {
+			t.Errorf("capoclassifica %+v", t2.Leader)
+		}
+		if t2.Free {
+			expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", t2.ID), map[string]any{"pole_points": 1}, nil), 400, "regole di Nessun torneo")
+		}
+	}
+}

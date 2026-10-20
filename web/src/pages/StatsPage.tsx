@@ -25,7 +25,8 @@ function CareerCard({ career }: { career: CareerStats[] }) {
     <Card>
       <h2 className="mb-1 font-bold">Carriera</h2>
       <p className="mb-3 text-sm text-muted">
-        Tutte le gare, di tutti i tornei. I punti sono la somma delle classifiche dei tornei (senza "Nessun torneo").
+        Tutte le gare, di tutti i tornei. I punti sono la somma delle classifiche dei tornei (senza "Nessun torneo");
+        vittorie, podi e piazzamenti sono quelli d'arrivo, IA compresa.
       </p>
       <Table>
         <thead>

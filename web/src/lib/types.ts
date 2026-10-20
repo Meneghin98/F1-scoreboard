@@ -2,7 +2,18 @@
 
 export type RaceType = 'race' | 'sprint' | 'qualifying' | 'practice';
 
-export interface Tournament {
+// absolute: punti in base alla posizione d'arrivo, IA compresa; players: in base
+// alla posizione tra i soli piloti, come se la IA non ci fosse.
+export type PointsMode = 'absolute' | 'players';
+
+// Regole di punteggio di un torneo (vedi scoring.Rules).
+export interface ScoringRules {
+  points_mode: PointsMode;
+  pole_points: number; // al primo della qualifica
+  fastest_lap_points: number; // al giro più veloce di un Gran Premio, se non si ritira
+}
+
+export interface Tournament extends ScoringRules {
   id: number;
   name: string;
   created_at: string;
@@ -42,9 +53,13 @@ export interface RaceResult {
   player_id: number;
   position: number | null;
   dnf: boolean;
-  points: number;
-  fastest_lap: boolean; // giro più veloce della gara
+  fastest_lap: boolean; // giro più veloce della gara, IA compresa, come salvato
   best_lap_ms: number | null; // miglior giro, solo dalle registrazioni
+  // Come conta il risultato con le regole del torneo.
+  points: number; // compresi i bonus
+  scored_position: number | null; // posizione che dà i punti: tra i soli piloti in modalità "players"
+  scored_fastest_lap: boolean; // giro più veloce: tra i soli piloti in modalità "players"
+  bonus: number; // punti per la pole o il giro veloce, già compresi in points
 }
 
 export interface RaceWithResults extends Race {
@@ -54,9 +69,10 @@ export interface RaceWithResults extends Race {
 }
 
 export interface RaceScore {
-  points: number;
-  position: number | null;
+  points: number; // compresi i bonus
+  position: number | null; // posizione che dà i punti: tra i soli piloti in modalità "players"
   dnf: boolean;
+  bonus: number; // punti della pole (nelle qualifiche) o del giro veloce (nei Gran Premi)
 }
 
 export interface Standing {

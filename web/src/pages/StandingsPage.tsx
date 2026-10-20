@@ -1,4 +1,5 @@
 import { api } from '../lib/api';
+import { rulesSummary } from '../lib/f1';
 import { raceLabels } from '../lib/format';
 import type { Race, Standing } from '../lib/types';
 import { href } from '../lib/route';
@@ -10,16 +11,18 @@ export function StandingsPage({ tournamentId }: { tournamentId: number }) {
   const { data } = useLoad(() => api.standings(tournamentId), [tournamentId]);
   if (!data) return <Loading />;
 
-  const { races, standings } = data;
+  const { tournament, races, standings } = data;
   if (!standings.length) {
     return <Empty>Nessun risultato ancora. Aggiungi una gara e inserisci i risultati.</Empty>;
   }
 
   const labels = raceLabels(races);
   const leader = standings[0].points;
+  const playersMode = tournament.points_mode === 'players';
   return (
     <>
       <Card>
+        {!tournament.free && <p className="mb-2 text-sm text-muted">{rulesSummary(tournament)}</p>}
         <Table>
           <thead>
             <tr>
@@ -47,7 +50,7 @@ export function StandingsPage({ tournamentId }: { tournamentId: number }) {
                     {s.name} <TeamTag team={s.team} />
                   </a>
                 </Td>
-                {races.map((race) => <RaceCell key={race.id} standing={s} race={race} />)}
+                {races.map((race) => <RaceCell key={race.id} standing={s} race={race} playersMode={playersMode} />)}
                 <Td num>{s.wins}</Td>
                 <Td num>{s.podiums}</Td>
                 <Td num>{s.poles}</Td>
@@ -65,15 +68,24 @@ export function StandingsPage({ tournamentId }: { tournamentId: number }) {
   );
 }
 
-// Punti presi nella gara, con la posizione d'arrivo in piccolo.
-function RaceCell({ standing, race }: { standing: Standing; race: Race }) {
+// Punti presi nella gara, con la posizione in piccolo (tra i soli piloti, in
+// modalità "players") e un segno per i punti della pole o del giro veloce.
+function RaceCell({ standing, race, playersMode }: { standing: Standing; race: Race; playersMode: boolean }) {
   const r = standing.perRace[race.id];
   if (!r) return <Td num className="text-muted">–</Td>;
   if (r.dnf) return <Td num className={dnfClass} title="Ritirato">DNF</Td>;
+  const pole = race.type === 'qualifying';
+  const title = [
+    r.position === null ? 'Non classificato' : `${r.position}° ${playersMode ? 'tra i piloti' : 'posto'}`,
+    r.bonus > 0 && `${pole ? 'pole' : 'giro veloce'} +${r.bonus}`,
+  ].filter(Boolean).join(' · ');
   return (
-    <Td num title={`${r.position}° posto`}>
+    <Td num title={title}>
       {r.points}
-      <span className="ml-1 text-xs text-muted">{r.position}°</span>
+      {r.position !== null && <span className="ml-1 text-xs text-muted">{r.position}°</span>}
+      {r.bonus > 0 && (
+        <span className={cx('ml-1 text-[10px] font-bold', pole ? 'text-gold' : 'text-purple-400')}>{pole ? 'POLE' : 'GV'}</span>
+      )}
     </Td>
   );
 }

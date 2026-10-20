@@ -68,8 +68,10 @@ type statResult struct {
 	date                           *string
 	position                       *int
 	dnf, fastest                   bool
+	bestLap                        *int64
 	free, ended, active            bool // gara di "Nessun torneo"; torneo terminato; torneo in corso
 	tournamentName                 string
+	rules                          scoring.Rules // regole di punteggio del torneo
 }
 
 // statsData sono tutti i dati delle statistiche, letti una volta.
@@ -97,8 +99,9 @@ func (s *Server) loadStats() (*statsData, error) {
 	rows.Close()
 
 	rows, err = s.db.Query(`
-		SELECT r.race_id, ra.tournament_id, r.player_id, ra.type, ra.track, ra.date, r.position, r.dnf, r.fastest_lap,
-		       t.free, t.ended_at IS NOT NULL, t.started_at IS NOT NULL AND t.ended_at IS NULL, t.name
+		SELECT r.race_id, ra.tournament_id, r.player_id, ra.type, ra.track, ra.date, r.position, r.dnf, r.fastest_lap, r.best_lap_ms,
+		       t.free, t.ended_at IS NOT NULL, t.started_at IS NOT NULL AND t.ended_at IS NULL, t.name,
+		       t.points_mode, t.pole_points, t.fastest_lap_points
 		FROM results r JOIN races ra ON ra.id = r.race_id JOIN tournaments t ON t.id = ra.tournament_id
 		ORDER BY ra.date IS NULL, ra.date, ra.id`)
 	if err != nil {
@@ -108,7 +111,8 @@ func (s *Server) loadStats() (*statsData, error) {
 	for rows.Next() {
 		var r statResult
 		err := rows.Scan(&r.raceID, &r.tournamentID, &r.playerID, &r.raceType, &r.track, &r.date, &r.position, &r.dnf,
-			&r.fastest, &r.free, &r.ended, &r.active, &r.tournamentName)
+			&r.fastest, &r.bestLap, &r.free, &r.ended, &r.active, &r.tournamentName,
+			&r.rules.Mode, &r.rules.PolePoints, &r.rules.FastestLapPoints)
 		if err != nil {
 			return nil, err
 		}
@@ -117,9 +121,10 @@ func (s *Server) loadStats() (*statsData, error) {
 	return d, rows.Err()
 }
 
-// standings calcola la classifica di ogni torneo (non "Nessun torneo").
+// standings calcola la classifica di ogni torneo (non "Nessun torneo"), con le sue regole.
 func (d *statsData) standings() map[int64][]scoring.Standing {
 	byTournament := map[int64][]scoring.Result{}
+	rules := map[int64]scoring.Rules{}
 	for _, r := range d.results {
 		if r.free {
 			continue
@@ -127,12 +132,13 @@ func (d *statsData) standings() map[int64][]scoring.Standing {
 		p := d.players[r.playerID]
 		byTournament[r.tournamentID] = append(byTournament[r.tournamentID], scoring.Result{
 			RaceID: r.raceID, RaceType: r.raceType, PlayerID: r.playerID, Name: p.Name, Team: p.Team, Color: p.Color,
-			Position: r.position, DNF: r.dnf, FastestLap: r.fastest,
+			Position: r.position, DNF: r.dnf, FastestLap: r.fastest, BestLapMS: r.bestLap,
 		})
+		rules[r.tournamentID] = r.rules
 	}
 	out := map[int64][]scoring.Standing{}
 	for id, results := range byTournament {
-		out[id] = scoring.Standings(results)
+		out[id] = scoring.Standings(results, rules[id])
 	}
 	return out
 }

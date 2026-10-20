@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from 'react';
-import { NewTournamentDialog } from '../components/NewTournamentDialog';
-import { Button, Card, ColorDot, cx, fieldClass } from '../components/ui';
+import { useState } from 'react';
+import { TournamentDialog } from '../components/TournamentDialog';
+import { Button, Card, ColorDot, cx } from '../components/ui';
 import { api } from '../lib/api';
 import { useConfirm } from '../lib/confirm';
+import { rulesSummary } from '../lib/f1';
 import { formatUtcDate } from '../lib/format';
 import { navigate } from '../lib/route';
 import { useToast } from '../lib/toast';
@@ -16,12 +17,13 @@ interface Props {
 }
 
 // Tutti i tornei con il loro stato: qui si creano, si iniziano, si terminano,
-// si rinominano e si eliminano. Nell'header resta solo la scelta del torneo da mostrare.
+// si cambiano nome e regole di punteggio e si eliminano. Nell'header resta solo
+// la scelta del torneo da mostrare.
 export function TournamentsPage({ tournaments, selectedId, onSelect, onChanged }: Props) {
   const { run, toast } = useToast();
   const confirm = useConfirm();
   const [creating, setCreating] = useState(false);
-  const [renamingId, setRenamingId] = useState<number | null>(null);
+  const [editing, setEditing] = useState<Tournament | null>(null);
   const active = tournaments.find((t) => t.active);
 
   // Iniziato un torneo, le gare finite vengono salvate lì; terminato, si torna a "Nessun torneo".
@@ -63,16 +65,6 @@ export function TournamentsPage({ tournaments, selectedId, onSelect, onChanged }
     });
   }
 
-  function handleRename(t: Tournament, e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const name = String(new FormData(e.currentTarget).get('name'));
-    run(async () => {
-      await api.updateTournament(t.id, name);
-      setRenamingId(null);
-      await onChanged();
-    });
-  }
-
   function openStandings(t: Tournament) {
     onSelect(t.id);
     navigate(t.free ? 'races' : 'standings');
@@ -89,74 +81,68 @@ export function TournamentsPage({ tournaments, selectedId, onSelect, onChanged }
 
       {tournaments.map((t) => (
         <Card key={t.id} className={cx(t.active && 'border-green-500/60', t.id === selectedId && 'bg-surface-2/40')}>
-          {renamingId === t.id ? (
-            <form className="flex flex-wrap gap-2" onSubmit={(e) => handleRename(t, e)}>
-              <input
-                name="name"
-                required
-                pattern=".*\S.*"
-                defaultValue={t.name}
-                aria-label="Nome del torneo"
-                className={cx(fieldClass, 'flex-[1_1_240px]')}
-              />
-              <Button type="button" variant="ghost" onClick={() => setRenamingId(null)}>Annulla</Button>
-              <Button>Salva</Button>
-            </form>
-          ) : (
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="min-w-0">
-                <h2 className="flex flex-wrap items-center gap-2 text-lg font-bold">
-                  {t.name}
-                  <StatusBadge tournament={t} />
-                </h2>
-                <p className="text-sm text-muted">{details(t)}</p>
-                {t.leader && (
-                  <p className="mt-1 flex items-center gap-2 text-sm">
-                    <ColorDot color={t.leader.color} />
-                    <span className="text-muted">{t.ended_at ? 'Vincitore' : 'In testa'}:</span>
-                    <span className="font-semibold">{t.leader.name}</span>
-                    <span className="text-muted tabular-nums">{t.leader.points} pt</span>
-                  </p>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="ghost" size="sm" onClick={() => openStandings(t)}>
-                  {t.free ? 'Gare' : 'Classifica'}
-                </Button>
-                {t.active ? (
-                  <Button variant="ghost" size="sm" onClick={() => handleEnd(t)}>Termina</Button>
-                ) : !t.free && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={!!active}
-                    title={active ? `Termina prima "${active.name}"` : 'Le prossime gare verranno salvate in questo torneo'}
-                    onClick={() => handleStart(t)}
-                  >
-                    {t.ended_at ? 'Riprendi' : 'Inizia'}
-                  </Button>
-                )}
-                {!t.free && (
-                  <>
-                    <Button variant="ghost" size="sm" onClick={() => setRenamingId(t.id)}>Rinomina</Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(t)}>Elimina</Button>
-                  </>
-                )}
-              </div>
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 className="flex flex-wrap items-center gap-2 text-lg font-bold">
+                {t.name}
+                <StatusBadge tournament={t} />
+              </h2>
+              <p className="text-sm text-muted">{details(t)}</p>
+              {!t.free && <p className="text-sm text-muted">{rulesSummary(t)}</p>}
+              {t.leader && (
+                <p className="mt-1 flex items-center gap-2 text-sm">
+                  <ColorDot color={t.leader.color} />
+                  <span className="text-muted">{t.ended_at ? 'Vincitore' : 'In testa'}:</span>
+                  <span className="font-semibold">{t.leader.name}</span>
+                  <span className="text-muted tabular-nums">{t.leader.points} pt</span>
+                </p>
+              )}
             </div>
-          )}
+            <div className="flex flex-wrap gap-2">
+              <Button variant="ghost" size="sm" onClick={() => openStandings(t)}>
+                {t.free ? 'Gare' : 'Classifica'}
+              </Button>
+              {t.active ? (
+                <Button variant="ghost" size="sm" onClick={() => handleEnd(t)}>Termina</Button>
+              ) : !t.free && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!!active}
+                  title={active ? `Termina prima "${active.name}"` : 'Le prossime gare verranno salvate in questo torneo'}
+                  onClick={() => handleStart(t)}
+                >
+                  {t.ended_at ? 'Riprendi' : 'Inizia'}
+                </Button>
+              )}
+              {!t.free && (
+                <>
+                  <Button variant="ghost" size="sm" title="Nome e regole di punteggio" onClick={() => setEditing(t)}>
+                    Impostazioni
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => handleDelete(t)}>Elimina</Button>
+                </>
+              )}
+            </div>
+          </div>
         </Card>
       ))}
 
-      <NewTournamentDialog
+      <TournamentDialog
         open={creating}
         defaultName={`Torneo F1 2025 #${tournaments.filter((t) => !t.free).length + 1}`}
         canStart={!active}
         onClose={() => setCreating(false)}
-        onCreated={async (t) => {
+        onSaved={async (t) => {
           onSelect(t.id);
           await onChanged();
         }}
+      />
+      <TournamentDialog
+        open={editing !== null}
+        tournament={editing ?? undefined}
+        onClose={() => setEditing(null)}
+        onSaved={onChanged}
       />
     </>
   );
