@@ -139,6 +139,20 @@ func TestTrackerSplitScreen(t *testing.T) {
 		snap.Players[1].CarIndex != leader.CarIndex || snap.Players[1].FuelKg <= 0 {
 		t.Errorf("auto dei giocatori %+v", snap.Players)
 	}
+	if snap.Players[1].Restricted {
+		t.Errorf("auto del giocatore 2 riservata senza motivo")
+	}
+
+	// In split-screen il gioco azzera i dati riservati dell'auto del giocatore 2,
+	// capacità del serbatoio compresa: vanno nascosti, non mostrati come zeri.
+	st := &tr.status.Cars[leader.CarIndex]
+	st.FuelCapacity, st.FuelInTank, st.FrontBrakeBias, st.ERSStoreEnergy = 0, 0, 0, 0
+	tr.damage.Cars[leader.CarIndex] = telemetry.CarDamageData{}
+	p2 := tr.Snapshot("live").Players[1]
+	if !p2.Restricted || p2.Speed == 0 || p2.MaxRPM == 0 || p2.Wheels[0].SurfaceTemp == 0 ||
+		p2.BrakeBias != 0 || len(p2.TyreSets) != 0 || p2.Setup != nil {
+		t.Errorf("auto del giocatore 2 con dati riservati %+v", p2)
+	}
 }
 
 func newTestService(t *testing.T, record bool) (*Service, string) {

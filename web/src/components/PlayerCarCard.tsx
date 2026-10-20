@@ -68,6 +68,14 @@ export function PlayerCarCard({
 
 // Vista ridotta: velocità, carburante, ERS, usura delle gomme e danno peggiore.
 function Summary({ car, pitRejoin }: { car: PlayerCar; pitRejoin: number }) {
+  if (car.restricted) {
+    return (
+      <>
+        <SpeedGear car={car} />
+        <RestrictedNote />
+      </>
+    );
+  }
   const [worstPart, worstDamage] = damageList(car).reduce((a, b) => (b[1] > a[1] ? b : a));
   const worstWear = Math.max(...car.wheels.map((w) => w.wear));
 
@@ -111,22 +119,26 @@ function Details({ car, pedals, pitRejoin }: { car: PlayerCar; pedals: PedalSamp
           <Bar label="Giri motore" value={car.rpm.toLocaleString('it-IT')} ratio={car.maxRpm ? car.rpm / car.maxRpm : 0} color="bg-sky-500" />
           <PedalChart samples={pedals} />
           <div className="flex flex-col gap-1 text-sm">
-            <Stat label="Ripartizione freni" value={`${car.brakeBias}%`} />
+            {!car.restricted && <Stat label="Ripartizione freni" value={`${car.brakeBias}%`} />}
             <Stat label="Temp. motore" value={`${car.engineTemp}°C`} />
           </div>
         </Section>
   
-        <Section title="Carburante ed ERS">
-          <Bar label="Batteria ERS" value={`${Math.round(car.ersPercent)}%`} ratio={car.ersPercent / 100} color="bg-sprint" />
-          <div className="flex flex-col gap-1 text-sm">
-            <Stat label="Carburante" value={`${car.fuelKg.toFixed(1)} kg`} />
-            <FuelMargin car={car} />
-            <Stat label="Miscela" value={FUEL_MIX[car.fuelMix] ?? '–'} />
-            <Stat label="Modalità ERS" value={ERS_MODE[car.ersMode] ?? '–'} />
-            <Stat label="ERS usata nel giro" value={`${car.ersDeployedMj.toFixed(2)} MJ`} />
-            <Stat label="ERS recuperata nel giro" value={`${car.ersHarvestMj.toFixed(2)} MJ`} />
-          </div>
-        </Section>
+        {car.restricted ? (
+          <RestrictedNote />
+        ) : (
+          <Section title="Carburante ed ERS">
+            <Bar label="Batteria ERS" value={`${Math.round(car.ersPercent)}%`} ratio={car.ersPercent / 100} color="bg-sprint" />
+            <div className="flex flex-col gap-1 text-sm">
+              <Stat label="Carburante" value={`${car.fuelKg.toFixed(1)} kg`} />
+              <FuelMargin car={car} />
+              <Stat label="Miscela" value={FUEL_MIX[car.fuelMix] ?? '–'} />
+              <Stat label="Modalità ERS" value={ERS_MODE[car.ersMode] ?? '–'} />
+              <Stat label="ERS usata nel giro" value={`${car.ersDeployedMj.toFixed(2)} MJ`} />
+              <Stat label="ERS recuperata nel giro" value={`${car.ersHarvestMj.toFixed(2)} MJ`} />
+            </div>
+          </Section>
+        )}
       </div>
 
       {car.tyreSets.length > 0 && (
@@ -241,6 +253,15 @@ function damageList({ damage: d }: PlayerCar): [string, number][] {
     ['Cambio', d.gearbox],
     ['Motore', d.engine],
   ];
+}
+
+// Al posto dei dati che il gioco non invia per il giocatore 2 in split-screen.
+function RestrictedNote() {
+  return (
+    <p className="text-sm text-muted">
+      In split-screen il gioco non invia carburante, ERS, usura delle gomme, danni e assetto del secondo giocatore.
+    </p>
+  );
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {

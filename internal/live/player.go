@@ -15,6 +15,11 @@ const ersCapacityJ = 4_000_000
 type PlayerCar struct {
 	CarIndex   int `json:"carIndex"`
 	Controller int `json:"controller"` // 1 o 2 (split-screen)
+	// Restricted: il gioco nasconde i dati riservati di quest'auto (succede al
+	// giocatore 2 in split-screen). Carburante, miscela, ripartizione freni ed
+	// ERS, danni, usura delle gomme e set di gomme arrivano a zero e l'assetto è
+	// quello del giocatore 1: qui restano vuoti, la scheda li mostra come non disponibili.
+	Restricted bool `json:"restricted"`
 
 	// Guida (pacchetto CarTelemetry)
 	Speed      uint16  `json:"speed"` // km/h
@@ -146,7 +151,10 @@ func (t *Tracker) playerCar(i int) *PlayerCar {
 		return nil
 	}
 
-	p := &PlayerCar{CarIndex: i}
+	// Con la telemetria riservata la capacità del serbatoio arriva a zero:
+	// un'auto vera ne ha sempre una.
+	restricted := st != nil && st.FuelCapacity == 0
+	p := &PlayerCar{CarIndex: i, Restricted: restricted}
 	if tel != nil {
 		p.Speed, p.Gear, p.RPM = tel.Speed, tel.Gear, tel.EngineRPM
 		p.Throttle, p.Brake = round2(tel.Throttle), round2(tel.Brake)
@@ -162,6 +170,8 @@ func (t *Tracker) playerCar(i int) *PlayerCar {
 	if st != nil {
 		p.MaxRPM = st.MaxRPM
 		p.DRSAllowed, p.PitLimiter = st.DRSAllowed, st.PitLimiter
+	}
+	if st != nil && !restricted {
 		p.BrakeBias, p.FuelMix = st.FrontBrakeBias, st.FuelMix
 		p.FuelKg, p.FuelLaps = round1(st.FuelInTank), round2(st.FuelRemainingLaps)
 		p.ERSPercent = round1(st.ERSStoreEnergy / ersCapacityJ * 100)
@@ -169,7 +179,7 @@ func (t *Tracker) playerCar(i int) *PlayerCar {
 		p.ERSDeployedMJ = round2(st.ERSDeployedThisLap / 1e6)
 		p.ERSHarvestMJ = round2((st.ERSHarvestedThisLapMGUK + st.ERSHarvestedThisLapMGUH) / 1e6)
 	}
-	if dmg != nil {
+	if dmg != nil && !restricted {
 		for to, from := range wheelOrder {
 			w := &p.Wheels[to]
 			w.Wear = round1(dmg.TyresWear[from])
@@ -181,8 +191,11 @@ func (t *Tracker) playerCar(i int) *PlayerCar {
 			Gearbox: dmg.GearBox, Engine: dmg.Engine, DRSFault: dmg.DRSFault, ERSFault: dmg.ERSFault,
 		}
 	}
-	p.TyreSets = t.playerTyreSets(i)
-	if t.setups != nil && i < len(t.setups.Cars) {
+	p.TyreSets = []TyreSet{}
+	if !restricted {
+		p.TyreSets = t.playerTyreSets(i)
+	}
+	if t.setups != nil && i < len(t.setups.Cars) && !restricted {
 		s := t.setups.Cars[i]
 		p.Setup = &Setup{
 			FrontWing: s.FrontWing, RearWing: s.RearWing, OnThrottle: s.OnThrottle, OffThrottle: s.OffThrottle,

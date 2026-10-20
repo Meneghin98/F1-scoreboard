@@ -194,6 +194,9 @@ export interface LiveWheel {
 export interface PlayerCar {
   carIndex: number;
   controller: number; // 1 o 2 (split-screen)
+  // Il gioco nasconde carburante, ERS, ripartizione freni, danni, usura, set di
+  // gomme e assetto di quest'auto (il giocatore 2 in split-screen): sono a zero.
+  restricted: boolean;
   speed: number;
   gear: number;
   rpm: number;

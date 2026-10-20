@@ -37,8 +37,10 @@ const WHEELS = [
 // Pianta dell'auto del giocatore: ogni parte è colorata in base al danno e
 // collegata a un'etichetta con il valore. Le gomme sono riempite col colore
 // della temperatura e bordate con quello dell'usura; accanto i valori.
+// Se il gioco non invia danni e usura (car.restricted) restano grigi, senza valori.
 export function CarDiagram({ car }: { car: PlayerCar }) {
   const d = car.damage;
+  const known = !car.restricted;
   const fill = (pct: number) => PART_FILL[damageLevel(pct)];
 
   // Etichette dei danni: [nome, valore, punto della parte, lato, riga].
@@ -124,7 +126,7 @@ export function CarDiagram({ car }: { car: PlayerCar }) {
         </rect>
   
         {WHEELS.map((pos, i) => (
-          <Wheel key={i} wheel={car.wheels[i]} {...pos} />
+          <Wheel key={i} wheel={car.wheels[i]} wear={known} {...pos} />
         ))}
   
         {/* Etichette dei danni, con un punto sulla parte indicata */}
@@ -138,7 +140,7 @@ export function CarDiagram({ car }: { car: PlayerCar }) {
                 {name}
               </text>
               <text x={x} y={y + 11} textAnchor={anchor} fontSize={13} fontWeight={700} fill={TEXT_FILL[damageLevel(pct)]}>
-                {pct}%
+                {known ? `${pct}%` : '–'}
               </text>
             </g>
           );
@@ -170,7 +172,16 @@ function TyreTempLegend() {
 
 // Una ruota: riempita col colore della temperatura interna, bordo col colore
 // dell'usura, dati scritti a fianco.
-function Wheel({ wheel: w, x, y, w: width, h, side }: { wheel: LiveWheel; x: number; y: number; w: number; h: number; side: 'left' | 'right' }) {
+// wear è falso se il gioco non invia l'usura e i danni ai freni.
+function Wheel({ wheel: w, wear, x, y, w: width, h, side }: {
+  wheel: LiveWheel;
+  wear: boolean;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  side: 'left' | 'right';
+}) {
   const level = wearLevel(w.wear);
   const tx = side === 'left' ? x - 8 : x + width + 8;
   const anchor = side === 'left' ? 'end' : 'start';
@@ -178,19 +189,19 @@ function Wheel({ wheel: w, x, y, w: width, h, side }: { wheel: LiveWheel; x: num
 
   return (
     <g>
-      <title>{`Usura ${Math.round(w.wear)}% · interna ${w.innerTemp}° · superficie ${w.surfaceTemp}°`}</title>
+      <title>{`${wear ? `Usura ${Math.round(w.wear)}% · ` : ''}Interna ${w.innerTemp}° · superficie ${w.surfaceTemp}°`}</title>
       {/* Bordo dell'usura e, staccato da una striscia scura, il riempimento della temperatura. */}
       <rect x={x} y={y} width={width} height={h} rx={7} fill="#1a1a22" stroke={PART_FILL[level]} strokeWidth={3} />
       <rect x={x + 4} y={y + 4} width={width - 8} height={h - 8} rx={4} fill={tyreTempColor(w.innerTemp)} />
       <text textAnchor={anchor} fontSize={10} fill="var(--color-muted)">
         <tspan x={tx} y={cy - 16} fontSize={13} fontWeight={700} fill={TEXT_FILL[level]}>
-          {Math.round(w.wear)}%
+          {wear ? `${Math.round(w.wear)}%` : '–'}
         </tspan>
         <tspan x={tx} y={cy - 2} fill="var(--color-fg)">
           {w.surfaceTemp}° / {w.innerTemp}°
         </tspan>
         <tspan x={tx} y={cy + 11}>{w.pressure.toFixed(1)} psi</tspan>
-        <tspan x={tx} y={cy + 24} fill={TEXT_FILL[damageLevel(w.brakeDamage)]}>
+        <tspan x={tx} y={cy + 24} fill={TEXT_FILL[wear ? damageLevel(w.brakeDamage) : 'ok']}>
           Freno {w.brakeTemp}°
         </tspan>
       </text>
