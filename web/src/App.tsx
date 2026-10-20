@@ -15,6 +15,7 @@ import { RecordingsPage } from './pages/RecordingsPage';
 import { ReplayPage } from './pages/ReplayPage';
 import { StandingsPage } from './pages/StandingsPage';
 import { StatsPage } from './pages/StatsPage';
+import { SystemPage } from './pages/SystemPage';
 import { TournamentsPage } from './pages/TournamentsPage';
 import { TvPage } from './pages/TvPage';
 
@@ -125,6 +126,7 @@ export function App() {
               {view === 'replay' && (
                 viewParam ? <ReplayPage key={viewParam} sessionId={viewParam} /> : <Empty>Registrazione non trovata.</Empty>
               )}
+              {view === 'system' && <SystemPage />}
             </section>
           )}
         </main>

@@ -10,11 +10,16 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
+	// Fusi orari dentro l'eseguibile: l'ora locale (date delle gare, nomi dei
+	// file) funziona con TZ=Europe/Rome anche su un sistema senza i dati dei fusi.
+	_ "time/tzdata"
 
 	"f1-scoreboard/internal/api"
+	"f1-scoreboard/internal/backup"
 	"f1-scoreboard/internal/live"
 	"f1-scoreboard/internal/store"
 	"f1-scoreboard/web"
@@ -26,6 +31,11 @@ func main() {
 	telemetryAddr := envOr("TELEMETRY_ADDR", ":20777")
 	sessionsDir := envOr("TELEMETRY_DIR", filepath.Join(filepath.Dir(dbPath), "sessions"))
 	record := !strings.EqualFold(os.Getenv("TELEMETRY_RECORD"), "false")
+	backupDir := envOr("BACKUP_DIR", filepath.Join(filepath.Dir(dbPath), "backups"))
+	backupKeep, err := strconv.Atoi(envOr("BACKUP_KEEP", "7"))
+	if err != nil || backupKeep < 0 {
+		log.Fatalf("BACKUP_KEEP deve essere un numero intero da 0 in su, non %q", os.Getenv("BACKUP_KEEP"))
+	}
 
 	db, err := store.Open(dbPath)
 	if err != nil {
@@ -52,9 +62,13 @@ func main() {
 	liveService := live.NewService(db, live.Options{Dir: sessionsDir, Record: record})
 	go liveService.Run(ctx, telemetryAddr)
 
+	// Un backup del database al giorno, tenendo gli ultimi backupKeep (0 = nessuno).
+	backups := backup.New(db, dbPath, backupDir, backupKeep)
+	go backups.Run(ctx)
+
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: api.New(db, static, liveService),
+		Handler: api.New(db, static, liveService, backups),
 		// Un client che non manda nemmeno le intestazioni non tiene occupata la
 		// connessione per sempre. Niente WriteTimeout: lo stream live dura ore.
 		ReadHeaderTimeout: 10 * time.Second,
@@ -66,8 +80,10 @@ func main() {
 		defer close(shutdownDone)
 		<-ctx.Done()
 		// Prima si chiude la telemetria (salva la registrazione in corso e chiude
-		// gli stream live), poi il server HTTP lascia finire le richieste in corso.
+		// gli stream live) e si interrompe un eventuale backup, poi il server
+		// HTTP lascia finire le richieste in corso.
 		<-liveService.Done()
+		<-backups.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		srv.Shutdown(shutdownCtx)

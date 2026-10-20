@@ -36,7 +36,8 @@ const (
 	// Le sessioni senza classifica finale (abbandonate o interrotte) vengono
 	// eliminate dopo questo tempo, a meno che non siano state assegnate a un torneo.
 	unfinishedRetention = 48 * time.Hour
-	// Ogni quanto si cercano le sessioni non terminate da eliminare.
+	// Ogni quanto si cercano le sessioni non terminate e i file delle
+	// registrazioni da eliminare (vedi retention.go).
 	cleanupEvery = time.Hour
 )
 
@@ -135,6 +136,7 @@ func (s *Service) Run(ctx context.Context, addr string) {
 	defer close(s.done)
 	s.closeOrphans()
 	s.deleteUnfinished(time.Now()) // prima dell'analisi, così non si leggono file da eliminare
+	s.deleteOldRecordings(time.Now())
 	go s.analyzePending()
 
 	listener := &Listener{Addr: addr, Handle: s.Handle, Ready: s.listening, Failed: s.listenFailed}
@@ -154,6 +156,7 @@ func (s *Service) Run(ctx context.Context, addr string) {
 			return
 		case now := <-cleanup.C:
 			s.deleteUnfinished(now)
+			s.deleteOldRecordings(now)
 			// Legge le registrazioni: in background, per non fermare gli aggiornamenti live.
 			go s.recoverPending()
 		case now := <-ticker.C:

@@ -60,7 +60,10 @@ export function formatElapsed(seconds: number): string {
   return h ? `${h}:${clock.padStart(5, '0')}` : clock;
 }
 
+// Dimensione di un file: "12 KB", "3.4 MB", "1.2 GB". Un file non vuoto vale almeno 1 KB.
 export function formatBytes(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes === 0) return '0 KB';
+  if (bytes < 1024 ** 2) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }

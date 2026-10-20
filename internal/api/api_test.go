@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"f1-scoreboard/internal/api"
+	"f1-scoreboard/internal/backup"
 	"f1-scoreboard/internal/live"
 	"f1-scoreboard/internal/store"
 )
@@ -22,15 +24,35 @@ import (
 // newTestServer avvia le API su un database temporaneo.
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	srv, _, _ := newTestServerDir(t)
+	return srv
+}
+
+// newTestServerDB è newTestServer con accesso al database, per preparare dati
+// che le API non scrivono (come quelli delle registrazioni).
+func newTestServerDB(t *testing.T) (*httptest.Server, *sql.DB) {
+	t.Helper()
+	srv, db, _ := newTestServerDir(t)
+	return srv, db
+}
+
+// newTestServerDir è newTestServerDB con la cartella dei dati: dentro ci sono
+// il database (test.db), le registrazioni (sessions) e i backup (backups).
+func newTestServerDir(t *testing.T) (*httptest.Server, *sql.DB, string) {
+	t.Helper()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	db, err := store.Open(dbPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(api.New(db, fstest.MapFS{}, live.NewService(db, live.Options{Dir: t.TempDir()})))
+	liveService := live.NewService(db, live.Options{Dir: filepath.Join(dir, "sessions")})
+	backups := backup.New(db, dbPath, filepath.Join(dir, "backups"), 7)
+	srv := httptest.NewServer(api.New(db, fstest.MapFS{}, liveService, backups))
 	// I cleanup girano in ordine inverso: prima il server, poi il DB, poi la cartella temporanea.
 	t.Cleanup(func() { db.Close() })
 	t.Cleanup(srv.Close)
-	return srv
+	return srv, db, dir
 }
 
 // call esegue una richiesta e decodifica la risposta JSON (se presente) in out.

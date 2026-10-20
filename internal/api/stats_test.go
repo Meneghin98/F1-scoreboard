@@ -1,31 +1,9 @@
 package api_test
 
 import (
-	"database/sql"
 	"fmt"
-	"net/http/httptest"
-	"path/filepath"
 	"testing"
-	"testing/fstest"
-
-	"f1-scoreboard/internal/api"
-	"f1-scoreboard/internal/live"
-	"f1-scoreboard/internal/store"
 )
-
-// newTestServerDB è newTestServer con accesso al database, per preparare dati
-// che le API non scrivono (come quelli delle registrazioni).
-func newTestServerDB(t *testing.T) (*httptest.Server, *sql.DB) {
-	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := httptest.NewServer(api.New(db, fstest.MapFS{}, live.NewService(db, live.Options{Dir: t.TempDir()})))
-	t.Cleanup(func() { db.Close() })
-	t.Cleanup(srv.Close)
-	return srv, db
-}
 
 func TestStats(t *testing.T) {
 	srv, db := newTestServerDB(t)

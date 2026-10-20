@@ -1,6 +1,6 @@
 import type {
-  Player, PlayerProfile, Race, RaceType, RaceWithResults, ResultInput, ScoringRules, SessionRaceInput, SessionRecord,
-  StandingsResponse, StatsResponse, Tournament,
+  BackupInfo, Player, PlayerProfile, Race, RaceType, RaceWithResults, ResultInput, ScoringRules, SessionRaceInput,
+  SessionRecord, Settings, SettingsSaved, StandingsResponse, StatsResponse, SystemInfo, Tournament,
   ReplayFrame, ReplayInfo, Track, TrackMap,
 } from './types';
 
@@ -72,7 +72,16 @@ export const api = {
   replayFrame: (sessionId: number, ms: number) =>
     request<ReplayFrame>(`/telemetry/sessions/${sessionId}/replay/frame?t=${Math.round(ms)}`),
   replayTrack: (sessionId: number) => request<TrackMap>(`/telemetry/sessions/${sessionId}/replay/track`),
+
+  system: () => request<SystemInfo>('/system'),
+  backups: () => request<BackupInfo[]>('/backups'),
+  settings: () => request<Settings>('/settings'),
+  saveSettings: (settings: Settings) => request<SettingsSaved>('/settings', 'PUT', settings),
 };
 
 // Indirizzo per scaricare il file di una registrazione.
 export const sessionDownloadUrl = (id: number) => `/api/telemetry/sessions/${id}/download`;
+
+// Indirizzi per scaricare un backup del database fatto al momento, o uno di quelli automatici.
+export const backupUrl = '/api/backup';
+export const autoBackupUrl = (name: string) => `/api/backups/${encodeURIComponent(name)}`;

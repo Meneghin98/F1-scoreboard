@@ -20,6 +20,8 @@ internal/live/          ascolto UDP, stato live della sessione, registrazione au
 internal/api/           handler HTTP delle API REST
 internal/scoring/       punteggi F1 2025, regole dei tornei e calcolo della classifica
 internal/store/         apertura del DB e migrazioni (migrations/NNN_*.sql)
+internal/backup/        backup del database, da scaricare e automatici
+internal/disk/          spazio libero sul disco (un file per sistema operativo)
 web/src/                frontend React (pages/, components/, components/ui/ e lib/)
 web/dist/               build del frontend, incorporata nel binario (non versionata)
 ```
@@ -59,6 +61,14 @@ Variabili d'ambiente opzionali:
 | `TELEMETRY_ADDR`   | `:20777`             | Indirizzo UDP su cui ricevere la telemetria del gioco |
 | `TELEMETRY_DIR`    | `data/sessions`      | Cartella delle sessioni registrate (accanto al database) |
 | `TELEMETRY_RECORD` | `true`               | `false` per non registrare le sessioni su file |
+| `BACKUP_DIR`       | `data/backups`       | Cartella dei backup automatici (accanto al database) |
+| `BACKUP_KEEP`      | `7`                  | Backup automatici da tenere, uno al giorno; `0` per non farne |
+| `TZ`               | quello del sistema   | Fuso orario su Linux, es. `Europe/Rome` (vedi sotto) |
+
+Le date delle gare create dalle registrazioni e i nomi dei file usano l'**ora locale del server**.
+Sul Raspberry Pi il fuso orario spesso è UTC: va impostato con `sudo timedatectl set-timezone
+Europe/Rome`, oppure si avvia il server con `TZ=Europe/Rome`. I dati dei fusi orari sono dentro
+l'eseguibile, quindi `TZ` funziona anche sui sistemi che non li hanno.
 
 ## Build e deploy
 
@@ -239,6 +249,29 @@ giri per circuito, gli ultimi risultati e i confronti diretti. Miglior giro, gri
 e penalità si leggono dalla classifica finale delle registrazioni; quelle registrate prima di
 questa funzione vengono rilette una volta all'avvio del server.
 
-## Backup
+## Backup e spazio su disco
 
-Per fare un backup basta copiare la cartella `data/` a server fermo.
+La pagina **Sistema** raccoglie backup, spazio su disco, conservazione delle registrazioni, stato
+della telemetria e versione del programma (il commit da cui è stato compilato).
+
+- **Scarica backup** copia il database in quel momento (`VACUUM INTO`, una fotografia coerente
+  anche mentre il server lavora) e lo scarica come `f1-scoreboard_AAAA-MM-GG_hh-mm.db`.
+- **Backup automatici**: uno al giorno in `data/backups/`, tenendo gli ultimi 7 (vedi `BACKUP_DIR`
+  e `BACKUP_KEEP`). Il server lo fa all'avvio se l'ultimo ha più di un giorno, poi controlla ogni
+  ora. Dalla pagina Sistema si possono scaricare.
+- **Registrazioni**: non sono nei backup (pesano circa 2 MB al minuto). Per conservarle si copia la
+  cartella `data/sessions/`. Nella pagina Sistema si può scegliere dopo quanti giorni eliminarne i
+  file (di default mai), tenendo eventualmente quelle delle gare dei tornei: sessioni, risultati,
+  statistiche e record restano, ma senza file non si possono più rivedere né scaricare.
+
+Per **ripristinare** un backup: fermare il server, sostituire `data/scoreboard.db` con il file del
+backup (rinominato `scoreboard.db`), eliminare `scoreboard.db-wal` e `scoreboard.db-shm` se ci
+sono, e riavviare.
+
+| Endpoint                     | Descrizione                                                     |
+|------------------------------|-----------------------------------------------------------------|
+| `GET /api/backup`            | Scarica una copia del database fatta in quel momento            |
+| `GET /api/backups`           | Backup automatici, dal più recente                              |
+| `GET /api/backups/{nome}`    | Scarica un backup automatico                                    |
+| `GET /api/system`            | Versione, spazio di database, registrazioni e backup, disco libero |
+| `GET`/`PUT /api/settings`    | Conservazione delle registrazioni (`{"recordings": {"days": 30, "keepTournaments": true}}`) |

@@ -502,3 +502,41 @@ export interface PlayerProfile {
   }[];
   rivals: (H2HPlayer & { ahead: number; behind: number })[];
 }
+
+// --- Sistema (vedi internal/api/system.go) -----------------------------------
+
+export interface SystemInfo {
+  version: {
+    revision: string; // commit Git, vuoto se compilato senza Git
+    time: string; // data del commit, RFC 3339
+    modified: boolean; // compilato con modifiche non committate
+    go: string;
+  };
+  database: { path: string; sizeBytes: number };
+  recordings: { dir: string; enabled: boolean; files: number; sizeBytes: number };
+  backups: { dir: string; keep: number; count: number; sizeBytes: number }; // keep 0: backup automatici spenti
+  disk: { freeBytes: number; totalBytes: number } | null; // disco della cartella dei dati, null se non si sa
+}
+
+// Backup automatico del database.
+export interface BackupInfo {
+  name: string;
+  sizeBytes: number;
+  createdAt: string; // UTC
+}
+
+// Conservazione delle registrazioni: dopo days giorni se ne eliminano i file (0 = mai).
+export interface Retention {
+  days: number;
+  keepTournaments: boolean; // tieni i file delle gare dei tornei
+}
+
+export interface Settings {
+  recordings: Retention;
+}
+
+// Risposta al salvataggio: i file delle registrazioni eliminati subito con le nuove impostazioni.
+export interface SettingsSaved extends Settings {
+  deletedFiles: number;
+  freedBytes: number;
+}

@@ -30,59 +30,14 @@ iniziare la parte successiva il lavoro precedente deve essere su git).
 | `478a1be` | 2     | Coerenza: le sessioni riempiono la gara già in calendario (`plannedRace`), eliminando gara/torneo le registrazioni passano in "Nessun torneo" (`races.go`), risultati modificati a mano non riscritti dalla registrazione (`races.manual_results`, `ResyncRace`), versione dei dati nello stato live per il ricaricamento automatico delle pagine (`DataChanged`, `useLoad`), modifica di piloti/tornei/gare, elenco unico dei circuiti (`tracks.go`, `GET /api/tracks`, `races.track_id`), gare in ordine di data, `ReadHeaderTimeout` e limite al body |
 | `d7ca853` | 3     | Interfaccia: barra di navigazione, pagina Tornei (azioni sui tornei tolte dall'header), classifica con posizioni, distacco e grafico dei punti (`PointsChart`), colore di ogni pilota (`players.color`), scheda Duello in split-screen (`DuelCard`), modalità TV (`#/tv`), "Caricamento…" |
 | `af0a12c` | 4     | Statistiche (funzionalità 1): dati dalla classifica finale (`telemetry_players.best_lap_ms` ecc., riletti all'avvio con `backfillStats`), giro veloce nei risultati (dalla registrazione o a mano), pole e giri veloci in classifica, pagina Statistiche (carriera, record dei circuiti, testa a testa) e profilo del pilota (`#/player/{id}`) |
+| `ad134cf` | —     | Colori dei piloti nei dati di esempio (`cmd/seed`) |
+| `fb0f237` | 5     | Regole di punteggio per torneo (funzionalità 2): migrazione `011`, `scoring.Rules` e `scoring.ScoreRace` (posizioni tra i piloti, bonus pole e giro veloce), `Rules.Counts`, campi `scored_position`/`scored_fastest_lap`/`bonus` nei risultati, `TournamentDialog` per creare e per le impostazioni, segni POLE/GV in classifica |
+| "Aggiungi backup, pagina Sistema e conservazione delle registrazioni" | 6 | Backup (funzionalità 3): `internal/backup` (`VACUUM INTO`, download e uno al giorno in `data/backups`, `BACKUP_DIR`/`BACKUP_KEEP`), `internal/disk` (spazio libero con build tag, `golang.org/x/sys` ora diretta), migrazione `012` (`settings`), `live/retention.go` (file delle registrazioni eliminati dopo N giorni, ogni ora), API `/api/backup`, `/api/backups`, `/api/system`, `/api/settings`, pagina Sistema (`#/system`), `time/tzdata` e nota su `TZ` |
 
 Tutti i punti della sezione "Logica da correggere" dell'analisi sono fatti. Prossima migrazione
-libera: **`011`**.
+libera: **`013`**.
 
 ## Da fare
-
-### Parte 5 — Regole di punteggio per torneo (funzionalità 2)
-
-Scelte già fatte con l'analisi (oggi conta la posizione assoluta, IA compresa: chi arriva 11° con 18
-auto della IA prende 0 punti):
-
-- migrazione `011`: `tournaments.points_mode TEXT NOT NULL DEFAULT 'absolute' CHECK (points_mode IN
-  ('absolute', 'players'))`, `tournaments.pole_points INTEGER NOT NULL DEFAULT 0`,
-  `tournaments.fastest_lap_points INTEGER NOT NULL DEFAULT 0`. I valori di default danno il
-  comportamento di oggi;
-- `players`: in ogni gara le posizioni si ricalcolano tra i soli piloti del segnapunti con un
-  risultato (i DNF restano DNF), poi si applica la tabella dei punti;
-- bonus pole: al primo della qualifica (assoluto, o tra i piloti in modalità `players`), assegnato
-  nella gara di qualifica, che con `pole_points > 0` entra nelle colonne della classifica
-  (`scoring.Counts` deve dipendere dalle regole);
-- bonus giro veloce: in modalità `absolute` a chi ha `fastest_lap`; in `players` a chi ha il
-  `best_lap_ms` più basso tra i risultati della gara (se non ci sono tempi, come nelle gare
-  inserite a mano, vale `fastest_lap`); solo a chi non è DNF; solo Gran Premi;
-- codice: `scoring.Standings` e `PointsFor` ricevono le regole; le API dei tornei leggono/scrivono
-  i tre campi (`tournamentColumns`, `createTournament`, `updateTournament`); i punti di
-  `listRaces`, `getStandings`, il capoclassifica di `listTournaments` e `statsData.standings`
-  (`internal/api/stats.go`) usano le regole del torneo;
-- interfaccia: impostazioni nel dialog del nuovo torneo e nella pagina Tornei (il modulo "Rinomina"
-  può diventare "Impostazioni"); in classifica un segno per i bonus (pole, giro veloce);
-  aggiornare la sezione "Punteggio" del README;
-- test: modalità `players` e bonus in `scoring_test.go`, impostazioni nelle API.
-
-### Parte 6 — Backup e spazio su disco (funzionalità 3 e punti dell'analisi)
-
-- `GET /api/backup`: `VACUUM INTO` in un file temporaneo nella cartella dei dati, inviato come
-  download (`f1-scoreboard_AAAA-MM-GG_hh-mm.db`) e poi eliminato;
-- backup automatico giornaliero in `data/backups` (cartella accanto al DB), tenendo gli ultimi N
-  (variabile `BACKUP_KEEP`, default 7): all'avvio se l'ultimo ha più di 24 ore, poi controllo ogni
-  ora; elenco e download (`GET /api/backups`, `GET /api/backups/{nome}`, accettando solo nomi del
-  formato dei backup);
-- `GET /api/system`: spazio occupato dalle registrazioni (e quante sono), dimensione del DB, spazio
-  libero sul disco (`golang.org/x/sys`, già tra le dipendenze indirette: `unix.Statfs` su Linux,
-  `windows.GetDiskFreeSpaceEx` su Windows, con build tag), versione da
-  `runtime/debug.ReadBuildInfo` (`vcs.revision`, `vcs.time`, `vcs.modified`);
-- conservazione delle registrazioni: tabella `settings` (chiave/valore) con
-  `recordings_retention_days` (0 = per sempre) e "tieni le gare dei tornei"; il controllo di ogni
-  ora elimina solo i **file** (righe, risultati e statistiche restano), la pagina Registrazioni
-  già gestisce "File non disponibile";
-- pagina **Sistema** (`#/system`, nella barra): backup, elenco dei backup automatici, spazio su
-  disco, impostazioni di conservazione, versione, stato della telemetria;
-- fuso orario: `import _ "time/tzdata"` in `main.go` e nota nel README (sul Raspberry impostare
-  `TZ=Europe/Rome`): le date delle gare usano l'ora locale del server;
-- aggiornare la sezione "Backup" del README.
 
 ### Parte 7 — Replay più veloce
 

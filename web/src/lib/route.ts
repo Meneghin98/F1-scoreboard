@@ -6,7 +6,7 @@ import { useSyncExternalStore } from 'react';
 
 export type View =
   | 'dashboard' | 'standings' | 'races' | 'stats' | 'players' | 'player' | 'tournaments' | 'live' | 'recordings' | 'replay'
-  | 'tv';
+  | 'system' | 'tv';
 
 export const VIEW_LABELS: Record<View, string> = {
   dashboard: 'Dashboard',
@@ -19,11 +19,14 @@ export const VIEW_LABELS: Record<View, string> = {
   live: 'Live',
   recordings: 'Registrazioni',
   replay: 'Replay',
+  system: 'Sistema',
   tv: 'Modalità TV',
 };
 
 // Pagine nella barra di navigazione, in ordine.
-export const NAV_VIEWS: View[] = ['dashboard', 'standings', 'races', 'stats', 'players', 'tournaments', 'live', 'recordings'];
+export const NAV_VIEWS: View[] = [
+  'dashboard', 'standings', 'races', 'stats', 'players', 'tournaments', 'live', 'recordings', 'system',
+];
 
 // Pagina della barra a cui appartiene una pagina che non c'è (il replay sta sotto le registrazioni).
 export const VIEW_PARENT: Partial<Record<View, View>> = {
