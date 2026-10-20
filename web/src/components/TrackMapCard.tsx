@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { controllerLabel, teamColor } from '../lib/live';
 import type { LiveDriver, MarshalZone, TrackMap } from '../lib/types';
 import { useTrackMap } from '../lib/useTrackMap';
@@ -9,6 +10,8 @@ const MAX_GAP = 40;
 
 // Pianta del circuito con la posizione delle auto in tempo reale.
 // La mappa riempie la card: le dimensioni le decide chi la usa tramite className.
+// Con resizeKey la card è quadrata e si ridimensiona trascinando l'angolo in
+// basso a destra; la larghezza scelta si ricorda con quella chiave.
 // loadMap scarica la pianta: di default quella della sessione live.
 export function TrackMapCard({
   uid,
@@ -16,6 +19,7 @@ export function TrackMapCard({
   drivers,
   marshalZones = [],
   className,
+  resizeKey,
   loadMap,
 }: {
   uid: string;
@@ -23,12 +27,22 @@ export function TrackMapCard({
   drivers: LiveDriver[];
   marshalZones?: MarshalZone[]; // settori dei commissari: quelli con bandiera gialla si colorano
   className?: string;
+  resizeKey?: string; // chiave in localStorage della larghezza scelta
   loadMap?: () => Promise<TrackMap>;
 }) {
   const map = useTrackMap(uid, mapPoints, loadMap);
+  const ref = useRememberedWidth(resizeKey);
 
   return (
-    <Card className={cx('flex items-center justify-center p-2', className)}>
+    <Card
+      ref={ref}
+      className={cx(
+        'flex items-center justify-center p-2',
+        // L'utente cambia la larghezza, l'altezza la segue.
+        resizeKey && 'aspect-square resize-x overflow-hidden',
+        className,
+      )}
+    >
       {map && map.points.length > 1 ? (
         <TrackMapSvg map={map} drivers={drivers} marshalZones={marshalZones} />
       ) : (
@@ -36,6 +50,25 @@ export function TrackMapCard({
       )}
     </Card>
   );
+}
+
+// Rimette la larghezza salvata con key e salva quella nuova quando l'utente
+// ridimensiona l'elemento. Senza key non fa niente.
+function useRememberedWidth(key: string | undefined) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!key || !el) return;
+    const saved = Number(localStorage.getItem(key));
+    if (saved) el.style.width = `${saved}px`;
+    const observer = new ResizeObserver(() => {
+      // Solo le larghezze scelte trascinando (stile inline), e non quando la card è nascosta.
+      if (el.style.width && el.offsetWidth > 0) localStorage.setItem(key, String(el.offsetWidth));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [key]);
+  return ref;
 }
 
 function TrackMapSvg({ map, drivers, marshalZones }: { map: TrackMap; drivers: LiveDriver[]; marshalZones: MarshalZone[] }) {

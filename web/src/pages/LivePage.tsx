@@ -134,7 +134,7 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
   const besideDuel = expanded && players.length === 2;
 
   return (
-    // Solo la mappa ha una dimensione fissa: la classifica si allunga quanto serve per tutti i piloti.
+    // La mappa ha la dimensione scelta trascinandone l'angolo: la classifica si allunga quanto serve per tutti i piloti.
     <div className={cx('mb-4 grid items-start gap-4', !expanded && 'md:grid-cols-[20rem_1fr]')}>
       {/* min-w-0: senza, la colonna della griglia si allarga quanto la tabella estesa
           e la fa uscire dalla pagina invece di farla scorrere. */}
@@ -151,11 +151,14 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
           <CompactStandings session={session} drivers={drivers} />
         )}
       </Card>
-      {/* Le schede delle auto (due in split-screen) si affiancano alla mappa se c'è spazio, altrimenti vanno sotto. */}
-      <div className={cx('flex flex-wrap gap-4', besideDuel ? 'items-stretch' : 'items-start')}>
+      {/* Le schede delle auto (due in split-screen) si affiancano alla mappa se c'è spazio, altrimenti vanno sotto.
+          min-w-0 tiene la colonna larga quanto lo spazio della pagina: senza, si allargherebbe con la mappa
+          e il suo max-w-full non la fermerebbe. */}
+      <div className={cx('flex min-w-0 flex-wrap gap-4', besideDuel ? 'items-stretch' : 'items-start')}>
         {/* Nascosta e non smontata, così la mappa già scaricata resta pronta per quando si riduce. */}
         <TrackMapCard
-          className={cx('mb-0 h-80 w-full md:size-88', expanded && 'hidden')}
+          className={cx('mb-0 w-full max-w-full min-w-48 md:w-88', expanded && 'hidden')}
+          resizeKey="trackMapWidth"
           uid={session.uid}
           mapPoints={mapPoints ?? session.mapPoints}
           drivers={drivers}
