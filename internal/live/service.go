@@ -145,6 +145,9 @@ func (s *Service) Done() <-chan struct{} { return s.done }
 // la registrazione in corso.
 func (s *Service) Run(ctx context.Context, addr string) {
 	defer close(s.done)
+	// L'eseguibile si identifica subito: se durante l'esecuzione viene sostituito
+	// da una nuova build, i replay salvati da qui devono restare di questa.
+	executableID()
 	s.closeOrphans()
 	s.deleteUnfinished(time.Now()) // prima dell'analisi, così non si leggono file da eliminare
 	s.deleteOldRecordings(time.Now())
