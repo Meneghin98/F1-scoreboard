@@ -130,11 +130,23 @@ interface LiveBoardProps {
 // usata anche dal replay, che passa la sua pianta (loadMap) e il suo storico dei pedali.
 export function LiveBoard({ session, drivers, players, events, finished, pedals, loadMap, mapPoints }: LiveBoardProps) {
   const [expanded, setExpanded] = useState(false);
+  // Mappa standard o grande quanto tutto lo spazio a disposizione: si cambia cliccandola, e la scelta si ricorda.
+  const [bigMap, setBigMap] = useState(() => localStorage.getItem('bigTrackMap') === '1');
+  function toggleMap() {
+    localStorage.setItem('bigTrackMap', bigMap ? '0' : '1');
+    setBigMap(!bigMap);
+  }
   // Classifica estesa con il duello: direzione gara gli sta accanto, alta uguale.
   const besideDuel = expanded && players.length === 2;
+  // Con la mappa standard il duello le sta subito accanto, alto uguale (md:h-88 come la mappa);
+  // con la mappa grande o la classifica estesa va dopo le schede delle auto.
+  const duelBesideMap = !bigMap && !expanded;
+  const duel = players.length === 2 && (
+    <DuelCard session={session} drivers={drivers} className={cx('mb-0', duelBesideMap && 'md:h-88')} />
+  );
 
   return (
-    // La mappa ha la dimensione scelta trascinandone l'angolo: la classifica si allunga quanto serve per tutti i piloti.
+    // La mappa è quadrata, standard o grande: la classifica si allunga quanto serve per tutti i piloti.
     <div className={cx('mb-4 grid items-start gap-4', !expanded && 'md:grid-cols-[20rem_1fr]')}>
       {/* min-w-0: senza, la colonna della griglia si allarga quanto la tabella estesa
           e la fa uscire dalla pagina invece di farla scorrere. */}
@@ -152,19 +164,21 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
         )}
       </Card>
       {/* Le schede delle auto (due in split-screen) si affiancano alla mappa se c'è spazio, altrimenti vanno sotto.
-          min-w-0 tiene la colonna larga quanto lo spazio della pagina: senza, si allargherebbe con la mappa
-          e il suo max-w-full non la fermerebbe. */}
+          min-w-0 tiene la colonna larga quanto lo spazio della pagina, così la mappa grande (w-full) si ferma lì
+          invece di allargarla. */}
       <div className={cx('flex min-w-0 flex-wrap gap-4', besideDuel ? 'items-stretch' : 'items-start')}>
         {/* Nascosta e non smontata, così la mappa già scaricata resta pronta per quando si riduce. */}
         <TrackMapCard
-          className={cx('mb-0 w-full max-w-full min-w-48 md:w-88', expanded && 'hidden')}
-          resizeKey="trackMapWidth"
+          className={cx('mb-0 aspect-square w-full', !bigMap && 'md:w-88', expanded && 'hidden')}
+          onClick={toggleMap}
+          title={bigMap ? 'Clicca per rimpicciolire la mappa' : 'Clicca per ingrandire la mappa'}
           uid={session.uid}
           mapPoints={mapPoints ?? session.mapPoints}
           drivers={drivers}
           marshalZones={session.marshalZones}
           loadMap={loadMap}
         />
+        {duelBesideMap && duel}
         {players.map((car) => (
           <PlayerCarCard
             key={car.controller}
@@ -177,7 +191,7 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
             className={cx('mb-0', expanded && 'hidden')}
           />
         ))}
-        {players.length === 2 && <DuelCard session={session} drivers={drivers} className="mb-0" />}
+        {!duelBesideMap && duel}
         {/* Con la classifica estesa restano solo lei e il duello, sulla stessa riga e alti uguali. */}
         <RaceControlCard
           events={events}
