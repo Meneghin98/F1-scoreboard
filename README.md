@@ -95,6 +95,31 @@ Se si compila Go senza aver prima buildato il frontend, il server parte comunque
 nel log che il frontend manca. Per il deploy basta copiare l'eseguibile sulla macchina di
 destinazione e avviarlo.
 
+Gli eseguibili compilati così sono **build di sviluppo**: non hanno un numero di versione e
+non si aggiornano da soli. Quelli da installare si prendono dalle release su GitHub.
+
+### Release
+
+Le versioni seguono il [semver](https://semver.org/lang/it/) (`MAJOR.MINOR.PATCH`). Per
+pubblicarne una basta creare il tag e mandarlo su GitHub:
+
+```powershell
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+Il workflow `.github/workflows/release.yml` compila frontend ed eseguibili (Windows e Linux
+amd64, arm64, arm), scrive la versione nel binario con
+`-ldflags "-X f1-scoreboard/internal/version.Number=1.1.0"`, calcola gli SHA-256 in
+`checksums.txt`, li firma (`checksums.txt.sig`) e crea la release. Un tag con un suffisso
+(`v1.1.0-rc.1`) diventa una pre-release, che i server non installano.
+
+La firma usa una chiave ed25519: la pubblica è in `internal/update/signature.go`, la privata
+nel secret `UPDATE_SIGNING_KEY` del repository (Settings → Secrets and variables → Actions).
+Per cambiarle si genera una nuova coppia con `go run ./cmd/release keygen`; i server già
+installati accettano solo la chiave vecchia, quindi la prima versione firmata con la nuova va
+installata a mano.
+
 ## Telemetria di F1 25
 
 ### Ascolto sempre attivo

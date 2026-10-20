@@ -1,0 +1,69 @@
+# Pubblica una release quando si fa il push di un tag di versione:
+#
+#   git tag v1.0.0
+#   git push origin v1.0.0
+#
+# Compila frontend ed eseguibili per tutte le piattaforme, calcola i checksum,
+# li firma con la chiave nel secret UPDATE_SIGNING_KEY e crea la release su
+# GitHub. Il server installato scarica da qui gli aggiornamenti.
+name: Release
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
+
+permissions:
+  contents: write # per creare la release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Frontend
+        run: |
+          npm ci --prefix web
+          npm --prefix web run build
+
+      - name: Test
+        run: go test ./...
+
+      - name: Eseguibili
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          mkdir dist
+          for target in windows/amd64 linux/amd64 linux/arm64 linux/arm; do
+            os="${target%/*}"
+            arch="${target#*/}"
+            out="dist/f1-scoreboard-$os-$arch"
+            if [ "$os" = windows ]; then out="$out.exe"; fi
+            GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X f1-scoreboard/internal/version.Number=$version" -o "$out" .
+          done
+          (cd dist && sha256sum f1-scoreboard-* > checksums.txt)
+
+      - name: Firma
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: go run ./cmd/release sign dist/checksums.txt
+
+      - name: Pubblica
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=""
+          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes $prerelease

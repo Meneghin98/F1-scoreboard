@@ -14,6 +14,7 @@ import (
 
 	"f1-scoreboard/internal/backup"
 	"f1-scoreboard/internal/disk"
+	"f1-scoreboard/internal/version"
 )
 
 // API della pagina Sistema: backup del database, spazio su disco,
@@ -90,8 +91,9 @@ type SystemInfo struct {
 	Disk *disk.Usage `json:"disk"` // disco della cartella del database, nil se non si sa
 }
 
-// Version identifica l'eseguibile: il commit da cui è stato compilato.
+// Version identifica l'eseguibile: il numero di versione e il commit da cui è stato compilato.
 type Version struct {
+	Number   string `json:"number"`   // versione semver (es. "1.0.0"), vuota nelle build di sviluppo
 	Revision string `json:"revision"` // commit Git, vuoto se compilato senza Git (o con go run)
 	Time     string `json:"time"`     // data del commit, RFC 3339
 	Modified bool   `json:"modified"` // compilato con modifiche non committate
@@ -100,7 +102,7 @@ type Version struct {
 
 // buildVersion legge una volta sola le informazioni che go build scrive nell'eseguibile.
 var buildVersion = sync.OnceValue(func() Version {
-	var v Version
+	v := Version{Number: version.Number}
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return v

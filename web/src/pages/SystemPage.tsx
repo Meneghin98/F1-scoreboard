@@ -295,6 +295,8 @@ function VersionCard({ version: v }: { version: SystemInfo['version'] }) {
       <h2 className="mb-3 font-bold">Versione</h2>
       {v.revision ? (
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
+          <dt className="text-muted">Versione</dt>
+          <dd>{v.number || <span className="text-muted">build di sviluppo, non si aggiorna da sola</span>}</dd>
           <dt className="text-muted">Commit</dt>
           <dd>
             <code>{v.revision.slice(0, 12)}</code>
