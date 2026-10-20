@@ -3,11 +3,14 @@ import { LiveBadge } from './components/LiveBadge';
 import { cx, Empty, fieldSmClass, Loading } from './components/ui';
 import { api } from './lib/api';
 import { TEAMS } from './lib/f1';
-import { href, NAV_VIEWS, STANDALONE_VIEWS, useView, useViewParam, VIEW_LABELS, VIEW_PARENT } from './lib/route';
+import {
+  href, NAV_VIEWS, STANDALONE_VIEWS, useView, useViewParam, VIEW_LABELS, VIEW_PARENT, type View,
+} from './lib/route';
 import type { Tournament } from './lib/types';
 import { useLoad } from './lib/useLoad';
 import { DashboardPage } from './pages/DashboardPage';
 import { LivePage } from './pages/LivePage';
+import { OverlayPage } from './pages/OverlayPage';
 import { PlayerPage } from './pages/PlayerPage';
 import { PlayersPage } from './pages/PlayersPage';
 import { RacesPage } from './pages/RacesPage';
@@ -27,6 +30,13 @@ function tournamentLabel(t: Tournament): string {
 
 export function App() {
   const view = useView();
+  // Le pagine a schermo intero non hanno header né menu e non caricano i
+  // tornei: l'overlay di OBS non deve mostrare nemmeno un messaggio d'errore.
+  if (STANDALONE_VIEWS.includes(view)) return view === 'overlay' ? <OverlayPage /> : <TvPage />;
+  return <MainApp view={view} />;
+}
+
+function MainApp({ view }: { view: View }) {
   const viewParam = useViewParam();
   // I tornei si ricaricano da soli quando cambiano (vedi useLoad).
   const { data: tournaments, reload: reloadTournaments } = useLoad(api.tournaments, []);
@@ -41,8 +51,6 @@ export function App() {
   useEffect(() => {
     if (tournamentId !== null) localStorage.setItem('tournamentId', String(tournamentId));
   }, [tournamentId]);
-
-  if (STANDALONE_VIEWS.includes(view)) return <TvPage />;
 
   // Classifica e gare appartengono a un torneo: senza tornei non c'è niente da mostrare.
   const missing = (view === 'standings' || view === 'races') && !tournamentId;
@@ -106,7 +114,7 @@ export function App() {
             <section>
               {/* key: cambiando torneo la pagina riparte da zero (es. chiude l'editor dei risultati). */}
               {view === 'dashboard' && <DashboardPage key={tournamentId} tournamentId={tournamentId} />}
-              {view === 'standings' && <StandingsPage key={tournamentId} tournamentId={tournamentId!} />}
+              {view === 'standings' && tournamentId !== null && <StandingsPage key={tournamentId} tournamentId={tournamentId} />}
               {view === 'races' && current && <RacesPage key={tournamentId} tournament={current} />}
               {view === 'stats' && <StatsPage />}
               {view === 'players' && <PlayersPage />}

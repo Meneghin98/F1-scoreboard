@@ -33,23 +33,16 @@ iniziare la parte successiva il lavoro precedente deve essere su git).
 | `ad134cf` | —     | Colori dei piloti nei dati di esempio (`cmd/seed`) |
 | `fb0f237` | 5     | Regole di punteggio per torneo (funzionalità 2): migrazione `011`, `scoring.Rules` e `scoring.ScoreRace` (posizioni tra i piloti, bonus pole e giro veloce), `Rules.Counts`, campi `scored_position`/`scored_fastest_lap`/`bonus` nei risultati, `TournamentDialog` per creare e per le impostazioni, segni POLE/GV in classifica |
 | `4d5a282` | 6     | Backup (funzionalità 3): `internal/backup` (`VACUUM INTO`, download e uno al giorno in `data/backups`, `BACKUP_DIR`/`BACKUP_KEEP`), `internal/disk` (spazio libero con build tag, `golang.org/x/sys` ora diretta), migrazione `012` (`settings`), `live/retention.go` (file delle registrazioni eliminati dopo N giorni, ogni ora), API `/api/backup`, `/api/backups`, `/api/system`, `/api/settings`, pagina Sistema (`#/system`), `time/tzdata` e nota su `TZ` |
-| "Prepara il replay a fine sessione e salvalo su disco" | 7 | Replay più veloce: `live/replaycache.go` (`<file>.replay` in gob, intestazione con eseguibile, dimensione della registrazione e piloti; `Options.PrepareReplays`, `prepareReplay` a fine sessione, `dropReplay`), un replay preparato alla volta (`replayBuild`), interruzione allo spegnimento (`quit`, `background`); fotogrammi compressi con un fotogramma chiave ogni 40 come dizionario (4 volte più piccoli) |
+| `2ab3588` | 7     | Replay più veloce: `live/replaycache.go` (`<file>.replay` in gob, intestazione con eseguibile, dimensione della registrazione e piloti; `Options.PrepareReplays`, `prepareReplay` a fine sessione, `dropReplay`), un replay preparato alla volta (`replayBuild`), interruzione allo spegnimento (`quit`, `background`); fotogrammi compressi con un fotogramma chiave ogni 40 come dizionario (4 volte più piccoli) |
+| "Aggiungi l'overlay per OBS e il linter Biome" | 8 | Overlay (funzionalità 5): `#/overlay` (`OverlayPage`, sfondo trasparente con `html.overlay` in `index.css`, `App` divisa in `App`/`MainApp` così le pagine a schermo intero non caricano i tornei), indirizzo per OBS nella pagina Sistema, sezione nel README. Linter: Biome 2.5.15 (`web/biome.jsonc`, `npm run lint`), gruppo a11y spento per scelta dell'utente, `noArrayIndexKey` spento (liste posizionali), `biome-ignore` motivati in `useLoad`, `useTrackMap`, `ReplayPage`, `toast` |
 
 Tutti i punti della sezione "Logica da correggere" dell'analisi sono fatti. Prossima migrazione
 libera: **`013`**.
 
 ## Da fare
 
-### Parte 8 — Overlay per lo streaming (funzionalità 5) e linter
+### Parte 8 — PIN per le modifiche
 
-- pagina `#/overlay` a schermo intero come `#/tv` (aggiungerla a `STANDALONE_VIEWS`), con sfondo
-  trasparente per la sorgente "Browser" di OBS: torre della classifica compatta (colori dei
-  piloti, P1/P2), circuito e giro, ultimo messaggio della direzione gara; nessun comando
-  cliccabile; spiegare nel README come aggiungerla in OBS (URL `http://IP:3000/#/overlay`);
-- linter per il frontend: **Biome** (solo lint, regole consigliate più `useExhaustiveDependencies`),
-  perché il progetto usa TypeScript 7 e il parser di ESLint potrebbe non supportarlo; script
-  `npm run lint`; dove le dipendenze degli hook sono omesse apposta (`useLoad`, `useTrackMap`…)
-  usare `biome-ignore` con il motivo;
 - PIN facoltativo per le modifiche (`ADMIN_PIN`, spento di default): nell'analisi era indicato come
   necessario solo prima di esporre l'app su internet. Chiedere all'utente se lo vuole.
 

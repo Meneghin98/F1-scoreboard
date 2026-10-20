@@ -11,15 +11,18 @@ export function useLoad<T>(load: () => Promise<T>, deps: DependencyList) {
   const [data, setData] = useState<T | null>(null);
   const latest = useRef(0);
 
-  // deps sono le dipendenze di load: load cambia a ogni render, quindi non la usiamo come dipendenza.
-  const reload = useCallback(() => {
-    const request = ++latest.current;
-    return run(async () => {
-      const result = await load();
-      // Se nel frattempo è partita una richiesta più recente, questa risposta è superata.
-      if (request === latest.current) setData(result);
-    });
-  }, deps);
+  const reload = useCallback(
+    () => {
+      const request = ++latest.current;
+      return run(async () => {
+        const result = await load();
+        // Se nel frattempo è partita una richiesta più recente, questa risposta è superata.
+        if (request === latest.current) setData(result);
+      });
+    },
+    // biome-ignore lint/correctness/useExhaustiveDependencies: deps sono le dipendenze di load, che cambia a ogni render e quindi non è tra le dipendenze.
+    deps,
+  );
 
   useEffect(() => {
     void reload();

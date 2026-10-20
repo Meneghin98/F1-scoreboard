@@ -13,6 +13,7 @@ export function useTrackMap(uid: string, points: number, load: () => Promise<Tra
   const [map, setMap] = useState<{ uid: string; data: TrackMap } | null>(null);
   const last = useRef({ uid: '', points: 0, at: 0 });
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: load di solito è una funzione nuova a ogni render; la pianta dipende solo da uid e points.
   useEffect(() => {
     if (!points || (last.current.uid === uid && last.current.points === points)) return;
     const fetchMap = async () => {
@@ -31,7 +32,6 @@ export function useTrackMap(uid: string, points: number, load: () => Promise<Tra
     }
     const timer = setTimeout(fetchMap, wait);
     return () => clearTimeout(timer);
-    // load non è tra le dipendenze: di solito è una funzione nuova a ogni render, la pianta dipende da uid e points.
   }, [uid, points]);
 
   return map?.uid === uid ? map.data : null;

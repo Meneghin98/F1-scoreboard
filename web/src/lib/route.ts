@@ -6,7 +6,7 @@ import { useSyncExternalStore } from 'react';
 
 export type View =
   | 'dashboard' | 'standings' | 'races' | 'stats' | 'players' | 'player' | 'tournaments' | 'live' | 'recordings' | 'replay'
-  | 'system' | 'tv';
+  | 'system' | 'tv' | 'overlay';
 
 export const VIEW_LABELS: Record<View, string> = {
   dashboard: 'Dashboard',
@@ -21,6 +21,7 @@ export const VIEW_LABELS: Record<View, string> = {
   replay: 'Replay',
   system: 'Sistema',
   tv: 'Modalità TV',
+  overlay: 'Overlay',
 };
 
 // Pagine nella barra di navigazione, in ordine.
@@ -35,7 +36,7 @@ export const VIEW_PARENT: Partial<Record<View, View>> = {
 };
 
 // Pagine a schermo intero, senza header e barra di navigazione.
-export const STANDALONE_VIEWS: View[] = ['tv'];
+export const STANDALONE_VIEWS: View[] = ['tv', 'overlay'];
 
 export function href(view: View, param?: number): string {
   if (view === 'dashboard') return '#/';

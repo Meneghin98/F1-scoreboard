@@ -32,7 +32,7 @@ function update(next: LiveSnapshot | null) {
     ];
   }
   snapshot = next;
-  listeners.forEach((l) => l());
+  for (const l of listeners) l();
 }
 
 function subscribe(listener: () => void) {

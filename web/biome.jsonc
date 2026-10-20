@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  // Solo il linter (npm run lint): niente formattazione automatica.
+  "files": {
+    "includes": ["src/**", "vite.config.ts"]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "assist": {
+    "enabled": false
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true // @theme, @apply e le altre direttive di Tailwind 4 in index.css
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      // L'app si usa tra amici, su PC: per scelta non si fanno interventi di sola accessibilità.
+      "a11y": "off",
+      "correctness": {
+        // Dipendenze degli hook complete; dove mancano apposta c'è un biome-ignore con il motivo.
+        "useExhaustiveDependencies": "error"
+      },
+      "suspicious": {
+        // Le liste con l'indice come chiave sono posizionali (giri, settori, ruote, stint):
+        // non si riordinano, e l'indice è proprio la loro identità.
+        "noArrayIndexKey": "off"
+      }
+    }
+  }
+}

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "typecheck": "tsc"
+    "typecheck": "tsc",
+    "lint": "biome lint"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -15,6 +16,7 @@
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.15",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",

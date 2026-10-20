@@ -95,6 +95,7 @@ function ReplayPlayer({ sessionId, info }: { sessionId: number; info: ReplayInfo
     };
   }, []);
   const slot = Math.floor(pos / FRAME_MS);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: si scarica un fotogramma per slot (FRAME_MS), non a ogni cambio di pos; pos si legge com'è in quel momento.
   useEffect(() => {
     wanted.current = pos;
     if (loading.current) return;

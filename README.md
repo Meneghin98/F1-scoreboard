@@ -47,9 +47,14 @@ di esempio (non fa nulla se nel database ci sono già tornei).
 Test e controlli:
 
 ```sh
-go test ./...            # test delle API e del punteggio
+go test ./...            # test delle API, del punteggio, della telemetria e dei backup
 cd web && npm run typecheck
+cd web && npm run lint   # Biome: errori comuni e dipendenze degli hook di React
 ```
+
+Il linter del frontend è [Biome](https://biomejs.dev) (configurazione in `web/biome.jsonc`): le
+regole consigliate più il controllo delle dipendenze degli hook. Dove una dipendenza manca apposta
+c'è un commento `biome-ignore` con il motivo.
 
 Variabili d'ambiente opzionali:
 
@@ -118,6 +123,25 @@ esempio una scrittura lenta sul disco) non ne fa perdere.
 | `PUT /api/live/lineup`                    | Sceglie chi guida le auto dei controller nella gara in corso, o conferma |
 | `GET /api/telemetry/sessions`             | Sessioni registrate                                      |
 | `GET /api/telemetry/sessions/{id}/download` | Scarica la registrazione di una sessione (`.f1rec.gz`) |
+
+### Overlay per lo streaming (OBS)
+
+La pagina `#/overlay` è fatta per chi trasmette le gare con OBS: sopra il gioco mostra la
+classifica a torre (le auto della IA con la sigla del pilota, quelle dei giocatori con il nome e
+il colore del pilota del segnapunti e P1/P2), circuito e giro, e per qualche secondo ogni nuovo
+messaggio della direzione gara. Lo sfondo è trasparente e non ci sono comandi da cliccare; senza
+una sessione in corso la pagina è vuota.
+
+In OBS: **Sorgenti → + → Browser**, con
+
+| Campo     | Valore |
+|-----------|--------|
+| URL       | `http://IP-DEL-SERVER:3000/#/overlay` (`http://localhost:3000/#/overlay` se OBS gira sullo stesso PC del server); l'indirizzo esatto è nella pagina Sistema |
+| Larghezza | `1920` |
+| Altezza   | `1080` |
+
+Il CSS personalizzato proposto da OBS va bene così. Le dimensioni dell'overlay seguono l'altezza
+della sorgente: con 1920×1080 il testo è di circa 19 pixel.
 
 ### Chi guida? (split-screen) e salvataggio delle sessioni
 

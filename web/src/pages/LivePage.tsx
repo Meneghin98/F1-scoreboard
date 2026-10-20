@@ -66,20 +66,22 @@ export function LivePage() {
 export function WaitingCard({ telemetry: t }: { telemetry?: TelemetryStatus }) {
   const problem = telemetryProblem(t);
   const [primary, ...others] = t?.addresses ?? [];
-  const settings: [string, ReactNode][] = [
-    ['Telemetria UDP', 'Attiva'],
-    ['Modalità broadcast UDP', 'Disattivata'],
-    [
-      'Indirizzo IP UDP',
-      <>
-        <span className="font-semibold">{primary ?? 'IP di questo PC'}</span>
-        {others.length > 0 && <span className="text-muted"> (oppure {others.join(', ')})</span>}
-        <span className="text-muted"> · 127.0.0.1 se il gioco gira su questo PC</span>
-      </>,
-    ],
-    ['Porta UDP', <span className="font-semibold">{t?.port || 20777}</span>],
-    ['Frequenza di invio UDP', '20 Hz'],
-    ['Formato UDP', '2025, oppure 2026 con il DLC 2026 Season Pack'],
+  const settings: { label: string; value: ReactNode }[] = [
+    { label: 'Telemetria UDP', value: 'Attiva' },
+    { label: 'Modalità broadcast UDP', value: 'Disattivata' },
+    {
+      label: 'Indirizzo IP UDP',
+      value: (
+        <>
+          <span className="font-semibold">{primary ?? 'IP di questo PC'}</span>
+          {others.length > 0 && <span className="text-muted"> (oppure {others.join(', ')})</span>}
+          <span className="text-muted"> · 127.0.0.1 se il gioco gira su questo PC</span>
+        </>
+      ),
+    },
+    { label: 'Porta UDP', value: <span className="font-semibold">{t?.port || 20777}</span> },
+    { label: 'Frequenza di invio UDP', value: '20 Hz' },
+    { label: 'Formato UDP', value: '2025, oppure 2026 con il DLC 2026 Season Pack' },
   ];
 
   return (
@@ -98,7 +100,7 @@ export function WaitingCard({ telemetry: t }: { telemetry?: TelemetryStatus }) {
         Nel gioco: Impostazioni → Impostazioni telemetria
       </h3>
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 text-sm">
-        {settings.map(([label, value]) => (
+        {settings.map(({ label, value }) => (
           <Fragment key={label}>
             <dt className="text-muted">{label}</dt>
             <dd>{value}</dd>

@@ -171,27 +171,41 @@ function TelemetryCard({ system }: { system: SystemInfo }) {
   if (!live) reception = <span className="text-accent-text">Server non raggiungibile</span>;
   else if (problem) reception = <span className="text-accent-text">{problem.short}</span>;
   else if (t?.port) reception = `In ascolto sulla porta UDP ${t.port}`;
+  // Indirizzo dell'overlay da usare in OBS, con l'IP del server (OBS può girare su un altro PC).
+  const host = t?.addresses.length ? `${t.addresses[0]}${location.port ? `:${location.port}` : ''}` : location.host;
+  const overlay = `http://${host}/#/overlay`;
 
-  const rows: [string, ReactNode][] = [
-    ['Ricezione', reception],
-    ['IP da impostare nel gioco', t?.addresses.length ? t.addresses.join(', ') : '–'],
-    [
-      'Sessione',
-      live && isLive(live)
+  const rows: { label: string; value: ReactNode }[] = [
+    { label: 'Ricezione', value: reception },
+    { label: 'IP da impostare nel gioco', value: t?.addresses.length ? t.addresses.join(', ') : '–' },
+    {
+      label: 'Sessione',
+      value: live && isLive(live)
         ? <a href={href('live')} className="underline hover:text-fg">{sessionSummary(live)}</a>
         : 'Nessuna sessione in corso',
-    ],
-    [
-      'Registrazione',
-      system.recordings.enabled ? 'Ogni sessione viene registrata' : <>Disattivata (<code>TELEMETRY_RECORD=false</code>)</>,
-    ],
+    },
+    {
+      label: 'Registrazione',
+      value: system.recordings.enabled
+        ? 'Ogni sessione viene registrata'
+        : <>Disattivata (<code>TELEMETRY_RECORD=false</code>)</>,
+    },
+    {
+      label: 'Overlay per OBS',
+      value: (
+        <>
+          <code className="break-all select-all">{overlay}</code>
+          <span className="block text-xs text-muted">Sorgente "Browser" in OBS, 1920×1080: vedi il README.</span>
+        </>
+      ),
+    },
   ];
 
   return (
     <Card className="mb-0">
       <h2 className="mb-3 font-bold">Telemetria</h2>
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
-        {rows.map(([label, value]) => (
+        {rows.map(({ label, value }) => (
           <Fragment key={label}>
             <dt className="text-muted">{label}</dt>
             <dd>{value}</dd>

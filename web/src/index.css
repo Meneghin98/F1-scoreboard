@@ -27,4 +27,14 @@
   body {
     @apply bg-bg text-fg;
   }
+
+  /* Overlay per OBS (#/overlay): pagina trasparente, sotto si vede il gioco.
+     Con color-scheme dark il browser dipingerebbe di scuro lo sfondo della pagina. */
+  html.overlay {
+    color-scheme: normal;
+  }
+  html.overlay,
+  html.overlay body {
+    background: transparent;
+  }
 }

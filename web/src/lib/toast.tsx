@@ -44,6 +44,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   // sopra un eventuale dialog aperto, cosa che nessuno z-index può fare.
   const id = state?.id;
   const visible = state?.visible ?? false;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: id cambia a ogni toast, anche con lo stesso testo: serve a riportarlo in cima.
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
