@@ -63,10 +63,10 @@ export function TeamTag({ team }: { team: string | null }) {
 
 // --- Tabelle --------------------------------------------------------------
 
-export function Table({ children }: { children: ReactNode }) {
+export function Table({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full">{children}</table>
+      <table className={cx('w-full', className)}>{children}</table>
     </div>
   );
 }
