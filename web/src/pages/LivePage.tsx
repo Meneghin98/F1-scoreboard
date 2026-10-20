@@ -126,10 +126,12 @@ interface LiveBoardProps {
 }
 
 // Classifica ridotta a sinistra di mappa e auto dei giocatori; estesa mostra
-// tutti i dati e nasconde la mappa. È usata anche dal replay, che passa la sua
-// pianta (loadMap) e il suo storico dei pedali.
+// tutti i dati e nasconde mappa e auto, lasciando duello e direzione gara. È
+// usata anche dal replay, che passa la sua pianta (loadMap) e il suo storico dei pedali.
 export function LiveBoard({ session, drivers, players, events, finished, pedals, loadMap, mapPoints }: LiveBoardProps) {
   const [expanded, setExpanded] = useState(false);
+  // Classifica estesa con il duello: direzione gara gli sta accanto, alta uguale.
+  const besideDuel = expanded && players.length === 2;
 
   return (
     // Solo la mappa ha una dimensione fissa: la classifica si allunga quanto serve per tutti i piloti.
@@ -150,7 +152,7 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
         )}
       </Card>
       {/* Le schede delle auto (due in split-screen) si affiancano alla mappa se c'è spazio, altrimenti vanno sotto. */}
-      <div className="flex flex-wrap items-start gap-4">
+      <div className={cx('flex flex-wrap gap-4', besideDuel ? 'items-stretch' : 'items-start')}>
         {/* Nascosta e non smontata, così la mappa già scaricata resta pronta per quando si riduce. */}
         <TrackMapCard
           className={cx('mb-0 h-80 w-full md:size-88', expanded && 'hidden')}
@@ -169,10 +171,17 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
             pedals={pedals.filter((p) => p.controller === car.controller)}
             // Il gioco calcola il rientro dai box solo per il giocatore principale.
             pitRejoin={session.isRace && !finished && car.controller === 1 ? session.pitRejoin : 0}
-            className="mb-0"
+            // Nascoste e non smontate, come la mappa: restano aperte o chiuse come le si era lasciate.
+            className={cx('mb-0', expanded && 'hidden')}
           />
         ))}
-        <RaceControlCard events={events} drivers={drivers} className="mb-0 w-full" />
+        {/* Con la classifica estesa restano solo lei e il duello, sulla stessa riga e alti uguali. */}
+        <RaceControlCard
+          events={events}
+          drivers={drivers}
+          fill={besideDuel}
+          className={cx('mb-0', expanded ? 'min-w-72 flex-1' : 'w-full')}
+        />
       </div>
     </div>
   );
