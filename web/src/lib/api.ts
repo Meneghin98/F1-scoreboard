@@ -1,7 +1,7 @@
 import type {
   BackupInfo, Player, PlayerProfile, Race, RaceType, RaceWithResults, ResultInput, ScoringRules, SessionRaceInput,
   SessionRecord, Settings, SettingsSaved, StandingsResponse, StatsResponse, SystemInfo, Tournament,
-  ReplayFrame, ReplayInfo, Track, TrackMap,
+  ReplayFrame, ReplayInfo, Track, TrackMap, UpdateStatus,
 } from './types';
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -74,6 +74,7 @@ export const api = {
   replayTrack: (sessionId: number) => request<TrackMap>(`/telemetry/sessions/${sessionId}/replay/track`),
 
   system: () => request<SystemInfo>('/system'),
+  checkUpdate: () => request<UpdateStatus>('/update/check', 'POST'),
   backups: () => request<BackupInfo[]>('/backups'),
   settings: () => request<Settings>('/settings'),
   saveSettings: (settings: Settings) => request<SettingsSaved>('/settings', 'PUT', settings),

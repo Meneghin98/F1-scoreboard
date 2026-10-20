@@ -14,6 +14,7 @@ import (
 
 	"f1-scoreboard/internal/backup"
 	"f1-scoreboard/internal/disk"
+	"f1-scoreboard/internal/update"
 	"f1-scoreboard/internal/version"
 )
 
@@ -71,7 +72,8 @@ func (s *Server) downloadAutoBackup(w http.ResponseWriter, r *http.Request) erro
 
 // SystemInfo descrive il server alla pagina Sistema.
 type SystemInfo struct {
-	Version  Version `json:"version"`
+	Version  Version       `json:"version"`
+	Update   update.Status `json:"update"`
 	Database struct {
 		Path      string `json:"path"`
 		SizeBytes int64  `json:"sizeBytes"` // compreso il file WAL
@@ -123,7 +125,7 @@ var buildVersion = sync.OnceValue(func() Version {
 
 // getSystem restituisce versione e spazio occupato da database, registrazioni e backup.
 func (s *Server) getSystem(w http.ResponseWriter, r *http.Request) error {
-	info := SystemInfo{Version: buildVersion()}
+	info := SystemInfo{Version: buildVersion(), Update: s.updater.Status()}
 	dbPath := s.backups.DBPath()
 	info.Database.Path = absPath(dbPath)
 	for _, path := range []string{dbPath, dbPath + "-wal"} {
@@ -156,6 +158,16 @@ func (s *Server) getSystem(w http.ResponseWriter, r *http.Request) error {
 		log.Printf("spazio su disco: %v", err)
 	}
 	return writeJSON(w, http.StatusOK, info)
+}
+
+// checkUpdate controlla subito se c'è una versione nuova e, se c'è, la scarica.
+// Risponde con lo stato aggiornato anche se il controllo fallisce: l'errore è dentro.
+func (s *Server) checkUpdate(w http.ResponseWriter, r *http.Request) error {
+	if !s.updater.Status().Enabled {
+		return errorf(http.StatusConflict, "Gli aggiornamenti automatici sono disattivati")
+	}
+	s.updater.Check(r.Context())
+	return writeJSON(w, http.StatusOK, s.updater.Status())
 }
 
 // absPath restituisce il percorso assoluto, più utile da mostrare (o quello dato, se non si può).

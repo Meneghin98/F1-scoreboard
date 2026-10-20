@@ -141,6 +141,15 @@ func (s *Service) dataChangedLocked() {
 // Done viene chiuso quando Run termina: i client in streaming lo usano per chiudersi.
 func (s *Service) Done() <-chan struct{} { return s.done }
 
+// Busy dice se si sta giocando: c'è una sessione in corso o il gioco ha
+// mandato pacchetti (anche solo dai menù) negli ultimi menuTimeout. Serve a
+// non riavviare il server per un aggiornamento nel mezzo di una serata.
+func (s *Service) Busy() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.current != nil || time.Since(s.lastAlive) < menuTimeout
+}
+
 // Run ascolta la telemetria su addr finché ctx non viene annullato, poi chiude
 // la registrazione in corso.
 func (s *Service) Run(ctx context.Context, addr string) {

@@ -22,6 +22,7 @@ import (
 	"f1-scoreboard/internal/backup"
 	"f1-scoreboard/internal/live"
 	"f1-scoreboard/internal/store"
+	"f1-scoreboard/internal/update"
 	"f1-scoreboard/web"
 )
 
@@ -35,6 +36,10 @@ func main() {
 	backupKeep, err := strconv.Atoi(envOr("BACKUP_KEEP", "7"))
 	if err != nil || backupKeep < 0 {
 		log.Fatalf("BACKUP_KEEP deve essere un numero intero da 0 in su, non %q", os.Getenv("BACKUP_KEEP"))
+	}
+	exe, err := executable()
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	db, err := store.Open(dbPath)
@@ -66,9 +71,14 @@ func main() {
 	backups := backup.New(db, dbPath, backupDir, backupKeep)
 	go backups.Run(ctx)
 
+	// Le versioni nuove pubblicate su GitHub si scaricano accanto all'eseguibile
+	// (UPDATE=false per non farlo).
+	updater := update.New(exe, !strings.EqualFold(os.Getenv("UPDATE"), "false"))
+	go updater.Run(ctx)
+
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: api.New(db, static, liveService, backups),
+		Handler: api.New(db, static, liveService, backups, updater),
 		// Un client che non manda nemmeno le intestazioni non tiene occupata la
 		// connessione per sempre. Niente WriteTimeout: lo stream live dura ore.
 		ReadHeaderTimeout: 10 * time.Second,
@@ -96,6 +106,16 @@ func main() {
 	// ListenAndServe ritorna appena inizia lo spegnimento: aspettiamo che
 	// Shutdown abbia finito prima di chiudere il database.
 	<-shutdownDone
+}
+
+// executable restituisce il percorso vero dell'eseguibile in esecuzione: se è
+// stato avviato da un link simbolico, quello del file a cui punta.
+func executable() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(exe)
 }
 
 func envOr(key, fallback string) string {

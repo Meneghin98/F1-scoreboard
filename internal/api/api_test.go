@@ -20,6 +20,7 @@ import (
 	"f1-scoreboard/internal/backup"
 	"f1-scoreboard/internal/live"
 	"f1-scoreboard/internal/store"
+	"f1-scoreboard/internal/update"
 )
 
 // newTestServer avvia le API su un database temporaneo.
@@ -49,7 +50,7 @@ func newTestServerDir(t *testing.T) (*httptest.Server, *sql.DB, string) {
 	}
 	liveService := live.NewService(db, live.Options{Dir: filepath.Join(dir, "sessions")})
 	backups := backup.New(db, dbPath, filepath.Join(dir, "backups"), 7)
-	srv := httptest.NewServer(api.New(db, fstest.MapFS{}, liveService, backups))
+	srv := httptest.NewServer(api.New(db, fstest.MapFS{}, liveService, backups, update.New(filepath.Join(dir, "f1-scoreboard"), false)))
 	// I cleanup girano in ordine inverso: prima il server, poi il DB, poi la cartella temporanea.
 	t.Cleanup(func() { db.Close() })
 	t.Cleanup(srv.Close)

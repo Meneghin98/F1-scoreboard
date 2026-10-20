@@ -15,17 +15,19 @@ import (
 
 	"f1-scoreboard/internal/backup"
 	"f1-scoreboard/internal/live"
+	"f1-scoreboard/internal/update"
 )
 
 type Server struct {
 	db      *sql.DB
 	live    *live.Service
 	backups *backup.Manager
+	updater *update.Updater
 }
 
 // New restituisce l'handler HTTP completo: API sotto /api, file statici altrove.
-func New(db *sql.DB, static fs.FS, liveService *live.Service, backups *backup.Manager) http.Handler {
-	s := &Server{db: db, live: liveService, backups: backups}
+func New(db *sql.DB, static fs.FS, liveService *live.Service, backups *backup.Manager, updater *update.Updater) http.Handler {
+	s := &Server{db: db, live: liveService, backups: backups, updater: updater}
 	mux := http.NewServeMux()
 
 	mux.Handle("GET /api/points", s.handle(s.getPoints))
@@ -73,6 +75,7 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service, backups *backup.Ma
 	mux.Handle("GET /api/system", s.handle(s.getSystem))
 	mux.Handle("GET /api/settings", s.handle(s.getSettings))
 	mux.Handle("PUT /api/settings", s.handle(s.saveSettings))
+	mux.Handle("POST /api/update/check", s.handle(s.checkUpdate))
 
 	mux.Handle("/api/", s.handle(func(w http.ResponseWriter, r *http.Request) error {
 		return errorf(http.StatusNotFound, "Endpoint non trovato")

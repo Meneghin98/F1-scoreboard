@@ -525,10 +525,21 @@ export interface SystemInfo {
     modified: boolean; // compilato con modifiche non committate
     go: string;
   };
+  update: UpdateStatus;
   database: { path: string; sizeBytes: number };
   recordings: { dir: string; enabled: boolean; files: number; sizeBytes: number };
   backups: { dir: string; keep: number; count: number; sizeBytes: number }; // keep 0: backup automatici spenti
   disk: { freeBytes: number; totalBytes: number } | null; // disco della cartella dei dati, null se non si sa
+}
+
+// Aggiornamenti dalle release su GitHub (vedi internal/update/update.go).
+export interface UpdateStatus {
+  enabled: boolean; // false nelle build di sviluppo o con UPDATE=false
+  current: string; // versione in esecuzione, vuota nelle build di sviluppo
+  latest: string; // ultima release su GitHub, vuota se non ancora controllato
+  staged: string; // versione scaricata, da installare
+  checkedAt: string; // ultimo controllo riuscito (UTC), vuoto se nessuno
+  error: string; // errore dell'ultimo controllo
 }
 
 // Backup automatico del database.

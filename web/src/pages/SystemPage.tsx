@@ -1,11 +1,11 @@
-import { Fragment, type FormEvent, type ReactNode } from 'react';
+import { Fragment, type FormEvent, type ReactNode, useState } from 'react';
 import { api, autoBackupUrl, backupUrl } from '../lib/api';
 import { useConfirm } from '../lib/confirm';
 import { formatBytes, formatDateTime } from '../lib/format';
 import { isLive, sessionSummary, telemetryProblem } from '../lib/live';
 import { href } from '../lib/route';
 import { useToast } from '../lib/toast';
-import type { BackupInfo, Retention, SystemInfo } from '../lib/types';
+import type { BackupInfo, Retention, SystemInfo, UpdateStatus } from '../lib/types';
 import { useLive } from '../lib/useLive';
 import { useLoad } from '../lib/useLoad';
 import { Button, buttonClass, Card, cx, fieldClass, Loading, Table, Td, Th, Tr } from '../components/ui';
@@ -30,7 +30,7 @@ export function SystemPage() {
         <DiskCard system={system} />
         <TelemetryCard system={system} />
         <RetentionCard retention={settings.recordings} onSaved={reload} />
-        <VersionCard version={system.version} />
+        <VersionCard version={system.version} update={system.update} onChanged={reload} />
       </div>
     </>
   );
@@ -288,7 +288,11 @@ function RetentionCard({ retention, onSaved }: { retention: Retention; onSaved: 
   );
 }
 
-function VersionCard({ version: v }: { version: SystemInfo['version'] }) {
+function VersionCard({ version: v, update, onChanged }: {
+  version: SystemInfo['version'];
+  update: UpdateStatus;
+  onChanged: () => Promise<void>;
+}) {
   const built = v.time ? new Date(v.time).toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' }) : '';
   return (
     <Card className="mb-0">
@@ -313,7 +317,54 @@ function VersionCard({ version: v }: { version: SystemInfo['version'] }) {
           {v.go && ` Go ${v.go}.`}
         </p>
       )}
+      {update.current && <UpdateSection update={update} onChanged={onChanged} />}
     </Card>
+  );
+}
+
+// Aggiornamenti: il server controlla da solo le release su GitHub e scarica le
+// versioni nuove; da qui si può controllare subito.
+function UpdateSection({ update: u, onChanged }: { update: UpdateStatus; onChanged: () => Promise<void> }) {
+  const { run, toast } = useToast();
+  const [checking, setChecking] = useState(false);
+
+  function check() {
+    setChecking(true);
+    void run(async () => {
+      const next = await api.checkUpdate();
+      toast(next.error ? 'Controllo non riuscito'
+        : next.staged ? `Versione ${next.staged} scaricata`
+        : 'Nessuna versione nuova');
+      await onChanged();
+    }).finally(() => setChecking(false));
+  }
+
+  return (
+    <>
+      <h3 className="mt-5 mb-2 text-xs font-bold tracking-wider text-muted uppercase">Aggiornamenti</h3>
+      {u.enabled ? (
+        <>
+          {u.staged ? (
+            <p className="mb-2 rounded-md border border-accent/60 bg-accent/10 px-3 py-2 text-sm">
+              La versione {u.staged} è scaricata e verrà installata al prossimo riavvio del server.
+            </p>
+          ) : (
+            u.latest && u.latest === u.current && <p className="mb-2 text-sm">Il programma è aggiornato.</p>
+          )}
+          {u.error && <p className="mb-2 text-sm text-accent">Ultimo controllo non riuscito: {u.error}</p>}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-muted">
+              {u.checkedAt ? `Ultimo controllo: ${formatDateTime(u.checkedAt)}` : 'Non ancora controllato'}
+            </p>
+            <Button variant="ghost" size="sm" disabled={checking} onClick={check}>
+              {checking ? 'Controllo…' : 'Controlla ora'}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-muted">Disattivati: il server è avviato con <code>UPDATE=false</code>.</p>
+      )}
+    </>
   );
 }
 
