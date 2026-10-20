@@ -3,19 +3,21 @@ import { api } from '../lib/api';
 import { formatDate, formatDateTime } from '../lib/format';
 import { isLive, sessionSummary } from '../lib/live';
 import { href, VIEW_LABELS, type View } from '../lib/route';
+import type { CareerStats, Tournament } from '../lib/types';
 import { useLive } from '../lib/useLive';
 import { useLoad } from '../lib/useLoad';
 import { LiveDot } from '../components/LiveBadge';
-import { cx, rankClass } from '../components/ui';
+import { ColorDot, cx, rankClass } from '../components/ui';
 
 // Pagina iniziale: una card per ogni sezione, con un riassunto e il link per aprirla.
-export function DashboardPage({ tournamentId }: { tournamentId: number | null }) {
+export function DashboardPage({ tournamentId, tournaments }: { tournamentId: number | null; tournaments: Tournament[] }) {
   const live = useLive();
   const { data: standings } = useLoad(
     () => (tournamentId ? api.standings(tournamentId) : Promise.resolve(null)),
     [tournamentId],
   );
   const { data: players } = useLoad(() => api.players(), []);
+  const { data: stats } = useLoad(api.stats, []);
   // Come nella pagina delle registrazioni, le sessioni non terminate non si contano.
   const { data: sessions } = useLoad(
     async () => (await api.sessions()).filter((s) => s.hasClassification || s.recording),
@@ -27,10 +29,15 @@ export function DashboardPage({ tournamentId }: { tournamentId: number | null })
   const lastRace = races.at(-1);
   const active = isLive(live);
   const unassigned = sessions?.filter((s) => !s.race && !s.recording).length ?? 0;
+  // "Nessun torneo" raccoglie le gare libere: non è un torneo da contare.
+  const realTournaments = tournaments.filter((t) => !t.free);
+  const ended = realTournaments.filter((t) => t.ended_at && !t.active).length;
+  const activeTournament = realTournaments.find((t) => t.active);
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {/* Live su tutta la larghezza; sotto, la classifica a sinistra e gare e piloti impilati a destra. */}
+      {/* Live su tutta la larghezza; sotto, la classifica a sinistra e gare e piloti impilati a destra,
+          poi le registrazioni su tutta la larghezza e sotto tornei e statistiche affiancati. */}
       <DashboardCard view="live" highlight={active} className="sm:col-span-2">
         <div className="flex items-center gap-2 text-lg font-bold">
           <LiveDot active={live?.status === 'live'} />
@@ -102,6 +109,33 @@ export function DashboardPage({ tournamentId }: { tournamentId: number | null })
           </>
         )}
       </DashboardCard>
+
+      <DashboardCard view="tournaments">
+        <BigNumber value={realTournaments.length} label={realTournaments.length === 1 ? 'torneo' : 'tornei'}>
+          {ended > 0 && `${ended} ${ended === 1 ? 'terminato' : 'terminati'}`}
+        </BigNumber>
+        {activeTournament ? (
+          <p className="text-sm text-muted">
+            In corso: <span className="font-semibold text-fg">{activeTournament.name}</span>
+            {activeTournament.leader && ` · in testa ${activeTournament.leader.name} (${activeTournament.leader.points} pt)`}
+          </p>
+        ) : (
+          <p className="text-sm text-muted">Nessun torneo in corso.</p>
+        )}
+      </DashboardCard>
+
+      <DashboardCard view="stats">
+        {stats && (stats.career.length ? (
+          <ul className="flex flex-col gap-1">
+            <StatLeader label="Titoli" career={stats.career} pick={(c) => c.titles} />
+            <StatLeader label="Vittorie" career={stats.career} pick={(c) => c.wins} />
+            <StatLeader label="Pole" career={stats.career} pick={(c) => c.poles} />
+            <StatLeader label="Giri veloci" career={stats.career} pick={(c) => c.fastestLaps} />
+          </ul>
+        ) : (
+          <p className="text-muted">Le statistiche compaiono dopo le prime gare.</p>
+        ))}
+      </DashboardCard>
     </div>
   );
 }
@@ -130,6 +164,25 @@ function DashboardCard({ view, highlight, className, children }: DashboardCardPr
       </div>
       {children}
     </a>
+  );
+}
+
+// Il pilota con più titoli, vittorie… in carriera; a parità, il primo della classifica di carriera.
+function StatLeader({ label, career, pick }: { label: string; career: CareerStats[]; pick: (c: CareerStats) => number }) {
+  const best = career.reduce((a, b) => (pick(b) > pick(a) ? b : a));
+  const value = pick(best);
+  return (
+    <li className="flex items-baseline gap-2">
+      <span className="w-24 text-sm text-muted">{label}</span>
+      {value > 0 ? (
+        <>
+          <span className="flex flex-1 items-center gap-2 truncate"><ColorDot color={best.color} />{best.name}</span>
+          <span className="font-extrabold tabular-nums">{value}</span>
+        </>
+      ) : (
+        <span className="flex-1 text-muted">–</span>
+      )}
+    </li>
   );
 }
 

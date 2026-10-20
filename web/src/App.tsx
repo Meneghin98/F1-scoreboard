@@ -113,7 +113,7 @@ function MainApp({ view }: { view: View }) {
           ) : (
             <section>
               {/* key: cambiando torneo la pagina riparte da zero (es. chiude l'editor dei risultati). */}
-              {view === 'dashboard' && <DashboardPage key={tournamentId} tournamentId={tournamentId} />}
+              {view === 'dashboard' && <DashboardPage key={tournamentId} tournamentId={tournamentId} tournaments={tournaments} />}
               {view === 'standings' && tournamentId !== null && <StandingsPage key={tournamentId} tournamentId={tournamentId} />}
               {view === 'races' && current && <RacesPage key={tournamentId} tournament={current} />}
               {view === 'stats' && <StatsPage />}
