@@ -41,8 +41,8 @@ export function PlayerCarCard({
       className={cx(
         'flex cursor-pointer flex-col gap-4 hover:border-muted',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-        // Ridotta sta accanto alla mappa; dettagliata occupa una riga intera e va sotto.
-        detailed ? 'w-full' : 'min-w-72 flex-1',
+        // Ridotta sta accanto alla mappa; dettagliata occupa una riga intera (col-span-full nella griglia delle schede).
+        detailed ? 'col-span-full w-full' : 'min-w-72 flex-1',
         className,
       )}
     >

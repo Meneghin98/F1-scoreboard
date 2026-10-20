@@ -138,12 +138,11 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
   }
   // Classifica estesa con il duello: direzione gara gli sta accanto, alta uguale.
   const besideDuel = expanded && players.length === 2;
-  // Con la mappa standard il duello le sta subito accanto, alto uguale (md:h-88 come la mappa);
-  // con la mappa grande o la classifica estesa va dopo le schede delle auto.
-  const duelBesideMap = !bigMap && !expanded;
-  const duel = players.length === 2 && (
-    <DuelCard session={session} drivers={drivers} className={cx('mb-0', duelBesideMap && 'md:h-88')} />
-  );
+  // Con la mappa standard (e la classifica ridotta) mappa, duello e schede delle auto sono
+  // celle di una griglia a colonne uguali: stessa larghezza, e alte uguali quelle sulla stessa
+  // riga. Con la mappa grande la mappa prende tutta la larghezza e il duello va dopo le auto.
+  const smallMap = !bigMap && !expanded;
+  const duel = players.length === 2 && <DuelCard session={session} drivers={drivers} className="mb-0" />;
 
   return (
     // La mappa è quadrata, standard o grande: la classifica si allunga quanto serve per tutti i piloti.
@@ -163,13 +162,19 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
           <CompactStandings session={session} drivers={drivers} />
         )}
       </Card>
-      {/* Le schede delle auto (due in split-screen) si affiancano alla mappa se c'è spazio, altrimenti vanno sotto.
-          min-w-0 tiene la colonna larga quanto lo spazio della pagina, così la mappa grande (w-full) si ferma lì
+      {/* min-w-0 tiene la colonna larga quanto lo spazio della pagina, così la mappa grande (w-full) si ferma lì
           invece di allargarla. */}
-      <div className={cx('flex min-w-0 flex-wrap gap-4', besideDuel ? 'items-stretch' : 'items-start')}>
+      <div
+        className={cx(
+          'min-w-0 gap-4',
+          smallMap
+            ? 'grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]'
+            : cx('flex flex-wrap', besideDuel ? 'items-stretch' : 'items-start'),
+        )}
+      >
         {/* Nascosta e non smontata, così la mappa già scaricata resta pronta per quando si riduce. */}
         <TrackMapCard
-          className={cx('mb-0 aspect-square w-full', !bigMap && 'md:w-88', expanded && 'hidden')}
+          className={cx('mb-0 aspect-square w-full', expanded && 'hidden')}
           onClick={toggleMap}
           title={bigMap ? 'Clicca per rimpicciolire la mappa' : 'Clicca per ingrandire la mappa'}
           uid={session.uid}
@@ -178,26 +183,45 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
           marshalZones={session.marshalZones}
           loadMap={loadMap}
         />
-        {duelBesideMap && duel}
-        {players.map((car) => (
-          <PlayerCarCard
-            key={car.controller}
-            car={car}
-            playerName={drivers.find((d) => d.carIndex === car.carIndex)?.playerName}
-            pedals={pedals.filter((p) => p.controller === car.controller)}
-            // Il gioco calcola il rientro dai box solo per il giocatore principale.
-            pitRejoin={session.isRace && !finished && car.controller === 1 ? session.pitRejoin : 0}
-            // Nascoste e non smontate, come la mappa: restano aperte o chiuse come le si era lasciate.
-            className={cx('mb-0', expanded && 'hidden')}
-          />
-        ))}
-        {!duelBesideMap && duel}
+        {smallMap && duel}
+        {players.length > 0 && (
+          // Le schede ridotte affiancate sono alte uguali. Se una è dettagliata (aria-expanded)
+          // ognuna prende una riga intera, con la sua altezza.
+          // Nascoste e non smontate, come la mappa: restano aperte o chiuse come le si era lasciate.
+          <div
+            className={cx(
+              smallMap
+                // Le schede diventano celle della griglia di fuori (contents).
+                ? 'contents has-[[aria-expanded=true]]:*:col-span-full'
+                : cx(
+                  'grid grid-cols-[repeat(auto-fit,minmax(18rem,1fr))] gap-4 has-[[aria-expanded=true]]:grid-cols-1',
+                  // Con due auto una riga intera, così stanno affiancate; con una sola sta accanto
+                  // alla mappa, ma se è dettagliata va sotto su una riga intera.
+                  players.length > 1 ? 'w-full' : 'min-w-72 flex-1 has-[[aria-expanded=true]]:basis-full',
+                ),
+              expanded && 'hidden',
+            )}
+          >
+            {players.map((car) => (
+              <PlayerCarCard
+                key={car.controller}
+                car={car}
+                playerName={drivers.find((d) => d.carIndex === car.carIndex)?.playerName}
+                pedals={pedals.filter((p) => p.controller === car.controller)}
+                // Il gioco calcola il rientro dai box solo per il giocatore principale.
+                pitRejoin={session.isRace && !finished && car.controller === 1 ? session.pitRejoin : 0}
+                className="mb-0"
+              />
+            ))}
+          </div>
+        )}
+        {!smallMap && duel}
         {/* Con la classifica estesa restano solo lei e il duello, sulla stessa riga e alti uguali. */}
         <RaceControlCard
           events={events}
           drivers={drivers}
           fill={besideDuel}
-          className={cx('mb-0', expanded ? 'min-w-72 flex-1' : 'w-full')}
+          className={cx('mb-0', expanded ? 'min-w-72 flex-1' : 'col-span-full w-full')}
         />
       </div>
     </div>
