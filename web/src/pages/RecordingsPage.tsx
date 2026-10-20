@@ -282,7 +282,7 @@ function SessionPlayers({ session, players, onChange }: SessionPlayersProps) {
           <tr>
             {hasResults && <Th>Pos</Th>}
             <Th>Nel gioco</Th>
-            <Th>Pilota</Th>
+            <Th className="text-right">Pilota</Th>
           </tr>
         </thead>
         <tbody>
@@ -292,7 +292,7 @@ function SessionPlayers({ session, players, onChange }: SessionPlayersProps) {
               <Td>
                 {p.name} <span className="text-sm text-muted">{p.team} #{p.raceNumber}</span>
               </Td>
-              <Td>
+              <Td className="text-right">
                 <select
                   aria-label={`Pilota di ${p.name}`}
                   className={cx(fieldSmClass, 'min-w-40', !p.playerId && 'text-muted')}
