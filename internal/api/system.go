@@ -170,6 +170,21 @@ func (s *Server) checkUpdate(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, http.StatusOK, s.updater.Status())
 }
 
+// installUpdate riavvia il server per installare la versione scaricata. La
+// risposta arriva prima del riavvio: il server si spegne subito dopo.
+func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) error {
+	switch err := s.updater.InstallNow(); {
+	case errors.Is(err, update.ErrNothingStaged):
+		return errorf(http.StatusConflict, "Non c'è una versione nuova da installare")
+	case errors.Is(err, update.ErrBusy):
+		return errorf(http.StatusConflict, "Si sta giocando: l'aggiornamento si installerà a fine serata")
+	case err != nil:
+		return err
+	}
+	w.WriteHeader(http.StatusAccepted)
+	return nil
+}
+
 // absPath restituisce il percorso assoluto, più utile da mostrare (o quello dato, se non si può).
 func absPath(path string) string {
 	if abs, err := filepath.Abs(path); err == nil {

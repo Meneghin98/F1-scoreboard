@@ -75,6 +75,7 @@ export const api = {
 
   system: () => request<SystemInfo>('/system'),
   checkUpdate: () => request<UpdateStatus>('/update/check', 'POST'),
+  installUpdate: () => request<void>('/update/install', 'POST'),
   backups: () => request<BackupInfo[]>('/backups'),
   settings: () => request<Settings>('/settings'),
   saveSettings: (settings: Settings) => request<SettingsSaved>('/settings', 'PUT', settings),

@@ -76,6 +76,7 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service, backups *backup.Ma
 	mux.Handle("GET /api/settings", s.handle(s.getSettings))
 	mux.Handle("PUT /api/settings", s.handle(s.saveSettings))
 	mux.Handle("POST /api/update/check", s.handle(s.checkUpdate))
+	mux.Handle("POST /api/update/install", s.handle(s.installUpdate))
 
 	mux.Handle("/api/", s.handle(func(w http.ResponseWriter, r *http.Request) error {
 		return errorf(http.StatusNotFound, "Endpoint non trovato")

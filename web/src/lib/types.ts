@@ -540,6 +540,7 @@ export interface UpdateStatus {
   staged: string; // versione scaricata, da installare
   checkedAt: string; // ultimo controllo riuscito (UTC), vuoto se nessuno
   error: string; // errore dell'ultimo controllo
+  installHour: number; // ora (locale) del riavvio notturno che installa la versione scaricata
 }
 
 // Backup automatico del database.

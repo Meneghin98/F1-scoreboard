@@ -28,6 +28,8 @@ const (
 	// permette 60 richieste all'ora senza autenticazione: ne usiamo pochissime.
 	firstCheck = 30 * time.Second
 	checkEvery = 6 * time.Hour
+	// Ogni quanto si guarda se è il momento di installare una versione scaricata.
+	installEvery = 5 * time.Minute
 	// Limiti alle dimensioni dei file scaricati, contro risposte sbagliate.
 	maxBinarySize = 200 << 20
 	maxSmallSize  = 1 << 20
@@ -54,34 +56,55 @@ type Status struct {
 	Staged    string `json:"staged"`    // versione scaricata e verificata, da installare
 	CheckedAt string `json:"checkedAt"` // ultimo controllo riuscito, UTC come datetime('now') di SQLite
 	Error     string `json:"error"`     // errore dell'ultimo controllo, vuoto se è andato bene
+	// Ora (locale) in cui il server si riavvia per installare una versione scaricata.
+	InstallHour int `json:"installHour"`
+}
+
+// Options configura gli aggiornamenti.
+type Options struct {
+	Exe     string // eseguibile da aggiornare
+	Enabled bool   // falso per non controllare e non scaricare nulla
+	// Ora del giorno (0-23, ora locale) in cui il server, se ha una versione
+	// scaricata e nessuno sta giocando, si riavvia per installarla.
+	InstallHour int
+	// Busy dice se si sta giocando: in quel caso il riavvio si rimanda.
+	Busy func() bool
 }
 
 // Updater controlla le release su GitHub e scarica le versioni nuove accanto
-// all'eseguibile, pronte da installare.
+// all'eseguibile, pronte da installare. Le installa main: allo spegnimento,
+// all'avvio o quando l'Updater chiede di riavviare (vedi RestartRequested).
 type Updater struct {
-	exe     string // eseguibile da aggiornare
-	enabled bool
-	api     string // URL dell'API della release più recente
-	key     string // chiave pubblica che verifica le firme
-	client  *http.Client
+	opts   Options
+	api    string // URL dell'API della release più recente
+	key    string // chiave pubblica che verifica le firme
+	client *http.Client
+
+	restart chan struct{} // riceve una richiesta di riavvio per installare
 
 	checkMu sync.Mutex // un controllo alla volta
 	mu      sync.Mutex // protegge status
 	status  Status
 }
 
-// New prepara l'aggiornamento dell'eseguibile exe. Con enabled falso (o in una
+// New prepara l'aggiornamento dell'eseguibile. Con Enabled falso (o in una
 // build di sviluppo) non controlla e non scarica nulla.
-func New(exe string, enabled bool) *Updater {
+func New(opts Options) *Updater {
+	opts.Enabled = opts.Enabled && version.Release()
+	if opts.Busy == nil {
+		opts.Busy = func() bool { return false }
+	}
 	u := &Updater{
-		exe:     exe,
-		enabled: enabled && version.Release(),
+		opts:    opts,
 		api:     "https://api.github.com/repos/" + repo + "/releases/latest",
 		key:     publicKey,
 		client:  &http.Client{Timeout: 10 * time.Minute},
+		restart: make(chan struct{}, 1),
 	}
-	u.status = Status{Enabled: u.enabled, Current: version.Number, Staged: Staged(exe)}
-	os.Remove(exe + downloadSuffix) // rimasto da un download interrotto
+	u.status = Status{
+		Enabled: opts.Enabled, Current: version.Number, Staged: Staged(opts.Exe), InstallHour: opts.InstallHour,
+	}
+	os.Remove(opts.Exe + downloadSuffix) // rimasto da un download interrotto
 	return u
 }
 
@@ -92,24 +115,62 @@ func (u *Updater) Status() Status {
 	return u.status
 }
 
-// Run controlla le release poco dopo l'avvio e poi ogni checkEvery, finché
-// ctx non viene annullato.
+// RestartRequested riceve un valore quando c'è una versione da installare e
+// il momento è adatto: main spegne il server, la installa e lo riavvia.
+func (u *Updater) RestartRequested() <-chan struct{} { return u.restart }
+
+// Errori di InstallNow.
+var (
+	ErrNothingStaged = errors.New("nessuna versione nuova da installare")
+	ErrBusy          = errors.New("si sta giocando: l'aggiornamento si installerà più tardi")
+)
+
+// InstallNow chiede di riavviare subito il server per installare la versione
+// scaricata, se non si sta giocando.
+func (u *Updater) InstallNow() error {
+	if u.Status().Staged == "" {
+		return ErrNothingStaged
+	}
+	if u.opts.Busy() {
+		return ErrBusy
+	}
+	u.requestRestart()
+	return nil
+}
+
+func (u *Updater) requestRestart() {
+	select {
+	case u.restart <- struct{}{}:
+	default: // già chiesto
+	}
+}
+
+// Run controlla le release poco dopo l'avvio e poi ogni checkEvery; ogni
+// installEvery, se c'è una versione scaricata, è l'ora dell'installazione e
+// nessuno sta giocando, chiede il riavvio. Termina quando ctx viene annullato.
 func (u *Updater) Run(ctx context.Context) {
-	if !u.enabled {
+	if !u.opts.Enabled {
 		return
 	}
-	timer := time.NewTimer(firstCheck)
-	defer timer.Stop()
+	check := time.NewTimer(firstCheck)
+	defer check.Stop()
+	install := time.NewTicker(installEvery)
+	defer install.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-timer.C:
+		case <-check.C:
+			if err := u.Check(ctx); err != nil && ctx.Err() == nil {
+				log.Printf("aggiornamento: %v", err)
+			}
+			check.Reset(checkEvery)
+		case now := <-install.C:
+			if u.Status().Staged != "" && now.Hour() == u.opts.InstallHour && !u.opts.Busy() {
+				log.Print("aggiornamento: riavvio notturno per installare la versione nuova")
+				u.requestRestart()
+			}
 		}
-		if err := u.Check(ctx); err != nil && ctx.Err() == nil {
-			log.Printf("aggiornamento: %v", err)
-		}
-		timer.Reset(checkEvery)
 	}
 }
 
@@ -125,7 +186,7 @@ type release struct {
 // Check guarda l'ultima release su GitHub e, se è più recente di quella in
 // esecuzione, la scarica e la verifica. L'esito finisce anche nello stato.
 func (u *Updater) Check(ctx context.Context) error {
-	if !u.enabled {
+	if !u.opts.Enabled {
 		return errors.New("aggiornamenti disattivati")
 	}
 	u.checkMu.Lock()
@@ -240,7 +301,7 @@ func (u *Updater) request(ctx context.Context, url string) (*http.Response, erro
 
 // download scarica l'eseguibile in exe.download controllandone lo SHA-256.
 func (u *Updater) download(ctx context.Context, url string, want []byte) (err error) {
-	path := u.exe + downloadSuffix
+	path := u.opts.Exe + downloadSuffix
 	defer func() {
 		if err != nil {
 			os.Remove(path)
@@ -276,10 +337,10 @@ func (u *Updater) download(ctx context.Context, url string, want []byte) (err er
 // stage rende il file scaricato la versione da installare. Il numero si scrive
 // prima del rename: un .new esiste solo dopo aver verificato tutto.
 func (u *Updater) stage(number string) error {
-	if err := os.WriteFile(u.exe+versionSuffix, []byte(number), 0o644); err != nil {
+	if err := os.WriteFile(u.opts.Exe+versionSuffix, []byte(number), 0o644); err != nil {
 		return err
 	}
-	return os.Rename(u.exe+downloadSuffix, u.exe+newSuffix)
+	return os.Rename(u.opts.Exe+downloadSuffix, u.opts.Exe+newSuffix)
 }
 
 // AssetName è il nome dell'eseguibile per un sistema nelle release, uguale a

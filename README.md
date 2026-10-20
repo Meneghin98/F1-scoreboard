@@ -68,6 +68,8 @@ Variabili d'ambiente opzionali:
 | `TELEMETRY_RECORD` | `true`               | `false` per non registrare le sessioni su file |
 | `BACKUP_DIR`       | `data/backups`       | Cartella dei backup automatici (accanto al database) |
 | `BACKUP_KEEP`      | `7`                  | Backup automatici da tenere, uno al giorno; `0` per non farne |
+| `UPDATE`           | `true`               | `false` per non scaricare e installare gli aggiornamenti |
+| `UPDATE_HOUR`      | `4`                  | Ora (0-23) del riavvio notturno che installa un aggiornamento scaricato |
 | `TZ`               | quello del sistema   | Fuso orario su Linux, es. `Europe/Rome` (vedi sotto) |
 
 Le date delle gare create dalle registrazioni e i nomi dei file usano l'**ora locale del server**.
@@ -119,6 +121,28 @@ nel secret `UPDATE_SIGNING_KEY` del repository (Settings → Secrets and variabl
 Per cambiarle si genera una nuova coppia con `go run ./cmd/release keygen`; i server già
 installati accettano solo la chiave vecchia, quindi la prima versione firmata con la nuova va
 installata a mano.
+
+### Aggiornamenti automatici
+
+Un server avviato da una release controlla l'ultima release su GitHub 30 secondi dopo l'avvio e
+poi ogni 6 ore (o subito, con "Controlla ora" nella pagina Sistema). Se è più recente scarica
+l'eseguibile per il suo sistema accanto a quello in uso (`f1-scoreboard.exe.new`), dopo aver
+verificato la firma dei checksum e lo SHA-256. Poi lo installa nel primo di questi momenti:
+
+- **allo spegnimento** (Ctrl+C, `systemctl stop`): la versione nuova parte al prossimo avvio;
+- **di notte**, all'ora `UPDATE_HOUR`: se nessuno sta giocando (nessuna sessione e nessun
+  pacchetto dal gioco negli ultimi 15 minuti) il server si spegne, installa e riparte da solo;
+- **all'avvio**, se una versione scaricata è rimasta da installare (server chiuso di colpo);
+- con **"Installa ora"** nella pagina Sistema, anche qui solo se nessuno sta giocando.
+
+Prima di installare il server fa un backup del database nella cartella dei backup automatici:
+la versione nuova potrebbe cambiarlo. La versione precedente resta accanto all'eseguibile
+(`f1-scoreboard.exe.old`): per tornare indietro si ferma il server, si rimette al suo posto e
+si ripristina il backup.
+
+Su Linux il riavvio sostituisce il processo (stesso PID, va bene anche sotto systemd). Su
+Windows parte un processo nuovo che scrive nella stessa console e si ferma con Ctrl+C come
+prima. La cartella dell'eseguibile deve essere scrivibile dall'utente che avvia il server.
 
 ## Telemetria di F1 25
 

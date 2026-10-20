@@ -90,6 +90,14 @@ func (m *Manager) daily(ctx context.Context, now time.Time) error {
 	if len(list) > 0 && now.Sub(list[0].created) < every {
 		return nil
 	}
+	return m.Create(ctx, now)
+}
+
+// Create fa subito un backup nella cartella dei backup automatici, con l'ora
+// now nel nome, poi elimina i più vecchi oltre keep (se i backup automatici
+// sono attivi). Se nello stesso minuto c'è già un backup non fa nulla: è
+// abbastanza recente. Si usa anche prima di installare un aggiornamento.
+func (m *Manager) Create(ctx context.Context, now time.Time) error {
 	if err := os.MkdirAll(m.dir, 0o755); err != nil {
 		return err
 	}
@@ -108,6 +116,9 @@ func (m *Manager) daily(ctx context.Context, now time.Time) error {
 		return err
 	}
 	log.Printf("backup: creato %s", path)
+	if m.keep <= 0 {
+		return nil
+	}
 	return m.prune()
 }
 

@@ -15,6 +15,9 @@ const RECORDING_BYTES_PER_HOUR = 2 * 1024 ** 2 * 60;
 // Sotto questi valori di spazio libero la barra cambia colore e compare un avviso.
 const DISK_WARNING_BYTES = 5 * 1024 ** 3;
 const DISK_CRITICAL_BYTES = 1024 ** 3;
+// Dopo "Installa ora" si chiede al server la versione ogni RESTART_POLL_MS, per al massimo un minuto.
+const RESTART_POLL_MS = 2000;
+const RESTART_POLLS = 30;
 
 // Pagina Sistema: backup del database, spazio su disco, conservazione delle
 // registrazioni, stato della telemetria e versione del programma.
@@ -323,10 +326,12 @@ function VersionCard({ version: v, update, onChanged }: {
 }
 
 // Aggiornamenti: il server controlla da solo le release su GitHub e scarica le
-// versioni nuove; da qui si può controllare subito.
+// versioni nuove; da qui si può controllare subito o installare con un riavvio.
 function UpdateSection({ update: u, onChanged }: { update: UpdateStatus; onChanged: () => Promise<void> }) {
   const { run, toast } = useToast();
+  const confirm = useConfirm();
   const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
   function check() {
     setChecking(true);
@@ -339,6 +344,31 @@ function UpdateSection({ update: u, onChanged }: { update: UpdateStatus; onChang
     }).finally(() => setChecking(false));
   }
 
+  async function install() {
+    const ok = await confirm({
+      title: `Installare la versione ${u.staged}?`,
+      message: 'Il server si riavvia: per qualche secondo le pagine aperte non si aggiornano, poi si ricollegano da sole.',
+      confirmLabel: 'Installa e riavvia',
+    });
+    if (!ok) return;
+    setInstalling(true);
+    void run(async () => {
+      await api.installUpdate();
+      toast('Riavvio in corso…');
+      // Si aspetta che risponda il server nuovo, poi si ricarica la pagina per
+      // prendere anche il frontend nuovo.
+      for (let i = 0; i < RESTART_POLLS; i++) {
+        await new Promise((resolve) => setTimeout(resolve, RESTART_POLL_MS));
+        const info = await api.system().catch(() => null);
+        if (info && info.version.number === u.staged) {
+          window.location.reload();
+          return;
+        }
+      }
+      throw new Error('Il server non ha ancora risposto con la versione nuova: controlla la sua console');
+    }).finally(() => setInstalling(false));
+  }
+
   return (
     <>
       <h3 className="mt-5 mb-2 text-xs font-bold tracking-wider text-muted uppercase">Aggiornamenti</h3>
@@ -346,7 +376,8 @@ function UpdateSection({ update: u, onChanged }: { update: UpdateStatus; onChang
         <>
           {u.staged ? (
             <p className="mb-2 rounded-md border border-accent/60 bg-accent/10 px-3 py-2 text-sm">
-              La versione {u.staged} è scaricata e verrà installata al prossimo riavvio del server.
+              La versione {u.staged} è scaricata: verrà installata allo spegnimento del server, oppure con un
+              riavvio alle {u.installHour}:00 se nessuno sta giocando.
             </p>
           ) : (
             u.latest && u.latest === u.current && <p className="mb-2 text-sm">Il programma è aggiornato.</p>
@@ -356,9 +387,16 @@ function UpdateSection({ update: u, onChanged }: { update: UpdateStatus; onChang
             <p className="text-sm text-muted">
               {u.checkedAt ? `Ultimo controllo: ${formatDateTime(u.checkedAt)}` : 'Non ancora controllato'}
             </p>
-            <Button variant="ghost" size="sm" disabled={checking} onClick={check}>
-              {checking ? 'Controllo…' : 'Controlla ora'}
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" disabled={checking || installing} onClick={check}>
+                {checking ? 'Controllo…' : 'Controlla ora'}
+              </Button>
+              {u.staged && (
+                <Button size="sm" disabled={checking || installing} onClick={() => void install()}>
+                  {installing ? 'Riavvio…' : 'Installa ora'}
+                </Button>
+              )}
+            </div>
           </div>
         </>
       ) : (

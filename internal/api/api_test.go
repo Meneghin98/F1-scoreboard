@@ -50,7 +50,7 @@ func newTestServerDir(t *testing.T) (*httptest.Server, *sql.DB, string) {
 	}
 	liveService := live.NewService(db, live.Options{Dir: filepath.Join(dir, "sessions")})
 	backups := backup.New(db, dbPath, filepath.Join(dir, "backups"), 7)
-	srv := httptest.NewServer(api.New(db, fstest.MapFS{}, liveService, backups, update.New(filepath.Join(dir, "f1-scoreboard"), false)))
+	srv := httptest.NewServer(api.New(db, fstest.MapFS{}, liveService, backups, update.New(update.Options{Exe: filepath.Join(dir, "f1-scoreboard")})))
 	// I cleanup girano in ordine inverso: prima il server, poi il DB, poi la cartella temporanea.
 	t.Cleanup(func() { db.Close() })
 	t.Cleanup(srv.Close)
