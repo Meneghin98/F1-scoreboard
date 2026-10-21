@@ -8,6 +8,52 @@ Segnapunti web per i tornei tra amici su F1 25.
 
 Il risultato della build è **un unico eseguibile** (~15 MB) che contiene server e frontend.
 
+## Installazione
+
+Non serve installare altro: basta scaricare l'eseguibile per il proprio sistema dall'ultima
+[release su GitHub](https://github.com/Meneghin98/F1-scoreboard/releases/latest), metterlo in
+una cartella sua e avviarlo.
+
+| Sistema                          | File                             |
+|----------------------------------|----------------------------------|
+| Windows                          | `f1-scoreboard-windows-amd64.exe` |
+| PC / thin client Linux           | `f1-scoreboard-linux-amd64`      |
+| Raspberry Pi (OS a 64 bit)       | `f1-scoreboard-linux-arm64`      |
+| Raspberry Pi (OS a 32 bit)       | `f1-scoreboard-linux-arm`        |
+
+Su Windows basta un doppio clic sul file: il server gira nella finestra della console che si
+apre e si ferma chiudendola o con Ctrl+C. Su Linux va prima reso eseguibile e poi avviato da
+terminale, dalla sua cartella (l'esempio è per il Raspberry Pi a 64 bit):
+
+```sh
+cd ~/f1-scoreboard                       # la cartella in cui si è messo il file
+chmod +x f1-scoreboard-linux-arm64       # solo la prima volta
+./f1-scoreboard-linux-arm64              # si ferma con Ctrl+C
+```
+
+Poi si apre `http://localhost:3000` (o `http://IP-DEL-SERVER:3000` dagli altri dispositivi) e
+nel gioco si imposta la telemetria come indicato nella pagina Live.
+
+A cosa stare attenti:
+
+- **Cartella**: i dati (`data/`) vengono creati nella cartella da cui si avvia il server, non
+  in quella dell'eseguibile: conviene avviarlo sempre dalla sua cartella. La cartella deve
+  essere scrivibile, anche per gli aggiornamenti automatici: su Windows niente `Program Files`.
+- **SmartScreen**: l'eseguibile non è firmato, quindi al primo avvio Windows può bloccarlo
+  ("Windows ha protetto il PC"): **Ulteriori informazioni → Esegui comunque**.
+- **Firewall**: al primo avvio Windows chiede se consentire l'accesso alla rete. Va consentito
+  sulle **reti private**, e la rete di casa deve essere impostata come privata: altrimenti né
+  il browser degli altri dispositivi (TCP 3000) né la telemetria del gioco (UDP 20777) arrivano
+  al server. Su Linux, se c'è un firewall attivo (`ufw`), vanno aperte le stesse porte.
+- **Indirizzo fisso**: la console o il PC con il gioco mandano la telemetria a un IP preciso;
+  se il server cambia IP va aggiornato anche nel gioco. Conviene riservargli un indirizzo dal
+  router.
+- **Fuso orario**: sul Raspberry Pi va impostato (vedi [Sviluppo](#sviluppo)), altrimenti date
+  delle gare e nomi delle registrazioni sono in UTC.
+
+Una volta installato il server si aggiorna da solo (vedi
+[Aggiornamenti automatici](#aggiornamenti-automatici)).
+
 ## Struttura
 
 ```
