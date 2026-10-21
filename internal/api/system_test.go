@@ -107,10 +107,10 @@ func TestSystemInfo(t *testing.T) {
 		} `json:"disk"`
 	}
 	expectStatus(t, call(t, srv, "GET", "/system", nil, &info), 200, "sistema")
-	if info.Database.Path != "test.db" || info.Database.SizeBytes == 0 {
+	if info.Database.Path != filepath.Join(filepath.Base(dir), "test.db") || info.Database.SizeBytes == 0 {
 		t.Errorf("database %+v", info.Database)
 	}
-	if info.Recordings.Dir != "sessions" || info.Recordings.Enabled || info.Recordings.Files != 0 {
+	if info.Recordings.Dir != filepath.Join(filepath.Base(dir), "sessions") || info.Recordings.Enabled || info.Recordings.Files != 0 {
 		t.Errorf("registrazioni %+v", info.Recordings)
 	}
 	if info.Backups.Keep != 7 || info.Backups.Count != 0 {

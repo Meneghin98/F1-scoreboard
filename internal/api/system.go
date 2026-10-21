@@ -205,7 +205,9 @@ func inside(path, dir string) bool {
 }
 
 // displayPath restituisce il percorso relativo alla cartella di installazione,
-// da mostrare al posto di quello assoluto. Se non si può (per esempio perché è
+// da mostrare al posto di quello assoluto. Comincia con il nome della cartella
+// di installazione (es. "F1-scoreboard\data\scoreboard.db"), anche se il file
+// sta fuori ("bin\..\data\scoreboard.db"). Se non si può (per esempio perché è
 // su un altro disco) resta assoluto.
 func displayPath(path string) string {
 	abs, err := filepath.Abs(path)
@@ -214,7 +216,11 @@ func displayPath(path string) string {
 	}
 	if dir := installDir(); dir != "" {
 		if rel, err := filepath.Rel(dir, abs); err == nil {
-			return rel
+			if rel == "." {
+				return filepath.Base(dir)
+			}
+			// Senza filepath.Join, che toglierebbe "bin\.." e con lui il nome della cartella.
+			return filepath.Base(dir) + string(filepath.Separator) + rel
 		}
 	}
 	return abs
