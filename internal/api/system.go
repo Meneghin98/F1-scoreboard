@@ -161,6 +161,12 @@ func (s *Server) getSystem(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, http.StatusOK, info)
 }
 
+// updateStatus restituisce solo lo stato degli aggiornamenti: la pagina lo
+// chiede spesso durante un download, e /api/system è più pesante.
+func (s *Server) updateStatus(w http.ResponseWriter, r *http.Request) error {
+	return writeJSON(w, http.StatusOK, s.updater.Status())
+}
+
 // checkUpdate controlla subito se c'è una versione nuova, senza scaricarla: se
 // c'è, la pagina chiede conferma e la scarica con downloadUpdate. Risponde con
 // lo stato aggiornato anche se il controllo fallisce: l'errore è dentro.

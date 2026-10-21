@@ -75,7 +75,9 @@ export const api = {
   replayTrack: (sessionId: number) => request<TrackMap>(`/telemetry/sessions/${sessionId}/replay/track`),
 
   system: () => request<SystemInfo>('/system'),
+  updateStatus: () => request<UpdateStatus>('/update'),
   checkUpdate: () => request<UpdateStatus>('/update/check', 'POST'),
+  downloadUpdate: () => request<UpdateStatus>('/update/download', 'POST'),
   installUpdate: () => request<void>('/update/install', 'POST'),
   backups: () => request<BackupInfo[]>('/backups'),
   settings: () => request<Settings>('/settings'),

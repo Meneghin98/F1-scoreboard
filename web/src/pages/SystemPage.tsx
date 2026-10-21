@@ -1,4 +1,4 @@
-import { Fragment, type FormEvent, type ReactNode, useState } from 'react';
+import { Fragment, type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { api, autoBackupUrl, backupUrl } from '../lib/api';
 import { useConfirm } from '../lib/confirm';
 import { formatBytes, formatDateTime } from '../lib/format';
@@ -18,6 +18,8 @@ const DISK_CRITICAL_BYTES = 1024 ** 3;
 // Dopo "Installa ora" si chiede al server la versione ogni RESTART_POLL_MS, per al massimo un minuto.
 const RESTART_POLL_MS = 2000;
 const RESTART_POLLS = 30;
+// Durante un controllo o un download lo stato degli aggiornamenti si rilegge ogni UPDATE_POLL_MS.
+const UPDATE_POLL_MS = 500;
 
 // Pagina Sistema: backup del database, spazio su disco, conservazione delle
 // registrazioni, stato della telemetria e versione del programma.
@@ -349,22 +351,76 @@ function VersionCard({ version: v, update, onChanged }: {
 }
 
 // Aggiornamenti: il server controlla da solo le release su GitHub e scarica le
-// versioni nuove; da qui si può controllare subito o installare con un riavvio.
-function UpdateSection({ update: u, onChanged }: { update: UpdateStatus; onChanged: () => Promise<void> }) {
+// versioni nuove; da qui si può controllare subito (e scaricare dopo una
+// conferma), seguire il download e installare con un riavvio.
+function UpdateSection({ update, onChanged }: { update: UpdateStatus; onChanged: () => Promise<void> }) {
   const { run, toast } = useToast();
   const confirm = useConfirm();
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
+  // Stato letto durante un'operazione, più recente di quello della pagina.
+  const [polled, setPolled] = useState<UpdateStatus | null>(null);
+  const u = polled ?? update;
+  const busy = checking || installing || u.phase !== '';
+
+  // Durante un controllo o un download (anche quelli automatici del server) si
+  // rilegge lo stato ogni UPDATE_POLL_MS; alla fine si ricarica la pagina.
+  const phase = u.phase;
+  useEffect(() => {
+    if (!phase) return;
+    let stopped = false;
+    const timer = window.setInterval(() => {
+      void api.updateStatus().then(async (next) => {
+        if (stopped) return;
+        if (next.phase !== '') {
+          setPolled(next);
+          return;
+        }
+        stopped = true;
+        if (phase === 'downloading') {
+          toast(next.error ? 'Download non riuscito' : `Versione ${next.staged} scaricata`);
+        }
+        setPolled(next);
+        await onChanged();
+        setPolled(null);
+      }).catch(() => {}); // server non raggiungibile: si riprova al giro dopo
+    }, UPDATE_POLL_MS);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [phase, toast, onChanged]);
 
   function check() {
     setChecking(true);
     void run(async () => {
       const next = await api.checkUpdate();
-      toast(next.error ? 'Controllo non riuscito'
-        : next.staged ? `Versione ${next.staged} scaricata`
-        : 'Nessuna versione nuova');
+      setPolled(next);
+      if (next.phase !== '') return; // c'era già un'operazione in corso: la si segue
+      if (next.error) toast('Controllo non riuscito');
+      else if (next.available) await download(next);
+      else toast(next.staged ? `La versione ${next.staged} è già scaricata` : 'Nessuna versione nuova');
       await onChanged();
+      setPolled(null);
     }).finally(() => setChecking(false));
+  }
+
+  // Chiede conferma e comincia il download: risponde subito, l'avanzamento
+  // arriva rileggendo lo stato.
+  async function download(s: UpdateStatus) {
+    const ok = await confirm({
+      title: `Scaricare la versione ${s.available}?`,
+      message: (
+        <>
+          {s.size > 0 && <>Il file è di {formatBytes(s.size)}. </>}
+          Il download continua anche se chiudi la pagina. La versione si installa allo spegnimento del server, alle{' '}
+          {s.installHour}:00 se nessuno sta giocando, oppure subito con "Installa ora".
+        </>
+      ),
+      confirmLabel: 'Scarica',
+    });
+    if (!ok) return;
+    await run(async () => setPolled(await api.downloadUpdate()));
   }
 
   async function install() {
@@ -397,7 +453,16 @@ function UpdateSection({ update: u, onChanged }: { update: UpdateStatus; onChang
       <h3 className="mt-5 mb-2 text-xs font-bold tracking-wider text-muted uppercase">Aggiornamenti</h3>
       {u.enabled ? (
         <>
-          {u.staged ? (
+          {u.phase === 'checking' ? (
+            <p className="mb-2 text-sm">Cerco nuove versioni…</p>
+          ) : u.phase === 'downloading' ? (
+            <DownloadProgress update={u} />
+          ) : u.available ? (
+            <p className="mb-2 rounded-md border border-accent/60 bg-accent/10 px-3 py-2 text-sm">
+              È disponibile la versione {u.available}
+              {u.size > 0 && <> ({formatBytes(u.size)})</>}, non ancora scaricata.
+            </p>
+          ) : u.staged ? (
             <p className="mb-2 rounded-md border border-accent/60 bg-accent/10 px-3 py-2 text-sm">
               La versione {u.staged} è scaricata: verrà installata allo spegnimento del server, oppure con un
               riavvio alle {u.installHour}:00 se nessuno sta giocando.
@@ -405,17 +470,20 @@ function UpdateSection({ update: u, onChanged }: { update: UpdateStatus; onChang
           ) : (
             u.latest && u.latest === u.current && <p className="mb-2 text-sm">Il programma è aggiornato.</p>
           )}
-          {u.error && <p className="mb-2 text-sm text-accent">Ultimo controllo non riuscito: {u.error}</p>}
+          {u.error && !u.phase && <p className="mb-2 text-sm text-accent">Non riuscito: {u.error}</p>}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-muted">
               {u.checkedAt ? `Ultimo controllo: ${formatDateTime(u.checkedAt)}` : 'Non ancora controllato'}
             </p>
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" disabled={checking || installing} onClick={check}>
-                {checking ? 'Controllo…' : 'Controlla ora'}
+              <Button variant="ghost" size="sm" disabled={busy} onClick={check}>
+                {checking || u.phase === 'checking' ? 'Controllo…' : 'Controlla ora'}
               </Button>
-              {u.staged && (
-                <Button size="sm" disabled={checking || installing} onClick={() => void install()}>
+              {u.available && !u.phase && (
+                <Button size="sm" disabled={busy} onClick={() => void download(u)}>Scarica</Button>
+              )}
+              {u.staged && !u.phase && (
+                <Button size="sm" disabled={busy} onClick={() => void install()}>
                   {installing ? 'Riavvio…' : 'Installa ora'}
                 </Button>
               )}
@@ -426,6 +494,27 @@ function UpdateSection({ update: u, onChanged }: { update: UpdateStatus; onChang
         <p className="text-sm text-muted">Disattivati: il server è avviato con <code>UPDATE=false</code>.</p>
       )}
     </>
+  );
+}
+
+// Avanzamento del download di una versione nuova. Se la dimensione non si sa
+// la barra resta vuota e si mostrano solo i byte scaricati.
+function DownloadProgress({ update: u }: { update: UpdateStatus }) {
+  const percent = u.size ? Math.min(100, (u.downloaded / u.size) * 100) : 0;
+  const colors = METER_LEVELS.ok;
+  return (
+    <div className="mb-3">
+      <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-4 text-sm">
+        <span>Scarico la versione {u.available}…</span>
+        <span className="text-muted">
+          {formatBytes(u.downloaded)}
+          {u.size > 0 && <> di {formatBytes(u.size)} · {Math.floor(percent)}%</>}
+        </span>
+      </div>
+      <div className="h-2 overflow-hidden rounded" style={{ background: colors.track }}>
+        <div className="h-full rounded transition-[width]" style={{ width: `${percent}%`, background: colors.fill }} />
+      </div>
+    </div>
   );
 }
 

@@ -542,7 +542,11 @@ export interface UpdateStatus {
   latest: string; // ultima release su GitHub, vuota se non ancora controllato
   staged: string; // versione scaricata, da installare
   checkedAt: string; // ultimo controllo riuscito (UTC), vuoto se nessuno
-  error: string; // errore dell'ultimo controllo
+  error: string; // errore dell'ultimo controllo o download
+  available: string; // versione nuova trovata e non ancora scaricata
+  phase: '' | 'checking' | 'downloading'; // operazione in corso, vuota se nessuna
+  size: number; // byte dell'eseguibile da scaricare, 0 se non si sa
+  downloaded: number; // byte già scaricati durante un download
   installHour: number; // ora (locale) del riavvio notturno che installa la versione scaricata
 }
 
