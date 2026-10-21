@@ -55,9 +55,28 @@ type Status struct {
 	Latest    string `json:"latest"`    // ultima release su GitHub, vuota se non ancora controllato
 	Staged    string `json:"staged"`    // versione scaricata e verificata, da installare
 	CheckedAt string `json:"checkedAt"` // ultimo controllo riuscito, UTC come datetime('now') di SQLite
-	Error     string `json:"error"`     // errore dell'ultimo controllo, vuoto se è andato bene
+	Error     string `json:"error"`     // errore dell'ultimo controllo o download, vuoto se è andato bene
+	// Versione nuova trovata e non ancora scaricata: dopo un controllo manuale si
+	// scarica con StartDownload, dopo la conferma nella pagina Sistema.
+	Available  string `json:"available"`
+	Phase      string `json:"phase"`      // operazione in corso (Phase...), vuota se nessuna
+	Size       int64  `json:"size"`       // byte dell'eseguibile da scaricare, 0 se non si sa
+	Downloaded int64  `json:"downloaded"` // byte già scaricati durante un download
 	// Ora (locale) in cui il server si riavvia per installare una versione scaricata.
 	InstallHour int `json:"installHour"`
+}
+
+// Valori di Status.Phase.
+const (
+	PhaseChecking    = "checking"    // lettura dell'ultima release su GitHub
+	PhaseDownloading = "downloading" // download e verifica della versione nuova
+)
+
+// pending è una versione nuova trovata da un controllo, con i file da scaricare.
+type pending struct {
+	number string
+	tag    string
+	urls   map[string]string // nome del file → URL
 }
 
 // Options configura gli aggiornamenti.
@@ -82,9 +101,10 @@ type Updater struct {
 
 	restart chan struct{} // riceve una richiesta di riavvio per installare
 
-	checkMu sync.Mutex // un controllo alla volta
-	mu      sync.Mutex // protegge status
+	busy    sync.Mutex // un controllo o un download alla volta
+	mu      sync.Mutex // protegge status e pending
 	status  Status
+	pending *pending // versione nuova trovata e non ancora scaricata
 }
 
 // New prepara l'aggiornamento dell'eseguibile. Con Enabled falso (o in una
@@ -119,10 +139,13 @@ func (u *Updater) Status() Status {
 // il momento è adatto: main spegne il server, la installa e lo riavvia.
 func (u *Updater) RestartRequested() <-chan struct{} { return u.restart }
 
-// Errori di InstallNow.
+// Errori di Check, StartDownload e InstallNow.
 var (
-	ErrNothingStaged = errors.New("nessuna versione nuova da installare")
-	ErrBusy          = errors.New("si sta giocando: l'aggiornamento si installerà più tardi")
+	ErrDisabled         = errors.New("aggiornamenti disattivati")
+	ErrInProgress       = errors.New("è già in corso un controllo o un download")
+	ErrNothingAvailable = errors.New("nessuna versione nuova da scaricare")
+	ErrNothingStaged    = errors.New("nessuna versione nuova da installare")
+	ErrBusy             = errors.New("si sta giocando: l'aggiornamento si installerà più tardi")
 )
 
 // InstallNow chiede di riavviare subito il server per installare la versione
@@ -161,7 +184,7 @@ func (u *Updater) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-check.C:
-			if err := u.Check(ctx); err != nil && ctx.Err() == nil {
+			if err := u.CheckAndDownload(ctx); err != nil && ctx.Err() == nil && err != ErrInProgress {
 				log.Printf("aggiornamento: %v", err)
 			}
 			check.Reset(checkEvery)
@@ -180,31 +203,88 @@ type release struct {
 	Assets  []struct {
 		Name string `json:"name"`
 		URL  string `json:"browser_download_url"`
+		Size int64  `json:"size"`
 	} `json:"assets"`
 }
 
-// Check guarda l'ultima release su GitHub e, se è più recente di quella in
-// esecuzione, la scarica e la verifica. L'esito finisce anche nello stato.
+// Check guarda l'ultima release su GitHub senza scaricarla: se è più recente
+// di quella in esecuzione finisce in Status.Available, da scaricare con
+// StartDownload. L'esito finisce anche nello stato.
 func (u *Updater) Check(ctx context.Context) error {
 	if !u.opts.Enabled {
-		return errors.New("aggiornamenti disattivati")
+		return ErrDisabled
 	}
-	u.checkMu.Lock()
-	defer u.checkMu.Unlock()
+	if !u.busy.TryLock() {
+		return ErrInProgress
+	}
+	defer u.busy.Unlock()
+	return u.done(u.find(ctx))
+}
 
-	err := u.check(ctx)
+// CheckAndDownload guarda l'ultima release su GitHub e, se è più recente di
+// quella in esecuzione, la scarica e la verifica. È il controllo automatico.
+func (u *Updater) CheckAndDownload(ctx context.Context) error {
+	if !u.opts.Enabled {
+		return ErrDisabled
+	}
+	if !u.busy.TryLock() {
+		return ErrInProgress
+	}
+	defer u.busy.Unlock()
+	err := u.find(ctx)
+	if err == nil && u.Status().Available != "" {
+		err = u.fetch(ctx)
+	}
+	return u.done(err)
+}
+
+// StartDownload comincia a scaricare la versione trovata da Check e torna
+// subito: l'avanzamento si segue con Status. Il download si interrompe solo
+// se ctx viene annullato.
+func (u *Updater) StartDownload(ctx context.Context) error {
+	if !u.opts.Enabled {
+		return ErrDisabled
+	}
+	if !u.busy.TryLock() {
+		return ErrInProgress
+	}
+	if u.Status().Available == "" {
+		u.busy.Unlock()
+		return ErrNothingAvailable
+	}
+	// La fase si imposta subito, così chi legge lo stato vede il download partito.
+	u.setPhase(PhaseDownloading)
+	go func() {
+		defer u.busy.Unlock()
+		if err := u.done(u.fetch(ctx)); err != nil && ctx.Err() == nil {
+			log.Printf("aggiornamento: %v", err)
+		}
+	}()
+	return nil
+}
+
+func (u *Updater) setPhase(phase string) {
+	u.mu.Lock()
+	u.status.Phase = phase
+	u.mu.Unlock()
+}
+
+// done chiude l'operazione in corso registrandone l'esito nello stato.
+func (u *Updater) done(err error) error {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	u.status.Phase = ""
+	u.status.Downloaded = 0
+	u.status.Error = ""
 	if err != nil {
 		u.status.Error = err.Error()
-	} else {
-		u.status.Error = ""
-		u.status.CheckedAt = time.Now().UTC().Format(time.DateTime)
 	}
 	return err
 }
 
-func (u *Updater) check(ctx context.Context) error {
+// find legge l'ultima release e, se è da scaricare, la ricorda in u.pending.
+func (u *Updater) find(ctx context.Context) error {
+	u.setPhase(PhaseChecking)
 	var rel release
 	body, err := u.get(ctx, u.api, maxSmallSize)
 	if err != nil {
@@ -216,30 +296,55 @@ func (u *Updater) check(ctx context.Context) error {
 	latest := strings.TrimPrefix(rel.TagName, "v")
 	u.mu.Lock()
 	u.status.Latest = latest
+	u.status.Available, u.status.Size, u.pending = "", 0, nil
 	staged := u.status.Staged
 	u.mu.Unlock()
-	if !version.Newer(latest) || staged == latest {
-		return nil
-	}
 
-	urls := map[string]string{}
-	for _, a := range rel.Assets {
-		urls[a.Name] = a.URL
-	}
-	name := AssetName(runtime.GOOS, runtime.GOARCH)
-	for _, n := range []string{name, ChecksumsName, SignatureName} {
-		if urls[n] == "" {
-			return fmt.Errorf("nella release %s manca il file %s", rel.TagName, n)
+	var p *pending
+	var size int64
+	if version.Newer(latest) && staged != latest {
+		p = &pending{number: latest, tag: rel.TagName, urls: map[string]string{}}
+		name := AssetName(runtime.GOOS, runtime.GOARCH)
+		for _, a := range rel.Assets {
+			p.urls[a.Name] = a.URL
+			if a.Name == name {
+				size = a.Size
+			}
 		}
+		for _, n := range []string{name, ChecksumsName, SignatureName} {
+			if p.urls[n] == "" {
+				return fmt.Errorf("nella release %s manca il file %s", rel.TagName, n)
+			}
+		}
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.pending = p
+	if p != nil {
+		u.status.Available, u.status.Size = latest, size
+	}
+	u.status.CheckedAt = time.Now().UTC().Format(time.DateTime)
+	return nil
+}
+
+// fetch scarica e verifica la versione in u.pending, e la rende quella da installare.
+func (u *Updater) fetch(ctx context.Context) error {
+	u.mu.Lock()
+	p := u.pending
+	u.status.Phase, u.status.Downloaded = PhaseDownloading, 0
+	u.mu.Unlock()
+	if p == nil {
+		return ErrNothingAvailable
 	}
 
 	// Prima la firma dei checksum, poi il checksum dell'eseguibile: così un
 	// file modificato o corrotto non viene mai installato.
-	sums, err := u.get(ctx, urls[ChecksumsName], maxSmallSize)
+	name := AssetName(runtime.GOOS, runtime.GOARCH)
+	sums, err := u.get(ctx, p.urls[ChecksumsName], maxSmallSize)
 	if err != nil {
 		return fmt.Errorf("download dei checksum: %w", err)
 	}
-	sig, err := u.get(ctx, urls[SignatureName], maxSmallSize)
+	sig, err := u.get(ctx, p.urls[SignatureName], maxSmallSize)
 	if err != nil {
 		return fmt.Errorf("download della firma: %w", err)
 	}
@@ -250,16 +355,19 @@ func (u *Updater) check(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := u.download(ctx, urls[name], want); err != nil {
+	if err := u.download(ctx, p.urls[name], want); err != nil {
 		return fmt.Errorf("download di %s: %w", name, err)
 	}
-	if err := u.stage(latest); err != nil {
+	if err := u.stage(p.number); err != nil {
 		return err
 	}
 	u.mu.Lock()
-	u.status.Staged = latest
+	u.status.Staged = p.number
+	if u.pending == p {
+		u.status.Available, u.status.Size, u.pending = "", 0, nil
+	}
 	u.mu.Unlock()
-	log.Printf("aggiornamento: scaricata la versione %s, verrà installata al prossimo riavvio", latest)
+	log.Printf("aggiornamento: scaricata la versione %s, verrà installata al prossimo riavvio", p.number)
 	return nil
 }
 
@@ -312,13 +420,18 @@ func (u *Updater) download(ctx context.Context, url string, want []byte) (err er
 		return err
 	}
 	defer res.Body.Close()
+	if res.ContentLength > 0 {
+		u.mu.Lock()
+		u.status.Size = res.ContentLength
+		u.mu.Unlock()
+	}
 	// 0o755: su Linux il file deve essere eseguibile (su Windows non conta).
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
 	if err != nil {
 		return err
 	}
 	hash := sha256.New()
-	n, err := io.Copy(io.MultiWriter(f, hash), io.LimitReader(res.Body, maxBinarySize+1))
+	n, err := io.Copy(io.MultiWriter(f, hash, progress{u}), io.LimitReader(res.Body, maxBinarySize+1))
 	if closeErr := f.Close(); err == nil {
 		err = closeErr
 	}
@@ -332,6 +445,16 @@ func (u *Updater) download(ctx context.Context, url string, want []byte) (err er
 		return errors.New("il checksum non corrisponde")
 	}
 	return nil
+}
+
+// progress conta nello stato i byte scaricati, per mostrare l'avanzamento.
+type progress struct{ u *Updater }
+
+func (p progress) Write(b []byte) (int, error) {
+	p.u.mu.Lock()
+	p.u.status.Downloaded += int64(len(b))
+	p.u.mu.Unlock()
+	return len(b), nil
 }
 
 // stage rende il file scaricato la versione da installare. Il numero si scrive

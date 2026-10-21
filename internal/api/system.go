@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -160,14 +161,34 @@ func (s *Server) getSystem(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, http.StatusOK, info)
 }
 
-// checkUpdate controlla subito se c'è una versione nuova e, se c'è, la scarica.
-// Risponde con lo stato aggiornato anche se il controllo fallisce: l'errore è dentro.
+// checkUpdate controlla subito se c'è una versione nuova, senza scaricarla: se
+// c'è, la pagina chiede conferma e la scarica con downloadUpdate. Risponde con
+// lo stato aggiornato anche se il controllo fallisce: l'errore è dentro.
 func (s *Server) checkUpdate(w http.ResponseWriter, r *http.Request) error {
 	if !s.updater.Status().Enabled {
 		return errorf(http.StatusConflict, "Gli aggiornamenti automatici sono disattivati")
 	}
+	// Con un controllo o un download già in corso non si fa nulla: la pagina
+	// ne segue l'avanzamento nello stato.
 	s.updater.Check(r.Context())
 	return writeJSON(w, http.StatusOK, s.updater.Status())
+}
+
+// downloadUpdate comincia a scaricare la versione trovata dall'ultimo
+// controllo e risponde subito: la pagina segue l'avanzamento nello stato. Il
+// download continua anche se la pagina viene chiusa.
+func (s *Server) downloadUpdate(w http.ResponseWriter, r *http.Request) error {
+	switch err := s.updater.StartDownload(context.WithoutCancel(r.Context())); {
+	case errors.Is(err, update.ErrDisabled):
+		return errorf(http.StatusConflict, "Gli aggiornamenti automatici sono disattivati")
+	case errors.Is(err, update.ErrNothingAvailable):
+		return errorf(http.StatusConflict, "Non c'è una versione nuova da scaricare: controlla di nuovo")
+	case errors.Is(err, update.ErrInProgress):
+		return errorf(http.StatusConflict, "È già in corso un controllo o un download")
+	case err != nil:
+		return err
+	}
+	return writeJSON(w, http.StatusAccepted, s.updater.Status())
 }
 
 // installUpdate riavvia il server per installare la versione scaricata. La
