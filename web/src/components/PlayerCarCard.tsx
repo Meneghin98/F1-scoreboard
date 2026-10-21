@@ -266,8 +266,7 @@ function damageList({ damage: d }: PlayerCar): [string, number][] {
 function RestrictedNote({ controller }: { controller: number }) {
   return (
     <p className="text-sm text-muted">
-      In split-screen il gioco non invia carburante, ERS, usura delle gomme, danni e assetto del secondo giocatore
-      {controller === 1 ? ': per confrontare le auto alla pari non si mostrano nemmeno per il primo.' : '.'}
+      {controller === 1 ? 'Dati nascosti come per P2.' : 'Dati non inviati dal gioco in split-screen.'}
     </p>
   );
 }
