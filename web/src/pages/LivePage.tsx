@@ -56,7 +56,7 @@ export function LivePage() {
         </p>
       )}
       {live.drivers.length ? (
-        <LiveBoard session={live.session} drivers={live.drivers} players={live.players} events={live.events} finished={live.finished} pedals={pedals} />
+        <LiveBoard session={live.session} drivers={live.drivers} players={live.players} events={live.events} finished={live.finished} pedals={pedals} sameData />
       ) : (
         <Empty>In attesa dei dati dei piloti…</Empty>
       )}
@@ -123,12 +123,24 @@ interface LiveBoardProps {
   loadMap?: () => Promise<TrackMap>;
   mapPoints?: number; // punti della pianta, se diversi da quelli della sessione
   finished: boolean; // classifica finale arrivata
+  // Le schede delle auto mostrano gli stessi dati per tutti i giocatori: quelli che il
+  // gioco non invia per il giocatore 2 in split-screen si nascondono anche al giocatore 1.
+  sameData?: boolean;
+}
+
+// Toglie a ogni auto i dati riservati se almeno una li ha nascosti dal gioco.
+function equalizePlayers(players: PlayerCar[]): PlayerCar[] {
+  if (!players.some((car) => car.restricted)) return players;
+  return players.map((car) => (car.restricted ? car : { ...car, restricted: true, tyreSets: [], setup: null }));
 }
 
 // Classifica ridotta a sinistra di mappa e auto dei giocatori; estesa mostra
 // tutti i dati e nasconde mappa e auto, lasciando duello e direzione gara. È
 // usata anche dal replay, che passa la sua pianta (loadMap) e il suo storico dei pedali.
-export function LiveBoard({ session, drivers, players, events, finished, pedals, loadMap, mapPoints }: LiveBoardProps) {
+export function LiveBoard({ session, drivers, players, events, finished, pedals, loadMap, mapPoints, sameData }: LiveBoardProps) {
+  const cars = sameData ? equalizePlayers(players) : players;
+  // Il gioco calcola il rientro dai box solo per il giocatore 1: con sameData non si mostra se c'è anche il 2.
+  const showPitRejoin = session.isRace && !finished && !(sameData && cars.some((car) => car.restricted));
   const [expanded, setExpanded] = useState(false);
   // Mappa standard o grande quanto tutto lo spazio a disposizione: si cambia cliccandola, e la scelta si ricorda.
   const [bigMap, setBigMap] = useState(() => localStorage.getItem('bigTrackMap') === '1');
@@ -202,14 +214,13 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
               expanded && 'hidden',
             )}
           >
-            {players.map((car) => (
+            {cars.map((car) => (
               <PlayerCarCard
                 key={car.controller}
                 car={car}
                 playerName={drivers.find((d) => d.carIndex === car.carIndex)?.playerName}
                 pedals={pedals.filter((p) => p.controller === car.controller)}
-                // Il gioco calcola il rientro dai box solo per il giocatore principale.
-                pitRejoin={session.isRace && !finished && car.controller === 1 ? session.pitRejoin : 0}
+                pitRejoin={showPitRejoin && car.controller === 1 ? session.pitRejoin : 0}
                 className="mb-0"
               />
             ))}

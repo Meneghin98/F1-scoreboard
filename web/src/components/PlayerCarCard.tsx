@@ -78,7 +78,7 @@ function Summary({ car, pitRejoin }: { car: PlayerCar; pitRejoin: number }) {
     return (
       <>
         <SpeedGear car={car} />
-        <RestrictedNote />
+        <RestrictedNote controller={car.controller} />
       </>
     );
   }
@@ -131,7 +131,7 @@ function Details({ car, pedals, pitRejoin }: { car: PlayerCar; pedals: PedalSamp
         </Section>
   
         {car.restricted ? (
-          <RestrictedNote />
+          <RestrictedNote controller={car.controller} />
         ) : (
           <Section title="Carburante ed ERS">
             <Bar label="Batteria ERS" value={`${Math.round(car.ersPercent)}%`} ratio={car.ersPercent / 100} color="bg-sprint" />
@@ -261,11 +261,13 @@ function damageList({ damage: d }: PlayerCar): [string, number][] {
   ];
 }
 
-// Al posto dei dati che il gioco non invia per il giocatore 2 in split-screen.
-function RestrictedNote() {
+// Al posto dei dati che il gioco non invia per il giocatore 2 in split-screen. Al
+// giocatore 1 la pagina live li nasconde per mostrare gli stessi dati nelle due schede.
+function RestrictedNote({ controller }: { controller: number }) {
   return (
     <p className="text-sm text-muted">
-      In split-screen il gioco non invia carburante, ERS, usura delle gomme, danni e assetto del secondo giocatore.
+      In split-screen il gioco non invia carburante, ERS, usura delle gomme, danni e assetto del secondo giocatore
+      {controller === 1 ? ': per confrontare le auto alla pari non si mostrano nemmeno per il primo.' : '.'}
     </p>
   );
 }
