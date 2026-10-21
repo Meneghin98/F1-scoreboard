@@ -305,7 +305,7 @@ function VersionCard({ version: v, update, onChanged }: {
         <dd>{v.number || <span className="text-muted">build di sviluppo</span>}</dd>
         {built && (
           <>
-            <dt className="text-muted">Data del commit</dt>
+            <dt className="text-muted">Data della build</dt>
             <dd>{built}</dd>
           </>
         )}

@@ -88,7 +88,7 @@ cd web && npm run dev    # frontend con hot reload su http://localhost:5173 (ino
 ```
 
 `go run` non scrive nell'eseguibile le informazioni di Git, quindi in Sistema → Versione la data
-del commit non compare. Per vederla si avvia il server con `go run -buildvcs=true .` (oppure una
+della build non compare. Per vederla si avvia il server con `go run -buildvcs=true .` (oppure una
 volta per tutte `go env -w GOFLAGS=-buildvcs=true`, che vale per tutti i progetti Go del PC). Il
 numero di versione resta comunque vuoto: è una build di sviluppo e non si aggiorna da sola.
 
