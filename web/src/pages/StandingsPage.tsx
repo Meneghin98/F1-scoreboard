@@ -83,6 +83,7 @@ const stickyClass = 'sticky z-10 bg-surface group-hover:bg-surface-2';
 // quando la tabella cambia dimensione.
 function useStickyColumns(left: number, right: number, deps: unknown) {
   const ref = useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: deps (i dati) rifà partire l'effetto quando la tabella compare: al primo render non c'è ancora.
   useLayoutEffect(() => {
     const table = ref.current?.querySelector('table');
     if (!table) return;
