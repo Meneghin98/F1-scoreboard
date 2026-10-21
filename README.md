@@ -87,8 +87,8 @@ go run .                 # API su http://localhost:3000
 cd web && npm run dev    # frontend con hot reload su http://localhost:5173 (inoltra /api al server Go)
 ```
 
-`go run` non scrive nell'eseguibile le informazioni di Git, quindi in Sistema → Versione commit e
-data restano sconosciuti. Per vederli si avvia il server con `go run -buildvcs=true .` (oppure una
+`go run` non scrive nell'eseguibile le informazioni di Git, quindi in Sistema → Versione la data
+del commit non compare. Per vederla si avvia il server con `go run -buildvcs=true .` (oppure una
 volta per tutte `go env -w GOFLAGS=-buildvcs=true`, che vale per tutti i progetti Go del PC). Il
 numero di versione resta comunque vuoto: è una build di sviluppo e non si aggiorna da sola.
 
@@ -384,7 +384,7 @@ questa funzione vengono rilette una volta all'avvio del server.
 ## Backup e spazio su disco
 
 La pagina **Sistema** raccoglie backup, spazio su disco, conservazione delle registrazioni, stato
-della telemetria e versione del programma (il commit da cui è stato compilato).
+della telemetria e versione del programma.
 
 - **Scarica backup** copia il database in quel momento (`VACUUM INTO`, una fotografia coerente
   anche mentre il server lavora) e lo scarica come `f1-scoreboard_AAAA-MM-GG_hh-mm.db`.

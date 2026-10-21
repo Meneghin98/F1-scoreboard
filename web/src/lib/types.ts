@@ -520,10 +520,7 @@ export interface PlayerProfile {
 export interface SystemInfo {
   version: {
     number: string; // versione semver (es. "1.0.0"), vuota nelle build di sviluppo
-    revision: string; // commit Git, vuoto se compilato senza Git
-    time: string; // data del commit, RFC 3339
-    modified: boolean; // compilato con modifiche non committate
-    go: string;
+    time: string; // data del commit, RFC 3339, vuota se compilato senza Git (o con go run)
   };
   update: UpdateStatus;
   database: { path: string; sizeBytes: number };

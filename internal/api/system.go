@@ -93,13 +93,10 @@ type SystemInfo struct {
 	Disk *disk.Usage `json:"disk"` // disco della cartella del database, nil se non si sa
 }
 
-// Version identifica l'eseguibile: il numero di versione e il commit da cui è stato compilato.
+// Version identifica l'eseguibile: il numero di versione e la data del commit da cui è stato compilato.
 type Version struct {
-	Number   string `json:"number"`   // versione semver (es. "1.0.0"), vuota nelle build di sviluppo
-	Revision string `json:"revision"` // commit Git, vuoto se compilato senza Git (o con go run)
-	Time     string `json:"time"`     // data del commit, RFC 3339
-	Modified bool   `json:"modified"` // compilato con modifiche non committate
-	Go       string `json:"go"`       // versione di Go
+	Number string `json:"number"` // versione semver (es. "1.0.0"), vuota nelle build di sviluppo
+	Time   string `json:"time"`   // data del commit, RFC 3339, vuota se compilato senza Git (o con go run)
 }
 
 // buildVersion legge una volta sola le informazioni che go build scrive nell'eseguibile.
@@ -109,15 +106,9 @@ var buildVersion = sync.OnceValue(func() Version {
 	if !ok {
 		return v
 	}
-	v.Go = info.GoVersion
 	for _, s := range info.Settings {
-		switch s.Key {
-		case "vcs.revision":
-			v.Revision = s.Value
-		case "vcs.time":
+		if s.Key == "vcs.time" {
 			v.Time = s.Value
-		case "vcs.modified":
-			v.Modified = s.Value == "true"
 		}
 	}
 	return v

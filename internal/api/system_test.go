@@ -85,9 +85,6 @@ func TestAutomaticBackups(t *testing.T) {
 func TestSystemInfo(t *testing.T) {
 	srv, _, dir := newTestServerDir(t)
 	var info struct {
-		Version struct {
-			Go string `json:"go"`
-		} `json:"version"`
 		Database struct {
 			Path      string `json:"path"`
 			SizeBytes int    `json:"sizeBytes"`
@@ -113,8 +110,8 @@ func TestSystemInfo(t *testing.T) {
 	if info.Recordings.Dir != filepath.Join(dir, "sessions") || info.Recordings.Enabled || info.Recordings.Files != 0 {
 		t.Errorf("registrazioni %+v", info.Recordings)
 	}
-	if info.Backups.Keep != 7 || info.Backups.Count != 0 || info.Version.Go == "" {
-		t.Errorf("backup %+v, versione %+v", info.Backups, info.Version)
+	if info.Backups.Keep != 7 || info.Backups.Count != 0 {
+		t.Errorf("backup %+v", info.Backups)
 	}
 	if info.Disk == nil || info.Disk.FreeBytes <= 0 || info.Disk.TotalBytes < info.Disk.FreeBytes {
 		t.Errorf("disco %+v", info.Disk)

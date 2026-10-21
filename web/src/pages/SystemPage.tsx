@@ -300,26 +300,16 @@ function VersionCard({ version: v, update, onChanged }: {
   return (
     <Card className="mb-0">
       <h2 className="mb-3 font-bold">Versione</h2>
-      {v.revision ? (
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
-          <dt className="text-muted">Versione</dt>
-          <dd>{v.number || <span className="text-muted">build di sviluppo, non si aggiorna da sola</span>}</dd>
-          <dt className="text-muted">Commit</dt>
-          <dd>
-            <code>{v.revision.slice(0, 12)}</code>
-            {v.modified && <span className="ml-2 text-muted">con modifiche non committate</span>}
-          </dd>
-          <dt className="text-muted">Data del commit</dt>
-          <dd>{built}</dd>
-          <dt className="text-muted">Go</dt>
-          <dd>{v.go}</dd>
-        </dl>
-      ) : (
-        <p className="text-sm text-muted">
-          Sconosciuta: l'eseguibile è stato compilato senza le informazioni di Git (per esempio con <code>go run</code>).
-          {v.go && ` Go ${v.go}.`}
-        </p>
-      )}
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-2 text-sm">
+        <dt className="text-muted">Versione</dt>
+        <dd>{v.number || <span className="text-muted">build di sviluppo</span>}</dd>
+        {built && (
+          <>
+            <dt className="text-muted">Data del commit</dt>
+            <dd>{built}</dd>
+          </>
+        )}
+      </dl>
       {update.current && <UpdateSection update={update} onChanged={onChanged} />}
     </Card>
   );
