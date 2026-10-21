@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -177,7 +178,9 @@ func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) error {
 }
 
 // installDir è la cartella di installazione, quella dell'eseguibile; vuota se
-// non si sa. È una variabile per poterla cambiare nei test.
+// non si sa. Con go run l'eseguibile sta in una cartella temporanea: lì si usa
+// la cartella da cui è stato avviato il server, cioè quella del progetto.
+// È una variabile per poterla cambiare nei test.
 var installDir = sync.OnceValue(func() string {
 	exe, err := os.Executable()
 	if err != nil {
@@ -186,8 +189,20 @@ var installDir = sync.OnceValue(func() string {
 	if real, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = real
 	}
-	return filepath.Dir(exe)
+	dir := filepath.Dir(exe)
+	if inside(dir, os.TempDir()) {
+		if wd, err := os.Getwd(); err == nil {
+			return wd
+		}
+	}
+	return dir
 })
+
+// inside dice se path è dentro la cartella dir.
+func inside(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
 
 // displayPath restituisce il percorso relativo alla cartella di installazione,
 // da mostrare al posto di quello assoluto. Se non si può (per esempio perché è
