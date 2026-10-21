@@ -118,7 +118,7 @@ var buildVersion = sync.OnceValue(func() Version {
 func (s *Server) getSystem(w http.ResponseWriter, r *http.Request) error {
 	info := SystemInfo{Version: buildVersion(), Update: s.updater.Status()}
 	dbPath := s.backups.DBPath()
-	info.Database.Path = absPath(dbPath)
+	info.Database.Path = displayPath(dbPath)
 	for _, path := range []string{dbPath, dbPath + "-wal"} {
 		if st, err := os.Stat(path); err == nil {
 			info.Database.SizeBytes += st.Size()
@@ -126,14 +126,14 @@ func (s *Server) getSystem(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	opts := s.live.Options()
-	info.Recordings.Dir, info.Recordings.Enabled = absPath(opts.Dir), opts.Record
+	info.Recordings.Dir, info.Recordings.Enabled = displayPath(opts.Dir), opts.Record
 	files, size, err := s.live.RecordingsUsage()
 	if err != nil {
 		return err
 	}
 	info.Recordings.Files, info.Recordings.SizeBytes = files, size
 
-	info.Backups.Dir, info.Backups.Keep = absPath(s.backups.Dir()), s.backups.Keep()
+	info.Backups.Dir, info.Backups.Keep = displayPath(s.backups.Dir()), s.backups.Keep()
 	list, err := s.backups.List()
 	if err != nil {
 		return err
@@ -176,12 +176,33 @@ func (s *Server) installUpdate(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-// absPath restituisce il percorso assoluto, più utile da mostrare (o quello dato, se non si può).
-func absPath(path string) string {
-	if abs, err := filepath.Abs(path); err == nil {
-		return abs
+// installDir è la cartella di installazione, quella dell'eseguibile; vuota se
+// non si sa. È una variabile per poterla cambiare nei test.
+var installDir = sync.OnceValue(func() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
 	}
-	return path
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = real
+	}
+	return filepath.Dir(exe)
+})
+
+// displayPath restituisce il percorso relativo alla cartella di installazione,
+// da mostrare al posto di quello assoluto. Se non si può (per esempio perché è
+// su un altro disco) resta assoluto.
+func displayPath(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	if dir := installDir(); dir != "" {
+		if rel, err := filepath.Rel(dir, abs); err == nil {
+			return rel
+		}
+	}
+	return abs
 }
 
 // maxRetentionDays è il massimo dei giorni di conservazione delle registrazioni (dieci anni).
