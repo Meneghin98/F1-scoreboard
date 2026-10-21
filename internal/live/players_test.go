@@ -224,3 +224,28 @@ func TestDeleteUnfinished(t *testing.T) {
 		t.Errorf("%d file rimasti", len(files))
 	}
 }
+
+// DeleteUnfinished elimina subito le sessioni non terminate, senza aspettare le 48 ore.
+func TestDeleteUnfinishedNow(t *testing.T) {
+	s, dir := recordedService(t)
+	records, _ := s.Sessions()
+
+	count, size, err := s.UnfinishedUsage()
+	if err != nil || count != 4 || size == 0 {
+		t.Fatalf("non terminate: %d, %d byte, %v", count, size, err)
+	}
+	deleted, freed, err := s.DeleteUnfinished()
+	if err != nil || deleted != count || freed != size {
+		t.Fatalf("eliminate %d, %d byte, %v", deleted, freed, err)
+	}
+	after, _ := s.Sessions()
+	if len(after) != 1 || after[0].ID != records[0].ID {
+		t.Fatalf("restano %+v", after)
+	}
+	if files, _ := os.ReadDir(dir); len(files) != 1 {
+		t.Errorf("%d file rimasti", len(files))
+	}
+	if count, _, _ := s.UnfinishedUsage(); count != 0 {
+		t.Errorf("ancora %d non terminate", count)
+	}
+}

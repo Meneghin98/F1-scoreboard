@@ -149,3 +149,15 @@ func TestSettings(t *testing.T) {
 		t.Fatalf("impostazioni rilette %+v", s)
 	}
 }
+
+func TestDeleteUnfinished(t *testing.T) {
+	srv, _, _ := newTestServerDir(t)
+	var res struct {
+		DeletedSessions int   `json:"deletedSessions"`
+		FreedBytes      int64 `json:"freedBytes"`
+	}
+	expectStatus(t, call(t, srv, "DELETE", "/telemetry/sessions/unfinished", nil, &res), 200, "libera spazio")
+	if res.DeletedSessions != 0 || res.FreedBytes != 0 {
+		t.Errorf("risposta %+v", res)
+	}
+}

@@ -30,7 +30,7 @@ export function SystemPage() {
     <>
       <BackupCard system={system} backups={backups} />
       <div className="grid gap-4 lg:grid-cols-2">
-        <DiskCard system={system} />
+        <DiskCard system={system} onChanged={reload} />
         <TelemetryCard system={system} />
         <RetentionCard retention={settings.recordings} onSaved={reload} />
         <VersionCard version={system.version} update={system.update} onChanged={reload} />
@@ -91,13 +91,37 @@ function BackupCard({ system, backups }: { system: SystemInfo; backups: BackupIn
 
 // Spazio sul disco della cartella dei dati: una barra con lo spazio usato,
 // che cambia colore quando lo spazio libero scarseggia, e cosa occupa il segnapunti.
-function DiskCard({ system }: { system: SystemInfo }) {
+function DiskCard({ system, onChanged }: { system: SystemInfo; onChanged: () => Promise<void> }) {
   const { disk, database, recordings, backups } = system;
+  const { unfinished } = recordings;
+  const { run, toast } = useToast();
+  const confirm = useConfirm();
   const parts: [string, string, number][] = [
     ['Database', database.path, database.sizeBytes],
     [recordings.files === 1 ? '1 registrazione' : `${recordings.files} registrazioni`, recordings.dir, recordings.sizeBytes],
     [backups.count === 1 ? '1 backup automatico' : `${backups.count} backup automatici`, backups.dir, backups.sizeBytes],
   ];
+
+  // Elimina subito le sessioni non terminate, che il server eliminerebbe comunque dopo 48 ore.
+  async function handleFreeSpace() {
+    const ok = await confirm({
+      title: 'Eliminare le sessioni non terminate?',
+      message: (unfinished.count === 1
+        ? 'La sessione non terminata verrà eliminata subito insieme al suo file'
+        : `Le ${unfinished.count} sessioni non terminate verranno eliminate subito insieme ai loro file`) +
+        ` (${formatBytes(unfinished.sizeBytes)}), invece che dopo 48 ore. ` +
+        'Sono quelle finite senza classifica finale e non assegnate a un torneo.',
+      confirmLabel: 'Libera spazio',
+    });
+    if (!ok) return;
+    run(async () => {
+      const res = await api.deleteUnfinished();
+      const n = res.deletedSessions;
+      toast(n === 0 ? 'Nessuna sessione da eliminare'
+        : `${n === 1 ? 'Eliminata una sessione non terminata' : `Eliminate ${n} sessioni non terminate`} (${formatBytes(res.freedBytes)})`);
+      await onChanged();
+    });
+  }
 
   return (
     <Card className="mb-0">
@@ -116,6 +140,15 @@ function DiskCard({ system }: { system: SystemInfo }) {
           </Fragment>
         ))}
       </dl>
+      {unfinished.count > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4 text-sm">
+          <p className="min-w-0 flex-[1_1_240px] text-muted">
+            {unfinished.count === 1 ? '1 sessione non terminata' : `${unfinished.count} sessioni non terminate`} (
+            {formatBytes(unfinished.sizeBytes)}): il server le elimina da solo dopo 48 ore.
+          </p>
+          <Button variant="ghost" size="sm" onClick={handleFreeSpace}>Libera spazio</Button>
+        </div>
+      )}
     </Card>
   );
 }

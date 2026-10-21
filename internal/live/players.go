@@ -948,36 +948,81 @@ const unfinishedSQL = "has_classification = 0 AND race_id IS NULL AND ended_at I
 
 // deleteUnfinished elimina le sessioni non terminate più vecchie di unfinishedRetention.
 func (s *Service) deleteUnfinished(now time.Time) {
+	s.removeUnfinished(now.Add(-unfinishedRetention))
+}
+
+// DeleteUnfinished elimina subito tutte le sessioni non terminate, senza
+// aspettare unfinishedRetention: restituisce quante erano e quanto spazio
+// occupavano i loro file.
+func (s *Service) DeleteUnfinished() (deleted int, freed int64, err error) {
+	return s.removeUnfinished(time.Now())
+}
+
+// UnfinishedUsage restituisce quante sessioni non terminate ci sono e quanto
+// spazio occupano i loro file: quello che libera DeleteUnfinished.
+func (s *Service) UnfinishedUsage() (count int, size int64, err error) {
+	list, err := s.unfinished(time.Now())
+	for _, o := range list {
+		count++
+		size += s.filesSize(o.file)
+	}
+	return count, size, err
+}
+
+type unfinishedSession struct {
+	id   int64
+	file string
+}
+
+// unfinished restituisce le sessioni non terminate finite prima di before.
+func (s *Service) unfinished(before time.Time) ([]unfinishedSession, error) {
 	// Gli orari sono testi nello stesso formato: il confronto alfabetico è anche cronologico.
-	rows, err := s.db.Query("SELECT id, file FROM telemetry_sessions WHERE "+unfinishedSQL+" AND ended_at < ?",
-		dbTime(now.Add(-unfinishedRetention)))
+	rows, err := s.db.Query("SELECT id, file FROM telemetry_sessions WHERE "+unfinishedSQL+" AND ended_at < ?", dbTime(before))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []unfinishedSession
+	for rows.Next() {
+		var o unfinishedSession
+		if err := rows.Scan(&o.id, &o.file); err != nil {
+			return nil, err
+		}
+		list = append(list, o)
+	}
+	return list, rows.Err()
+}
+
+// removeUnfinished elimina le sessioni non terminate finite prima di before.
+func (s *Service) removeUnfinished(before time.Time) (deleted int, freed int64, err error) {
+	list, err := s.unfinished(before)
 	if err != nil {
 		log.Printf("telemetria: %v", err)
-		return
+		return 0, 0, err
 	}
-	type old struct {
-		id   int64
-		file string
-	}
-	var list []old
-	for rows.Next() {
-		var o old
-		if rows.Scan(&o.id, &o.file) == nil {
-			list = append(list, o)
-		}
-	}
-	rows.Close()
-
-	deleted := 0
 	for _, o := range list {
+		size := s.filesSize(o.file)
 		if err := s.removeSession(o.id, o.file); err != nil {
 			log.Printf("telemetria: eliminazione della sessione %d: %v", o.id, err)
 			continue
 		}
 		deleted++
+		freed += size
 	}
 	if deleted > 0 {
-		log.Printf("telemetria: eliminate %d sessioni non terminate", deleted)
+		log.Printf("telemetria: eliminate %d sessioni non terminate (%.1f MB)", deleted, float64(freed)/(1<<20))
 		s.DataChanged()
 	}
+	return deleted, freed, nil
+}
+
+// filesSize restituisce quanto occupano la registrazione e il suo replay salvato.
+func (s *Service) filesSize(file string) int64 {
+	var size int64
+	for _, name := range []string{file, file + replayExt} {
+		if info, err := os.Stat(filepath.Join(s.opts.Dir, name)); err == nil {
+			size += info.Size()
+		}
+	}
+	return size
 }

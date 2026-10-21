@@ -63,6 +63,7 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service, backups *backup.Ma
 	mux.Handle("GET /api/telemetry/sessions", s.handle(s.listTelemetrySessions))
 	mux.Handle("GET /api/telemetry/sessions/{id}/download", s.handle(s.downloadTelemetrySession))
 	mux.Handle("DELETE /api/telemetry/sessions/{id}", s.handle(s.deleteTelemetrySession))
+	mux.Handle("DELETE /api/telemetry/sessions/unfinished", s.handle(s.deleteUnfinished))
 	mux.Handle("PUT /api/telemetry/sessions/{id}/players", s.handle(s.setTelemetryPlayers))
 	mux.Handle("PUT /api/telemetry/sessions/{id}/race", s.handle(s.setTelemetryRace))
 	mux.Handle("GET /api/telemetry/sessions/{id}/replay", s.handle(s.getReplay))

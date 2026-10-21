@@ -1,7 +1,7 @@
 import type {
   BackupInfo, Player, PlayerProfile, Race, RaceType, RaceWithResults, ResultInput, ScoringRules, SessionRaceInput,
   SessionRecord, Settings, SettingsSaved, StandingsResponse, StatsResponse, SystemInfo, Tournament,
-  ReplayFrame, ReplayInfo, Track, TrackMap, UpdateStatus,
+  ReplayFrame, ReplayInfo, Track, TrackMap, UnfinishedDeleted, UpdateStatus,
 } from './types';
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -63,6 +63,7 @@ export const api = {
 
   sessions: () => request<SessionRecord[]>('/telemetry/sessions'),
   deleteSession: (id: number) => request<void>(`/telemetry/sessions/${id}`, 'DELETE'),
+  deleteUnfinished: () => request<UnfinishedDeleted>('/telemetry/sessions/unfinished', 'DELETE'),
   setSessionPlayers: (id: number, players: { carIndex: number; playerId: number | null }[]) =>
     request<void>(`/telemetry/sessions/${id}/players`, 'PUT', { players }),
   setSessionRace: (id: number, race: SessionRaceInput) =>

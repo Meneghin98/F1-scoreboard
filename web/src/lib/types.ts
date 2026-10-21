@@ -524,7 +524,13 @@ export interface SystemInfo {
   };
   update: UpdateStatus;
   database: { path: string; sizeBytes: number };
-  recordings: { dir: string; enabled: boolean; files: number; sizeBytes: number };
+  recordings: {
+    dir: string;
+    enabled: boolean;
+    files: number;
+    sizeBytes: number;
+    unfinished: { count: number; sizeBytes: number }; // sessioni non terminate, eliminate dopo 48 ore
+  };
   backups: { dir: string; keep: number; count: number; sizeBytes: number }; // keep 0: backup automatici spenti
   disk: { freeBytes: number; totalBytes: number } | null; // disco della cartella dei dati, null se non si sa
 }
@@ -560,5 +566,11 @@ export interface Settings {
 // Risposta al salvataggio: i file delle registrazioni eliminati subito con le nuove impostazioni.
 export interface SettingsSaved extends Settings {
   deletedFiles: number;
+  freedBytes: number;
+}
+
+// Risposta di "Libera spazio": sessioni non terminate eliminate e spazio liberato.
+export interface UnfinishedDeleted {
+  deletedSessions: number;
   freedBytes: number;
 }

@@ -84,6 +84,11 @@ type SystemInfo struct {
 		Enabled   bool   `json:"enabled"` // le sessioni vengono registrate (TELEMETRY_RECORD)
 		Files     int    `json:"files"`
 		SizeBytes int64  `json:"sizeBytes"` // tutta la cartella
+		// Sessioni non terminate, che il server elimina dopo 48 ore.
+		Unfinished struct {
+			Count     int   `json:"count"`
+			SizeBytes int64 `json:"sizeBytes"`
+		} `json:"unfinished"`
 	} `json:"recordings"`
 	Backups struct {
 		Dir       string `json:"dir"`
@@ -133,6 +138,9 @@ func (s *Server) getSystem(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	info.Recordings.Files, info.Recordings.SizeBytes = files, size
+	if info.Recordings.Unfinished.Count, info.Recordings.Unfinished.SizeBytes, err = s.live.UnfinishedUsage(); err != nil {
+		return err
+	}
 
 	info.Backups.Dir, info.Backups.Keep = displayPath(s.backups.Dir()), s.backups.Keep()
 	list, err := s.backups.List()

@@ -170,6 +170,16 @@ func (s *Server) deleteTelemetrySession(w http.ResponseWriter, r *http.Request) 
 	return nil
 }
 
+// deleteUnfinished elimina subito le sessioni non terminate, che altrimenti il
+// server elimina dopo 48 ore: la risposta dice quante erano e quanto spazio occupavano.
+func (s *Server) deleteUnfinished(w http.ResponseWriter, r *http.Request) error {
+	deleted, freed, err := s.live.DeleteUnfinished()
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, map[string]any{"deletedSessions": deleted, "freedBytes": freed})
+}
+
 // setTelemetryPlayers cambia i piloti associati ai giocatori di una sessione.
 // Body: { "players": [{ "carIndex": 3, "playerId": 1 }, { "carIndex": 5, "playerId": null }] }
 func (s *Server) setTelemetryPlayers(w http.ResponseWriter, r *http.Request) error {
