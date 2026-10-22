@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { DuelCard } from '../components/DuelCard';
 import { LiveDot } from '../components/LiveBadge';
+import { PositionsGained } from '../components/PositionsGained';
 import { EVENT_KIND, EventText } from '../components/RaceControlCard';
 import { TrackMapCard } from '../components/TrackMapCard';
 import { Card, ColorDot, cx, rankClass } from '../components/ui';
@@ -9,6 +10,7 @@ import { controllerLabel, isLive, isLoading, SAFETY_CAR, teamColor, TYRE_CLASS }
 import { href } from '../lib/route';
 import type { LiveDriver, LiveSession, LiveSnapshot, RaceEvent } from '../lib/types';
 import { useLive } from '../lib/useLive';
+import { usePositionAnimation } from '../lib/usePositionAnimation';
 import { WaitingCard } from './LivePage';
 
 // Modalità TV: la sessione in corso a schermo intero, con caratteri grandi da
@@ -143,6 +145,7 @@ function TvStandings({ session, drivers }: { session: LiveSession; drivers: Live
     return () => observer.disconnect();
   }, []);
   const shown = visibleDrivers(drivers, capacity);
+  usePositionAnimation(ref, shown);
 
   return (
     <Card ref={ref} className="mb-0 flex min-h-0 flex-1 flex-col p-2">
@@ -153,6 +156,7 @@ function TvStandings({ session, drivers }: { session: LiveSession; drivers: Live
         return (
           <div
             key={d.carIndex}
+            data-car={d.carIndex}
             className={cx(
               'flex min-h-0 flex-1 items-center gap-3 rounded-md px-3 text-[clamp(0.9rem,2.1vh,1.6rem)]',
               d.controller > 0 && 'bg-surface-2',
@@ -161,6 +165,10 @@ function TvStandings({ session, drivers }: { session: LiveSession; drivers: Live
             )}
           >
             <span className={cx(rankClass(d.position), 'w-[2.2em] text-right')}>{d.position}</span>
+            {/* Posizioni guadagnate o perse dalla partenza, come nella pagina Live. */}
+            {session.isRace && (
+              <span className="-ml-1 w-[2.2em] shrink-0 text-[0.65em]"><PositionsGained driver={d} /></span>
+            )}
             <span className="h-[1.1em] w-1.5 shrink-0 rounded-full" style={{ background: teamColor(d.team) }} />
             <span className={cx('flex min-w-0 flex-1 items-center gap-2', d.controller > 0 && 'font-bold')}>
               {/* Con un giocatore scelto anche il pilota del gioco, che si accorcia per primo. */}
