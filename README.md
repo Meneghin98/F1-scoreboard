@@ -77,8 +77,12 @@ web/dist/               build del frontend, incorporata nel binario (non version
 Servono Go 1.26+ (con `GOTOOLCHAIN=auto`, il default, Go lo scarica da solo) e Node.js 22.12+.
 
 ```sh
-cd web && npm install    # solo la prima volta
+cd web && npm install                  # solo la prima volta
+git config core.hooksPath .githooks    # solo la prima volta: usa gli hook del repository
 ```
+
+Gli hook in `.githooks/` sono quelli di Git LFS più un `pre-push` che rifiuta i tag che non
+puntano a un commit di `main` (vedi [Release](#release)).
 
 Poi, in due terminali:
 
@@ -154,12 +158,18 @@ non si aggiornano da soli. Quelli da installare si prendono dalle release su Git
 ### Release
 
 Le versioni seguono il [semver](https://semver.org/lang/it/) (`MAJOR.MINOR.PATCH`). Per
-pubblicarne una basta creare il tag e mandarlo su GitHub:
+pubblicarne una basta creare il tag su `main` e mandarlo su GitHub:
 
 ```powershell
+git checkout main
+git pull
 git tag v1.1.0
 git push origin v1.1.0
 ```
+
+Il tag deve puntare a un commit già su `main`: l'hook `pre-push` blocca il push degli altri. Il
+controllo è solo locale (si salta con `git push --no-verify` o da un clone senza
+`core.hooksPath`): un tag mandato su GitHub da un altro branch avvia comunque la release.
 
 Il workflow `.github/workflows/release.yml` compila frontend ed eseguibili (Windows e Linux
 amd64, arm64, arm), scrive la versione nel binario con
