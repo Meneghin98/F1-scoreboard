@@ -157,8 +157,21 @@ non si aggiornano da soli. Quelli da installare si prendono dalle release su Git
 
 ### Release
 
-Le versioni seguono il [semver](https://semver.org/lang/it/) (`MAJOR.MINOR.PATCH`). Per
-pubblicarne una basta creare il tag su `main` e mandarlo su GitHub:
+Le versioni seguono il [semver](https://semver.org/lang/it/) (`MAJOR.MINOR.PATCH`). Il modo
+più semplice per pubblicarne una è mettere un'etichetta sulla PR prima di unirla in `main`:
+
+| Etichetta       | Versione            | Quando                          |
+|-----------------|---------------------|---------------------------------|
+| `release:patch` | v1.3.0 → v1.3.1     | solo correzioni                 |
+| `release:minor` | v1.3.0 → v1.4.0     | funzioni nuove                  |
+| `release:major` | v1.3.0 → v2.0.0     | cambi incompatibili             |
+
+Al merge il workflow `.github/workflows/tag-on-merge.yml` crea il tag della versione successiva
+all'ultima pubblicata (con più etichette vale la più alta) sul commit di merge e avvia la release.
+Senza etichetta non succede nulla. Il workflow richiama direttamente `release.yml`: un tag creato
+dal `GITHUB_TOKEN` non avvia altri workflow.
+
+In alternativa si crea il tag a mano su `main` e lo si manda su GitHub:
 
 ```powershell
 git checkout main
