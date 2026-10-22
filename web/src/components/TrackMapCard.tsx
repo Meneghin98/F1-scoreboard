@@ -157,7 +157,7 @@ function FinishLine({ map, size }: { map: TrackMap; size: number }) {
   const [start, next] = map.points;
   if (!next || start.d > FINISH_MAX_D || Math.hypot(next.x - start.x, next.z - start.z) > MAX_GAP) return null;
   const angle = (Math.atan2(next.z - start.z, next.x - start.x) * 180) / Math.PI;
-  const sq = size * 0.3; // lato di un quadretto
+  const sq = size * 0.4; // lato di un quadretto
   const half = (FINISH_COLUMNS * sq) / 2;
   // In coordinate locali X va nel senso di marcia e Y di traverso.
   return (
