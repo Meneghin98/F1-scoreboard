@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { DuelCard } from '../components/DuelCard';
 import { LiveDot } from '../components/LiveBadge';
-import { EVENT_KIND } from '../components/RaceControlCard';
+import { EVENT_KIND, EventText } from '../components/RaceControlCard';
 import { TrackMapCard } from '../components/TrackMapCard';
 import { Card, ColorDot, cx, rankClass } from '../components/ui';
 import { formatClock, formatGap, formatLapTime } from '../lib/format';
@@ -52,7 +52,7 @@ export function TvPage() {
           <div className="grid min-h-0 flex-1 grid-cols-[minmax(30rem,2fr)_3fr] gap-4">
             <div className="flex min-h-0 flex-col gap-4">
               <TvStandings session={live.session} drivers={live.drivers} />
-              <TvEvents events={live.events} />
+              <TvEvents events={live.events} drivers={live.drivers} />
             </div>
             <div className="flex min-h-0 flex-col gap-4">
               <TrackMapCard
@@ -163,7 +163,11 @@ function TvStandings({ session, drivers }: { session: LiveSession; drivers: Live
             <span className={cx(rankClass(d.position), 'w-[2.2em] text-right')}>{d.position}</span>
             <span className="h-[1.1em] w-1.5 shrink-0 rounded-full" style={{ background: teamColor(d.team) }} />
             <span className={cx('flex min-w-0 flex-1 items-center gap-2', d.controller > 0 && 'font-bold')}>
-              <span className="truncate">{d.playerName || d.name}</span>
+              {/* Con un giocatore scelto anche il pilota del gioco, che si accorcia per primo. */}
+              <span className="min-w-0 truncate">{d.playerName || d.name}</span>
+              {d.playerName && d.name && (
+                <span className="min-w-0 shrink-[10] truncate text-[0.75em] font-normal text-muted">{d.name}</span>
+              )}
               {d.controller > 0 && (
                 <span className="inline-flex shrink-0 items-center gap-1 text-[0.7em] font-bold text-accent-text">
                   <ColorDot color={d.playerColor} />
@@ -191,7 +195,7 @@ function TvStandings({ session, drivers }: { session: LiveSession; drivers: Live
 }
 
 // Gli ultimi messaggi della direzione gara, dal più recente.
-function TvEvents({ events }: { events: RaceEvent[] }) {
+function TvEvents({ events, drivers }: { events: RaceEvent[]; drivers: LiveDriver[] }) {
   const last = events.slice(-4).reverse();
   if (!last.length) return null;
   return (
@@ -201,7 +205,7 @@ function TvEvents({ events }: { events: RaceEvent[] }) {
           <span className={cx('w-32 shrink-0 text-sm leading-7 font-bold uppercase', EVENT_KIND[e.kind]?.className)}>
             {EVENT_KIND[e.kind]?.label ?? e.kind}
           </span>
-          <span className="truncate">{e.text}</span>
+          <span className="truncate"><EventText event={e} drivers={drivers} /></span>
         </div>
       ))}
     </Card>
