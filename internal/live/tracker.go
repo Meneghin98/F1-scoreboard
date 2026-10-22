@@ -43,6 +43,7 @@ type SessionInfo struct {
 	TrackTemp   int8   `json:"trackTemp"`
 	AirTemp     int8   `json:"airTemp"`
 	MapPoints   int    `json:"mapPoints"` // punti della pianta ricostruiti finora: quando cambia, il frontend la riscarica
+	Sectors     [2]int `json:"sectors"`   // metri dal traguardo a cui iniziano il settore 2 e il 3, 0 se non ancora noti
 
 	Forecast        []Forecast    `json:"forecast"`        // previsioni per il resto della sessione
 	PitWindowIdeal  uint8         `json:"pitWindowIdeal"`  // giro ideale per la sosta, 0 se non previsto
@@ -105,6 +106,9 @@ type Driver struct {
 	LastSectors  [3]uint32 `json:"lastSectors"` // settori dell'ultimo giro completato, ms
 	BestSectors  [3]uint32 `json:"bestSectors"` // migliori settori personali, ms
 	Stints       []Stint   `json:"stints"`      // gomme usate, dalla prima
+	DRS          bool      `json:"drs"`         // ala mobile aperta
+	Overtake     bool      `json:"overtake"`    // Overtake Mode (regolamento 2026) o ERS in modalità sorpasso
+	BlueFlag     bool      `json:"blueFlag"`    // bandiera blu: sta per essere doppiato
 }
 
 // Tracker ricostruisce lo stato di una sessione dai pacchetti che riceve.
@@ -117,6 +121,7 @@ type Tracker struct {
 	laps           *telemetry.LapData
 	status         *telemetry.CarStatus
 	carTelemetry   *telemetry.CarTelemetry
+	carTelemetry2  *telemetry.CarTelemetry2 // solo formato 2026
 	damage         *telemetry.CarDamage
 	classification *telemetry.FinalClassification
 	motion         *telemetry.Motion
@@ -140,6 +145,7 @@ var relevant = map[telemetry.PacketID]bool{
 	telemetry.PacketLapData:             true,
 	telemetry.PacketCarStatus:           true,
 	telemetry.PacketCarTelemetry:        true,
+	telemetry.PacketCarTelemetry2:       true,
 	telemetry.PacketCarDamage:           true,
 	telemetry.PacketFinalClassification: true,
 	telemetry.PacketSessionHistory:      true,
@@ -178,6 +184,8 @@ func (t *Tracker) Handle(h telemetry.Header, data []byte) {
 		t.status = p
 	case *telemetry.CarTelemetry:
 		t.carTelemetry = p
+	case *telemetry.CarTelemetry2:
+		t.carTelemetry2 = p
 	case *telemetry.CarDamage:
 		t.damage = p
 	case *telemetry.FinalClassification:
@@ -291,6 +299,25 @@ func (t *Tracker) RaceStarted() bool {
 	return false
 }
 
+// aero dice se l'auto i ha l'ala mobile aperta e se sta usando la potenza extra
+// per sorpassare: con il regolamento 2026 è l'Overtake Mode, prima la modalità
+// "sorpasso" dell'ERS.
+func (t *Tracker) aero(i int) (drs, overtake bool) {
+	if c := t.carTelemetry; c != nil && i < len(c.Cars) {
+		drs = c.Cars[i].DRS
+	}
+	if c := t.carTelemetry2; c != nil && i < len(c.Cars) && c.Cars[i].Regulations2026 {
+		return drs, c.Cars[i].OvertakeActive
+	}
+	if s := t.status; s != nil && i < len(s.Cars) {
+		overtake = s.Cars[i].ERSDeployMode == ersOvertake
+	}
+	return drs, overtake
+}
+
+// ersOvertake è la modalità dell'ERS che dà tutta la potenza per sorpassare.
+const ersOvertake = 3
+
 // seedOutline parte da una pianta già nota (salvata in una sessione
 // precedente sullo stesso circuito); i tratti mancanti si completano dal vivo.
 func (t *Tracker) seedOutline(o *outline) {
@@ -354,6 +381,7 @@ func (t *Tracker) Snapshot(status string) Snapshot {
 	}
 	if t.outline != nil {
 		info.MapPoints = t.outline.filled
+		info.Sectors = t.outline.sectorStarts()
 	}
 	snap.Session = info
 	snap.Players = t.playerCars()
@@ -400,7 +428,9 @@ func (t *Tracker) Snapshot(status string) Snapshot {
 		if s := t.status; s != nil && i < len(s.Cars) {
 			d.Tyre = tyreLetter(s.Cars[i].VisualTyreCompound)
 			d.TyreAge = s.Cars[i].TyresAgeLaps
+			d.BlueFlag = s.Cars[i].VehicleFIAFlags == 2
 		}
+		d.DRS, d.Overtake = t.aero(i)
 		if m := t.motion; m != nil && i < len(m.Cars) {
 			pos := m.Cars[i].WorldPosition
 			d.X, d.Z = round1(pos.X), round1(pos.Z)

@@ -134,6 +134,7 @@ export interface LiveSession {
   trackTemp: number;
   airTemp: number;
   mapPoints: number;
+  sectors: [number, number]; // metri dal traguardo a cui iniziano il settore 2 e il 3, 0 se non ancora noti
   forecast: LiveForecast[]; // previsioni per il resto della sessione
   pitWindowIdeal: number; // giro ideale per la sosta, 0 se non previsto
   pitWindowLatest: number;
@@ -192,6 +193,9 @@ export interface LiveDriver {
   lastSectors: number[]; // settori dell'ultimo giro completato, ms
   bestSectors: number[]; // migliori settori personali, ms
   stints: Stint[];
+  drs: boolean; // ala mobile aperta
+  overtake: boolean; // Overtake Mode (regolamento 2026) o ERS in modalità sorpasso
+  blueFlag: boolean; // bandiera blu: sta per essere doppiato
 }
 export interface LiveWheel {
   surfaceTemp: number;

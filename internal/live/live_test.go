@@ -513,6 +513,10 @@ func TestTrackMapOnRecording(t *testing.T) {
 	if snap.Session.MapPoints != len(m.Points) {
 		t.Errorf("mapPoints %d, punti %d", snap.Session.MapPoints, len(m.Points))
 	}
+	// A Monza il settore 2 inizia a circa 1898 m dal traguardo e il 3 a circa 3727.
+	if got, want := snap.Session.Sectors, [2]int{1898, 3727}; got != want {
+		t.Errorf("inizio dei settori %v, atteso %v", got, want)
+	}
 	// Monza si percorre in senso orario. Disegnando X verso destra e Z verso il
 	// basso (come fa il frontend) l'area con segno deve essere positiva:
 	// se fosse negativa la mappa risulterebbe specchiata.
@@ -562,6 +566,13 @@ func TestTrackMapIsSaved(t *testing.T) {
 	}
 	if m.Points[100] != full.Points[100] {
 		t.Errorf("punto 100: %+v, atteso %+v", m.Points[100], full.Points[100])
+	}
+	// Con la pianta si caricano anche gli inizi dei settori.
+	s2.mu.Lock()
+	sectors := s2.tracker.Snapshot("live").Session.Sectors
+	s2.mu.Unlock()
+	if sectors[0] == 0 || sectors[1] == 0 {
+		t.Errorf("settori non caricati: %v", sectors)
 	}
 	s2.mu.Lock()
 	s2.endSession(time.Now())

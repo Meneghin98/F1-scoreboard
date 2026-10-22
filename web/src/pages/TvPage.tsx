@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { DriverBadges } from '../components/DriverBadges';
 import { DuelCard } from '../components/DuelCard';
 import { LiveDot } from '../components/LiveBadge';
 import { PositionsGained } from '../components/PositionsGained';
@@ -63,6 +64,7 @@ export function TvPage() {
                 mapPoints={live.session.mapPoints}
                 drivers={live.drivers}
                 marshalZones={live.session.marshalZones}
+                sectors={live.session.sectors}
               />
               {live.players.length === 2 && <DuelCard session={live.session} drivers={live.drivers} className="mb-0 flex-none" />}
             </div>
@@ -182,7 +184,8 @@ function TvStandings({ session, drivers }: { session: LiveSession; drivers: Live
                   {controllerLabel(d.controller)}
                 </span>
               )}
-              {d.inPit && <span className="shrink-0 text-[0.7em] font-bold text-sprint">PIT</span>}
+              <DriverBadges driver={d} fastestLap={!!d.bestLapMs && d.bestLapMs === fastest} />
+              {d.penaltiesSec > 0 && <span className="shrink-0 text-[0.7em] font-bold text-accent-text">+{d.penaltiesSec}s</span>}
             </span>
             <span className="tabular-nums text-muted">{gap}</span>
             {d.tyre && (

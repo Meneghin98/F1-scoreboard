@@ -7,6 +7,7 @@ import type { LiveDriver, LiveSession, LiveSnapshot, PlayerCar, RaceEvent, Telem
 import { useLive, usePedalHistory, type PedalSample } from '../lib/useLive';
 import { usePositionAnimation } from '../lib/usePositionAnimation';
 import { href } from '../lib/route';
+import { DriverBadges } from '../components/DriverBadges';
 import { DuelCard } from '../components/DuelCard';
 import { LiveDot } from '../components/LiveBadge';
 import { LineupSection, LineupSummary, lineupWaiting, useLineupSummary } from '../components/LineupSection';
@@ -195,6 +196,7 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
           mapPoints={mapPoints ?? session.mapPoints}
           drivers={drivers}
           marshalZones={session.marshalZones}
+          sectors={session.sectors}
           loadMap={loadMap}
         />
         {smallMap && duel}
@@ -364,7 +366,7 @@ function CompactStandings({ session, drivers }: { session: LiveSession; drivers:
                   <span className="h-4 w-1 shrink-0 rounded-full" style={{ background: teamColor(d.team) }} />
                   <span className="truncate" title={d.team}>{d.name}</span>
                   {d.controller > 0 && <PlayerTag driver={d} />}
-                  {d.inPit && <span className="text-xs font-bold text-sprint">PIT</span>}
+                  <DriverBadges driver={d} fastestLap={!!d.bestLapMs && d.bestLapMs === fastest} className="text-xs" />
                 </span>
               </Td>
               <Td num className={cx(compact, 'pr-4 text-sm')} title={toAhead && `Intervallo ${toAhead}`}>
@@ -434,6 +436,8 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
                     <span className="flex items-center gap-2">
                       <span className="truncate">{d.name}</span>
                       {d.controller > 0 && <PlayerTag driver={d} />}
+                      {/* Il giro più veloce è già in viola nella colonna Migliore. */}
+                      <DriverBadges driver={d} fastestLap={false} className="text-xs" />
                     </span>
                     {d.team && <span className="truncate text-xs font-normal text-muted">{d.team}</span>}
                   </span>
@@ -521,7 +525,6 @@ function Tyre({ compound, age, stints = [] }: { compound: string; age: number; s
 
 function DriverStatus({ driver: d }: { driver: LiveDriver }) {
   const parts = [];
-  if (d.inPit) parts.push(<span key="pit" className="font-bold text-sprint">PIT</span>);
   if (d.penaltiesSec) parts.push(<span key="pen" className="font-bold text-accent-text">+{d.penaltiesSec}s</span>);
   if (d.unserved) {
     parts.push(
