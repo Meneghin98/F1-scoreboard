@@ -46,23 +46,34 @@ type Rules struct {
 
 // Tabelle dei punti per posizione (Rules.Preset).
 const (
-	PresetF1           = "f1"
-	PresetRankDown     = "rank_down"
-	PresetAllOrNothing = "all_or_nothing"
-	PresetPushAndPay   = "push_and_pay"
-	PresetCustom       = "custom" // i punti scelti a mano, in Rules.RacePoints e Rules.SprintPoints
+	PresetUltimateChampion = "ultimate_champion"
+	PresetF1               = "f1"
+	PresetRankDown         = "rank_down"
+	PresetAllOrNothing     = "all_or_nothing"
+	PresetPushAndPay       = "push_and_pay"
+	PresetCustom           = "custom" // i punti scelti a mano, in Rules.RacePoints e Rules.SprintPoints
 )
 
 // Table sono i punti per posizione di una gara.
 type Table struct {
 	Points []int // dal 1° posto in giù
 	Others int   // a chi arriva dopo, a chi non è classificato e ai ritirati: anche negativi
+	// WinBonus sono i punti in più a chi vince la gara davanti a tutti, IA compresa.
+	WinBonus int
 }
 
 // Presets sono le tabelle dei punti già pronte: data una gara e il numero dei
 // piloti che la corrono, restituiscono i suoi punti. Per aggiungerne una basta
 // una voce qui e una in POINTS_PRESETS nel frontend.
 var Presets = map[string]func(raceType string, drivers int) Table{
+	// Un punto al primo tra i piloti e uno in più se vince la gara davanti alla IA.
+	// Le sprint danno solo il punto della vittoria.
+	PresetUltimateChampion: func(raceType string, _ int) Table {
+		if raceType == "sprint" {
+			return Table{WinBonus: 1}
+		}
+		return Table{Points: []int{1}, WinBonus: 1}
+	},
 	// I punti della F1.
 	PresetF1: func(raceType string, _ int) Table { return Table{Points: Points[raceType]} },
 	// Tanti punti quanti i piloti al primo, uno in meno a ogni posizione: con 4 piloti 4-3-2-1.
@@ -182,6 +193,7 @@ type Score struct {
 	// ModePlayers è il migliore dei piloti, anche se la IA è andata più forte.
 	FastestLap bool
 	Bonus      int // punti per la pole o per il giro veloce, già compresi in Points
+	WinBonus   int // punti per la vittoria davanti alla IA (vedi Table.WinBonus), già compresi in Points
 }
 
 // ScoreRace calcola i punti dei risultati di una gara con le regole del torneo.
@@ -213,6 +225,7 @@ func ScoreRace(results []Result, rules Rules) []Score {
 	}
 
 	fastest := fastestLaps(results, rules.Mode)
+	table := rules.TableFor(raceType, len(results))
 	for i, r := range results {
 		sc := &scores[i]
 		sc.FastestLap = fastest[i]
@@ -223,7 +236,11 @@ func ScoreRace(results []Result, rules Rules) []Score {
 		if raceType == "race" && sc.FastestLap && sc.Position != nil {
 			sc.Bonus += rules.FastestLapPoints
 		}
-		sc.Points = rules.PointsFor(raceType, len(results), sc.Position, r.DNF) + sc.Bonus
+		// La vittoria davanti alla IA si guarda sulla posizione d'arrivo, non su quella tra i piloti.
+		if !r.DNF && r.Position != nil && *r.Position == 1 {
+			sc.WinBonus = table.WinBonus
+		}
+		sc.Points = rules.PointsFor(raceType, len(results), sc.Position, r.DNF) + sc.Bonus + sc.WinBonus
 	}
 	return scores
 }
@@ -256,7 +273,8 @@ type RaceScore struct {
 	Points   int  `json:"points"`   // compresi i bonus
 	Position *int `json:"position"` // posizione che dà i punti: tra i soli piloti in modalità ModePlayers
 	DNF      bool `json:"dnf"`
-	Bonus    int  `json:"bonus"` // punti della pole (nelle qualifiche) o del giro veloce (nei Gran Premi)
+	Bonus    int  `json:"bonus"`     // punti della pole (nelle qualifiche) o del giro veloce (nei Gran Premi)
+	WinBonus int  `json:"win_bonus"` // punti per la vittoria davanti alla IA, già compresi in Points
 }
 
 // Standing è una riga della classifica di un torneo.
@@ -317,7 +335,7 @@ func Standings(results []Result, rules Rules) []Standing {
 			}
 
 			s.Points += sc.Points
-			s.PerRace[r.RaceID] = RaceScore{Points: sc.Points, Position: sc.Position, DNF: r.DNF, Bonus: sc.Bonus}
+			s.PerRace[r.RaceID] = RaceScore{Points: sc.Points, Position: sc.Position, DNF: r.DNF, Bonus: sc.Bonus, WinBonus: sc.WinBonus}
 
 			// Vittorie, podi, giri veloci e countback considerano solo i Gran Premi, non le sprint.
 			if r.RaceType != "race" {

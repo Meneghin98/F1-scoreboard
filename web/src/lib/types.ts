@@ -8,7 +8,7 @@ export type PointsMode = 'absolute' | 'players';
 
 // Tabella dei punti per posizione in modalità players (vedi scoring.Presets e POINTS_PRESETS):
 // custom usa i punti di race_points e sprint_points.
-export type PointsPreset = 'f1' | 'rank_down' | 'all_or_nothing' | 'push_and_pay' | 'custom';
+export type PointsPreset = 'ultimate_champion' | 'f1' | 'rank_down' | 'all_or_nothing' | 'push_and_pay' | 'custom';
 
 // Regole di punteggio di un torneo (vedi scoring.Rules).
 export interface ScoringRules {
@@ -69,6 +69,7 @@ export interface RaceResult {
   scored_position: number | null; // posizione che dà i punti: tra i soli piloti in modalità "players"
   scored_fastest_lap: boolean; // giro più veloce: tra i soli piloti in modalità "players"
   bonus: number; // punti per la pole o il giro veloce, già compresi in points
+  win_bonus: number; // punti per la vittoria davanti alla IA (Ultimate Champion), già compresi in points
 }
 
 export interface RaceWithResults extends Race {
@@ -82,6 +83,7 @@ export interface RaceScore {
   position: number | null; // posizione che dà i punti: tra i soli piloti in modalità "players"
   dnf: boolean;
   bonus: number; // punti della pole (nelle qualifiche) o del giro veloce (nei Gran Premi)
+  win_bonus: number; // punti per la vittoria davanti alla IA (Ultimate Champion), già compresi in points
 }
 
 export interface Standing {

@@ -112,7 +112,8 @@ function useStickyColumns(left: number, right: number, deps: unknown) {
 }
 
 // Punti presi nella gara, con la posizione in piccolo (tra i soli piloti, in
-// modalità "players") e un segno per i punti della pole o del giro veloce.
+// modalità "players") e un segno per i punti della pole, del giro veloce o
+// della vittoria davanti alla IA.
 function RaceCell({ standing, race, playersMode }: { standing: Standing; race: Race; playersMode: boolean }) {
   const r = standing.perRace[race.id];
   if (!r) return <Td num className="text-muted">–</Td>;
@@ -121,6 +122,7 @@ function RaceCell({ standing, race, playersMode }: { standing: Standing; race: R
   const title = [
     r.position === null ? 'Non classificato' : `${r.position}° ${playersMode ? 'tra i piloti' : 'posto'}`,
     r.bonus > 0 && `${pole ? 'pole' : 'giro veloce'} +${r.bonus}`,
+    r.win_bonus > 0 && `1° assoluto +${r.win_bonus}`,
   ].filter(Boolean).join(' · ');
   return (
     <Td num title={title}>
@@ -129,6 +131,7 @@ function RaceCell({ standing, race, playersMode }: { standing: Standing; race: R
       {r.bonus > 0 && (
         <span className={cx('ml-1 text-[10px] font-bold', pole ? 'text-gold' : 'text-purple-400')}>{pole ? 'POLE' : 'GV'}</span>
       )}
+      {r.win_bonus > 0 && <span className="ml-1 text-[10px] font-bold text-accent-text" title="Vittoria davanti alla IA">P1</span>}
     </Td>
   );
 }

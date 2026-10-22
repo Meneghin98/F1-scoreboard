@@ -208,6 +208,7 @@ type RaceResult struct {
 	ScoredPosition   *int `json:"scored_position"`    // posizione che dà i punti: tra i soli piloti in modalità "players"
 	ScoredFastestLap bool `json:"scored_fastest_lap"` // giro più veloce: tra i soli piloti in modalità "players"
 	Bonus            int  `json:"bonus"`              // punti per la pole o il giro veloce, già compresi in Points
+	WinBonus         int  `json:"win_bonus"`          // punti per la vittoria davanti alla IA, già compresi in Points
 }
 
 type RaceWithResults struct {
@@ -286,7 +287,7 @@ func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
-	rules, err := body.apply(scoring.Rules{Mode: scoring.ModeAbsolute, Preset: scoring.PresetF1})
+	rules, err := body.apply(scoring.Rules{Mode: scoring.ModeAbsolute, Preset: scoring.PresetUltimateChampion})
 	if err != nil {
 		return err
 	}
@@ -668,7 +669,7 @@ func (s *Server) listRaces(w http.ResponseWriter, r *http.Request) error {
 		}
 		for i, sc := range scoring.ScoreRace(input, rules) {
 			res := &results[i]
-			res.Points, res.ScoredPosition, res.ScoredFastestLap, res.Bonus = sc.Points, sc.Position, sc.FastestLap, sc.Bonus
+			res.Points, res.ScoredPosition, res.ScoredFastestLap, res.Bonus, res.WinBonus = sc.Points, sc.Position, sc.FastestLap, sc.Bonus, sc.WinBonus
 		}
 		// Ordine di arrivo, con i non classificati in fondo.
 		slices.SortStableFunc(results, func(a, b RaceResult) int {
