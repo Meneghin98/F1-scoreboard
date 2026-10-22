@@ -37,10 +37,11 @@ type MapPoint struct {
 }
 
 type outline struct {
-	length int
-	points []Point
-	seen   []bool
-	filled int
+	length  int
+	points  []Point
+	seen    []bool
+	filled  int
+	sectors [2]float32 // metri a cui iniziano il settore 2 e il 3, 0 se non ancora visti
 }
 
 func newOutline(length int) *outline {
@@ -59,6 +60,11 @@ func (o *outline) add(laps *telemetry.LapData, motion *telemetry.Motion) {
 		d := lap.LapDistance
 		if d < 0 || int(d) >= o.length {
 			continue
+		}
+		// Il gioco non dice dove iniziano i settori: è la distanza più piccola a
+		// cui si vede un'auto nel settore, cioè il punto in cui ci entra.
+		if s := lap.Sector; s >= 1 && s <= 2 && (o.sectors[s-1] == 0 || d < o.sectors[s-1]) {
+			o.sectors[s-1] = d
 		}
 		b := int(d) / outlineStep
 		if o.seen[b] {
@@ -85,8 +91,23 @@ func (o *outline) trackMap() TrackMap {
 	return m
 }
 
-// merge aggiunge i tratti di other non ancora visti.
+// sectorStarts restituisce i metri, arrotondati, a cui iniziano il settore 2 e il 3.
+func (o *outline) sectorStarts() [2]int {
+	return [2]int{int(math.Round(float64(o.sectors[0]))), int(math.Round(float64(o.sectors[1])))}
+}
+
+// sectorsKnown dice se si sa dove iniziano tutti i settori.
+func (o *outline) sectorsKnown() bool {
+	return o.sectors[0] > 0 && o.sectors[1] > 0
+}
+
+// merge aggiunge i tratti di other non ancora visti e gli inizi dei settori.
 func (o *outline) merge(other *outline) {
+	for k, d := range other.sectors {
+		if d > 0 && (o.sectors[k] == 0 || d < o.sectors[k]) {
+			o.sectors[k] = d
+		}
+	}
 	for i, seen := range other.seen {
 		if seen && !o.seen[i] {
 			o.points[i] = other.points[i]
@@ -109,9 +130,10 @@ func (o *outline) complete() bool {
 // c'è o se non corrisponde (lunghezza del giro o passo diversi).
 func loadOutline(db *sql.DB, track telemetry.TrackID, length int) (*outline, error) {
 	var savedLength, step int
+	var sectors [2]float32
 	var data []byte
-	err := db.QueryRow("SELECT track_length, step, points FROM track_maps WHERE track_id = ?", int(track)).
-		Scan(&savedLength, &step, &data)
+	err := db.QueryRow("SELECT track_length, step, points, sector2_start, sector3_start FROM track_maps WHERE track_id = ?", int(track)).
+		Scan(&savedLength, &step, &data, &sectors[0], &sectors[1])
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -126,6 +148,7 @@ func loadOutline(db *sql.DB, track telemetry.TrackID, length int) (*outline, err
 		return nil, err
 	}
 	o := newOutline(length)
+	o.sectors = sectors
 	if len(points) != len(o.points) {
 		return nil, nil
 	}
@@ -152,11 +175,13 @@ func saveOutline(db *sql.DB, track telemetry.TrackID, o *outline) error {
 		return err
 	}
 	_, err = db.Exec(`
-		INSERT INTO track_maps (track_id, track_length, step, points, updated_at) VALUES (?, ?, ?, ?, datetime('now'))
+		INSERT INTO track_maps (track_id, track_length, step, points, sector2_start, sector3_start, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
 		ON CONFLICT (track_id) DO UPDATE SET
-			track_length = excluded.track_length, step = excluded.step,
-			points = excluded.points, updated_at = excluded.updated_at`,
-		int(track), o.length, outlineStep, data)
+			track_length = excluded.track_length, step = excluded.step, points = excluded.points,
+			sector2_start = excluded.sector2_start, sector3_start = excluded.sector3_start,
+			updated_at = excluded.updated_at`,
+		int(track), o.length, outlineStep, data, o.sectors[0], o.sectors[1])
 	return err
 }
 

@@ -104,6 +104,7 @@ type session struct {
 	infoSaved      bool
 	classification bool
 	mapSaved       int     // punti della pianta già salvati nel database
+	sectorsSaved   bool    // inizi dei settori già salvati con la pianta
 	lineup         *lineup // scelta dei piloti, solo per le gare
 	playersSaved   bool    // giocatori già salvati con i piloti scelti: alla fine non si rifà
 	ended          bool    // ricevuto l'evento SEND (fine sessione)
@@ -474,16 +475,17 @@ func (s *Service) loadTrackMap(cur *session, ses *telemetry.Session) {
 	if o == nil {
 		return
 	}
-	cur.mapSaved = o.filled
+	cur.mapSaved, cur.sectorsSaved = o.filled, o.sectorsKnown()
 	s.tracker.seedOutline(o)
 	log.Printf("telemetria: mappa di %s caricata (%d punti)", ses.TrackID, o.filled)
 }
 
 // saveTrackMap salva la pianta del circuito quando è completa e ogni volta
-// che, da completa, si aggiunge un tratto mancante.
+// che, da completa, si aggiunge un tratto mancante o si scopre dove iniziano i settori.
 func (s *Service) saveTrackMap() {
 	cur, o, ses := s.current, s.tracker.outline, s.tracker.Session()
-	if cur == nil || o == nil || ses == nil || !o.complete() || o.filled <= cur.mapSaved {
+	if cur == nil || o == nil || ses == nil || !o.complete() ||
+		(o.filled <= cur.mapSaved && (cur.sectorsSaved || !o.sectorsKnown())) {
 		return
 	}
 	if err := saveOutline(s.db, ses.TrackID, o); err != nil {
@@ -493,7 +495,7 @@ func (s *Service) saveTrackMap() {
 	if cur.mapSaved == 0 {
 		log.Printf("telemetria: mappa di %s salvata (%d punti)", ses.TrackID, o.filled)
 	}
-	cur.mapSaved = o.filled
+	cur.mapSaved, cur.sectorsSaved = o.filled, o.sectorsKnown()
 }
 
 // TrackMap restituisce la pianta del circuito della sessione in corso, o nil.

@@ -1,15 +1,18 @@
-import { Fragment, useState, type ReactNode } from 'react';
+import { Fragment, useRef, useState, type ReactNode } from 'react';
 import { formatClock, formatGap, formatLapTime } from '../lib/format';
 import {
   controllerLabel, isLive, isLoading, isPaused, SAFETY_CAR, teamColor, telemetryProblem, TYRE_CLASS, WEATHER,
 } from '../lib/live';
 import type { LiveDriver, LiveSession, LiveSnapshot, PlayerCar, RaceEvent, TelemetryStatus, TrackMap } from '../lib/types';
 import { useLive, usePedalHistory, type PedalSample } from '../lib/useLive';
+import { usePositionAnimation } from '../lib/usePositionAnimation';
 import { href } from '../lib/route';
+import { DriverBadges } from '../components/DriverBadges';
 import { DuelCard } from '../components/DuelCard';
 import { LiveDot } from '../components/LiveBadge';
 import { LineupSection, LineupSummary, lineupWaiting, useLineupSummary } from '../components/LineupSection';
 import { PlayerCarCard } from '../components/PlayerCarCard';
+import { PositionsGained } from '../components/PositionsGained';
 import { RaceControlCard } from '../components/RaceControlCard';
 import { TrackMapCard } from '../components/TrackMapCard';
 import { Button, buttonClass, Card, ColorDot, cx, Empty, rankClass, Table, Td, Th, Tr } from '../components/ui';
@@ -193,6 +196,7 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
           mapPoints={mapPoints ?? session.mapPoints}
           drivers={drivers}
           marshalZones={session.marshalZones}
+          sectors={session.sectors}
           loadMap={loadMap}
         />
         {smallMap && duel}
@@ -344,23 +348,31 @@ function driverGap(session: LiveSession, d: LiveDriver, ahead: LiveDriver | unde
 function CompactStandings({ session, drivers }: { session: LiveSession; drivers: LiveDriver[] }) {
   const fastest = fastestLap(drivers);
   const compact = 'px-2 py-1.5';
+  const body = useRef<HTMLTableSectionElement>(null);
+  usePositionAnimation(body, drivers);
 
   return (
     <table className="w-full">
-      <tbody>
+      <tbody ref={body}>
         {drivers.map((d, i) => {
           const [toLeader, toAhead] = driverGap(session, d, drivers[i - 1], fastest);
           // Accanto al primo: il giro in gara, il miglior tempo in prova e qualifica.
           const leaderInfo = session.isRace ? `Giro ${d.lap}` : formatLapTime(d.bestLapMs);
           return (
-            <Tr key={d.carIndex}>
+            <Tr key={d.carIndex} data-car={d.carIndex}>
               <Td className={cx(rankClass(d.position), compact, 'w-8 pl-4 text-right')}>{d.position}</Td>
               <Td className={cx(compact, 'max-w-0 w-full', d.controller > 0 && 'font-bold')}>
                 <span className="flex items-center gap-2">
-                  <span className="h-4 w-1 shrink-0 rounded-full" style={{ background: teamColor(d.team) }} />
-                  <span className="truncate" title={d.team}>{d.name}</span>
-                  {d.controller > 0 && <PlayerTag driver={d} />}
-                  {d.inPit && <span className="text-xs font-bold text-sprint">PIT</span>}
+                  <span className="h-8 w-1 shrink-0 rounded-full" style={{ background: teamColor(d.team) }} />
+                  {/* Nome sopra, giocatore e indicatori sotto: la riga c'è sempre, così
+                      l'altezza non cambia quando un indicatore compare o sparisce (DRS). */}
+                  <span className="flex min-w-0 flex-col leading-tight">
+                    <span className="truncate" title={d.team}>{d.name}</span>
+                    <span className="flex h-4 items-center gap-2 overflow-hidden">
+                      {d.controller > 0 && <PlayerTag driver={d} />}
+                      <DriverBadges driver={d} fastestLap={!!d.bestLapMs && d.bestLapMs === fastest} className="text-xs" />
+                    </span>
+                  </span>
                 </span>
               </Td>
               <Td num className={cx(compact, 'pr-4 text-sm')} title={toAhead && `Intervallo ${toAhead}`}>
@@ -388,6 +400,8 @@ function fastestSectors(drivers: LiveDriver[]): number[] {
 function DriversTable({ session, drivers }: { session: LiveSession; drivers: LiveDriver[] }) {
   const fastest = fastestLap(drivers);
   const sectors = fastestSectors(drivers);
+  const body = useRef<HTMLTableSectionElement>(null);
+  usePositionAnimation(body, drivers);
 
   return (
     <Table className="[&_td]:px-2 [&_th]:px-2 [&_tr>:first-child]:pl-4 [&_tr>:last-child]:pr-4">
@@ -409,14 +423,14 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
           <Th>Stato</Th>
         </tr>
       </thead>
-      <tbody>
+      <tbody ref={body}>
         {drivers.map((d, i) => {
           const [toLeader, toAhead] = driverGap(session, d, drivers[i - 1], fastest);
           return (
-            <Tr key={d.carIndex}>
+            <Tr key={d.carIndex} data-car={d.carIndex}>
               <Td className={rankClass(d.position)}>
                 {d.position}
-                {session.isRace && <PositionsGained driver={d} />}
+                {session.isRace && <PositionsGained driver={d} className="ml-1.5 text-xs" />}
               </Td>
               {/* max-w-0 e w-full: la colonna prende lo spazio che resta e il nome si accorcia. */}
               <Td className={cx('w-full max-w-0', d.controller > 0 && 'font-bold')}>
@@ -428,6 +442,8 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
                     <span className="flex items-center gap-2">
                       <span className="truncate">{d.name}</span>
                       {d.controller > 0 && <PlayerTag driver={d} />}
+                      {/* Il giro più veloce è già in viola nella colonna Migliore. */}
+                      <DriverBadges driver={d} fastestLap={false} className="text-xs" />
                     </span>
                     {d.team && <span className="truncate text-xs font-normal text-muted">{d.team}</span>}
                   </span>
@@ -468,20 +484,6 @@ function PlayerTag({ driver, className }: { driver: LiveDriver; className?: stri
           <span style={{ color: driver.playerColor || undefined }}>{driver.playerName}</span>
         </>
       )}
-    </span>
-  );
-}
-
-// Posizioni guadagnate (▲) o perse (▼) rispetto alla griglia di partenza.
-function PositionsGained({ driver: d }: { driver: LiveDriver }) {
-  const gained = d.gridPosition ? d.gridPosition - d.position : 0;
-  if (!gained) return null;
-  return (
-    <span
-      className={cx('ml-1.5 text-xs font-semibold', gained > 0 ? 'text-green-400' : 'text-accent-text')}
-      title={`Partito ${d.gridPosition}°`}
-    >
-      {gained > 0 ? '▲' : '▼'}{Math.abs(gained)}
     </span>
   );
 }
@@ -529,7 +531,6 @@ function Tyre({ compound, age, stints = [] }: { compound: string; age: number; s
 
 function DriverStatus({ driver: d }: { driver: LiveDriver }) {
   const parts = [];
-  if (d.inPit) parts.push(<span key="pit" className="font-bold text-sprint">PIT</span>);
   if (d.penaltiesSec) parts.push(<span key="pen" className="font-bold text-accent-text">+{d.penaltiesSec}s</span>);
   if (d.unserved) {
     parts.push(

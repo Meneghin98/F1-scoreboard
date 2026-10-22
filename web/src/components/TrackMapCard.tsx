@@ -18,6 +18,7 @@ export function TrackMapCard({
   mapPoints,
   drivers,
   marshalZones = [],
+  sectors,
   className,
   onClick,
   title,
@@ -27,6 +28,7 @@ export function TrackMapCard({
   mapPoints: number;
   drivers: LiveDriver[];
   marshalZones?: MarshalZone[]; // settori dei commissari: quelli con bandiera gialla si colorano
+  sectors?: [number, number]; // metri a cui iniziano il settore 2 e il 3, 0 se non noti
   className?: string;
   onClick?: () => void;
   title?: string;
@@ -59,7 +61,7 @@ export function TrackMapCard({
       )}
     >
       {map && map.points.length > 1 ? (
-        <TrackMapSvg map={map} drivers={drivers} marshalZones={marshalZones} />
+        <TrackMapSvg map={map} drivers={drivers} marshalZones={marshalZones} sectors={sectors} />
       ) : (
         <Empty>La mappa si disegna man mano che le auto percorrono il circuito…</Empty>
       )}
@@ -67,7 +69,12 @@ export function TrackMapCard({
   );
 }
 
-function TrackMapSvg({ map, drivers, marshalZones }: { map: TrackMap; drivers: LiveDriver[]; marshalZones: MarshalZone[] }) {
+function TrackMapSvg({ map, drivers, marshalZones, sectors = [0, 0] }: {
+  map: TrackMap;
+  drivers: LiveDriver[];
+  marshalZones: MarshalZone[];
+  sectors?: [number, number];
+}) {
   const xs = map.points.map((p) => p.x);
   const zs = map.points.map((p) => p.z);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -108,6 +115,11 @@ function TrackMapSvg({ map, drivers, marshalZones }: { map: TrackMap; drivers: L
           <title>Bandiera gialla</title>
         </path>
       )}
+      <FinishLine map={map} size={r} />
+      {/* Settori solo quando se ne conoscono tutti gli inizi. Il settore 1 inizia al traguardo, che ha già la sua linea. */}
+      {sectors[0] > 0 && sectors[1] > 0 && [0, ...sectors].map((start, i) => (
+        <SectorMark key={i} map={map} d={start} sector={i + 1} size={r} center={[(minX + maxX) / 2, (minZ + maxZ) / 2]} tick={i > 0} />
+      ))}
       {cars.map((d) => (
         <g
           key={d.carIndex}
@@ -144,6 +156,85 @@ function TrackMapSvg({ map, drivers, marshalZones }: { map: TrackMap; drivers: L
         </g>
       ))}
     </svg>
+  );
+}
+
+// Oltre questa distanza (metri) dal punto cercato la pianta non ha il tratto:
+// linea del traguardo e settori non si disegnano.
+const SPOT_MAX_D = 20;
+const FINISH_COLUMNS = 6;
+
+// Punto della pianta a d metri dal traguardo e direzione di marcia (in gradi),
+// o null se quel tratto non è ancora stato visto.
+function spotAt(map: TrackMap, d: number): { x: number; z: number; angle: number } | null {
+  const i = map.points.findIndex((p) => p.d >= d - SPOT_MAX_D / 2);
+  const p = map.points[i], next = map.points[i + 1];
+  if (!p || !next || Math.abs(p.d - d) > SPOT_MAX_D || Math.hypot(next.x - p.x, next.z - p.z) > MAX_GAP) return null;
+  return { x: p.x, z: p.z, angle: (Math.atan2(next.z - p.z, next.x - p.x) * 180) / Math.PI };
+}
+
+// Linea del traguardo a scacchi, di traverso al tracciato.
+function FinishLine({ map, size }: { map: TrackMap; size: number }) {
+  const start = spotAt(map, 0);
+  if (!start) return null;
+  const sq = size * 0.4; // lato di un quadretto
+  const half = (FINISH_COLUMNS * sq) / 2;
+  // In coordinate locali X va nel senso di marcia e Y di traverso.
+  return (
+    <g transform={`translate(${start.x} ${start.z}) rotate(${start.angle})`}>
+      <title>Partenza / Arrivo</title>
+      <rect x={-sq} y={-half} width={2 * sq} height={2 * half} fill="white" stroke="var(--color-bg)" strokeWidth={sq * 0.3} />
+      {Array.from({ length: FINISH_COLUMNS * 2 }, (_, i) => {
+        const row = i % 2, col = Math.floor(i / 2);
+        return (row + col) % 2 ? null : <rect key={i} x={(row - 1) * sq} y={col * sq - half} width={sq} height={sq} fill="black" />;
+      })}
+    </g>
+  );
+}
+
+// Inizio di un settore: una tacca di traverso al tracciato (tick) e l'etichetta
+// S1, S2, S3 accanto, dalla parte esterna del circuito (lontano da center).
+function SectorMark({ map, d, sector, size, center, tick }: {
+  map: TrackMap;
+  d: number;
+  sector: number;
+  size: number;
+  center: [number, number];
+  tick: boolean;
+}) {
+  const spot = spotAt(map, d);
+  if (!spot) return null;
+  // Normale alla direzione di marcia, verso l'esterno.
+  const rad = (spot.angle * Math.PI) / 180;
+  let [nx, nz] = [-Math.sin(rad), Math.cos(rad)];
+  if ((spot.x - center[0]) * nx + (spot.z - center[1]) * nz < 0) [nx, nz] = [-nx, -nz];
+  const off = size * 3;
+  return (
+    <g>
+      <title>{`Inizio del settore ${sector}`}</title>
+      {tick && (
+        <line
+          x1={spot.x - nx * size * 1.2}
+          y1={spot.z - nz * size * 1.2}
+          x2={spot.x + nx * size * 1.2}
+          y2={spot.z + nz * size * 1.2}
+          stroke="var(--color-muted)"
+          strokeWidth={size * 0.35}
+          strokeLinecap="round"
+        />
+      )}
+      <text
+        x={spot.x + nx * off}
+        y={spot.z + nz * off}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={size * 1.3}
+        fontWeight={800}
+        fill="var(--color-muted)"
+      >
+        S{sector}
+      </text>
+    </g>
   );
 }
 

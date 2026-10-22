@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { EVENT_KIND } from '../components/RaceControlCard';
+import { EVENT_KIND, EventText } from '../components/RaceControlCard';
 import { ColorDot, cx } from '../components/ui';
 import { formatClock, formatGap, formatLapTime } from '../lib/format';
 import { controllerLabel, isLive, isLoading, SAFETY_CAR, teamColor } from '../lib/live';
@@ -121,19 +121,14 @@ function RaceMessage({ uid, events, drivers }: { uid: string; events: RaceEvent[
 
   if (!visible) return null;
   const kind = EVENT_KIND[visible.kind];
-  // Il testo usa i nomi del gioco: per le auto dei giocatori si mettono quelli del segnapunti, come nella torre.
-  let text = visible.text;
-  for (const car of visible.cars) {
-    const d = drivers.find((x) => x.carIndex === car);
-    if (d?.playerName && d.name) text = text.replaceAll(d.name, d.playerName);
-  }
   return (
     <div
       key={visible.id}
       className="absolute bottom-[4vh] left-[2vh] flex max-w-[40em] items-baseline gap-[0.7em] rounded-lg bg-bg/90 px-[0.8em] py-[0.5em] shadow-lg shadow-black/40 transition-opacity duration-300 starting:opacity-0"
     >
       <span className={cx('shrink-0 text-[0.8em] font-extrabold uppercase', kind?.className)}>{kind?.label ?? visible.kind}</span>
-      <span className="font-semibold">{text}</span>
+      {/* Per le auto dei giocatori i nomi del segnapunti, come nella torre. */}
+      <span className="font-semibold"><EventText event={visible} drivers={drivers} /></span>
     </div>
   );
 }
