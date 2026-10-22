@@ -494,7 +494,7 @@ func TestTournamentRules(t *testing.T) {
 	}
 	var std, cup tournament
 	expectStatus(t, call(t, srv, "POST", "/tournaments", map[string]any{"name": "Standard"}, &std), 201, "torneo senza regole")
-	if std.PointsMode != "absolute" || std.PolePoints != 0 || std.FastestLapPoints != 0 || std.PointsPreset != "f1" {
+	if std.PointsMode != "absolute" || std.PolePoints != 0 || std.FastestLapPoints != 0 || std.PointsPreset != "ultimate_champion" {
 		t.Fatalf("regole di default %+v", std)
 	}
 	for name, body := range map[string]map[string]any{
@@ -511,7 +511,7 @@ func TestTournamentRules(t *testing.T) {
 		expectStatus(t, call(t, srv, "POST", "/tournaments", body, nil), 400, name)
 	}
 	expectStatus(t, call(t, srv, "POST", "/tournaments",
-		map[string]any{"name": "Coppa", "points_mode": "players", "pole_points": 3, "fastest_lap_points": 1}, &cup), 201, "torneo con regole")
+		map[string]any{"name": "Coppa", "points_mode": "players", "points_preset": "f1", "pole_points": 3, "fastest_lap_points": 1}, &cup), 201, "torneo con regole")
 	if cup.PointsMode != "players" || cup.PolePoints != 3 || cup.FastestLapPoints != 1 {
 		t.Fatalf("regole %+v", cup)
 	}
@@ -635,5 +635,12 @@ func TestTournamentRules(t *testing.T) {
 	call(t, srv, "GET", fmt.Sprintf("/tournaments/%d/standings", cup.ID), nil, &st)
 	if luca, simone := st.Standings[0], st.Standings[1]; luca.Points != 2 || simone.Points != 1+1 {
 		t.Fatalf("classifica con Rank Down %+v", st.Standings)
+	}
+
+	// Con Ultimate Champion Luca, primo tra i piloti ma dietro alla IA, prende 1 punto; Simone solo il giro veloce.
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", cup.ID), map[string]any{"points_preset": "ultimate_champion"}, &cup), 200, "Ultimate Champion")
+	call(t, srv, "GET", fmt.Sprintf("/tournaments/%d/standings", cup.ID), nil, &st)
+	if luca, simone := st.Standings[0], st.Standings[1]; luca.Name != "Luca" || luca.Points != 1 || simone.Points != 1 {
+		t.Fatalf("classifica con Ultimate Champion %+v", st.Standings)
 	}
 }

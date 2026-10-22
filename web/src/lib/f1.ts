@@ -44,7 +44,7 @@ export const F1_POINTS = {
 
 // Regolamento F1 2025: le regole di un torneo nuovo.
 export const DEFAULT_RULES: ScoringRules = {
-  points_mode: 'absolute', pole_points: 0, fastest_lap_points: 0, points_preset: 'f1', race_points: null, sprint_points: null,
+  points_mode: 'absolute', pole_points: 0, fastest_lap_points: 0, points_preset: 'ultimate_champion', race_points: null, sprint_points: null,
 };
 
 // Modalità di punteggio, con la spiegazione da mostrare a chi sceglie.
@@ -65,7 +65,11 @@ export const POINTS_MODES: { value: PointsMode; label: string; hint: string }[] 
 // I punti li calcola il server (scoring.Presets): una tabella nuova va aggiunta
 // anche lì, e al tipo PointsPreset.
 export const POINTS_PRESETS: { value: PointsPreset; label: string; hint: string }[] = [
-  { value: 'f1', label: 'F1', hint: 'Gran Premi 25-18-15-12-10-8-6-4-2-1, sprint 8-7-6-5-4-3-2-1.' },
+  {
+    value: 'ultimate_champion',
+    label: 'Ultimate Champion',
+    hint: '1 punto al primo tra i piloti, 0 agli altri; +1 a chi vince davanti alla IA. Le sprint danno solo il +1.',
+  },
   {
     value: 'rank_down',
     label: 'Rank Down',
@@ -77,6 +81,7 @@ export const POINTS_PRESETS: { value: PointsPreset; label: string; hint: string 
     label: 'Push & Pay',
     hint: 'Il vincitore prende 2 punti, tutti gli altri ne perdono 1, ritirati compresi: si può andare sotto zero.',
   },
+  { value: 'f1', label: 'F1', hint: 'Gran Premi 25-18-15-12-10-8-6-4-2-1, sprint 8-7-6-5-4-3-2-1.' },
   { value: 'custom', label: 'Custom', hint: 'Scegli i punti di ogni posizione (0 per non darne).' },
 ];
 

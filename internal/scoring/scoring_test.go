@@ -300,11 +300,12 @@ func TestPresets(t *testing.T) {
 		{RaceID: 2, RaceType: "sprint", PlayerID: 1, Name: "A", Position: pos(4)},
 	}
 	tests := map[string]map[string]int{
-		PresetF1:           {"A": 25 + 7, "B": 18 + 8, "C": 0},
-		PresetRankDown:     {"A": 3 + 1, "B": 2 + 2, "C": 0},
-		PresetAllOrNothing: {"A": 25, "B": 8, "C": 0},
-		PresetPushAndPay:   {"A": 2 - 1, "B": -1 + 2, "C": -1},
-		"":                 {"A": 25 + 7, "B": 18 + 8, "C": 0},
+		PresetUltimateChampion: {"A": 1, "B": 0, "C": 0},
+		PresetF1:               {"A": 25 + 7, "B": 18 + 8, "C": 0},
+		PresetRankDown:         {"A": 3 + 1, "B": 2 + 2, "C": 0},
+		PresetAllOrNothing:     {"A": 25, "B": 8, "C": 0},
+		PresetPushAndPay:       {"A": 2 - 1, "B": -1 + 2, "C": -1},
+		"":                     {"A": 25 + 7, "B": 18 + 8, "C": 0},
 	}
 	for preset, want := range tests {
 		got := map[string]int{}
@@ -316,5 +317,58 @@ func TestPresets(t *testing.T) {
 				t.Errorf("%q: %s ha %d punti, attesi %d", preset, name, got[name], points)
 			}
 		}
+	}
+}
+
+// Ultimate Champion: un punto al primo tra i piloti, uno in più a chi vince la
+// gara davanti alla IA; le sprint danno solo quello. Chi si ritira lascia il
+// punto all'altro, anche se arriva dietro a tutta la IA.
+func TestUltimateChampion(t *testing.T) {
+	rules := Rules{Mode: ModePlayers, Preset: PresetUltimateChampion, FastestLapPoints: 1}
+	tests := []struct {
+		name    string
+		results []Result
+		want    []int
+		win     []int
+	}{
+		{"primo tra i piloti", []Result{
+			{RaceType: "race", Position: pos(3)}, {RaceType: "race", Position: pos(5)},
+		}, []int{1, 0}, []int{0, 0}},
+		{"vittoria davanti alla IA", []Result{
+			{RaceType: "race", Position: pos(4)}, {RaceType: "race", Position: pos(1)},
+		}, []int{0, 2}, []int{0, 1}},
+		{"ritirato", []Result{
+			{RaceType: "race", DNF: true}, {RaceType: "race", Position: pos(15)},
+		}, []int{0, 1}, []int{0, 0}},
+		{"vittoria con il giro veloce", []Result{
+			{RaceType: "race", Position: pos(1), FastestLap: true}, {RaceType: "race", Position: pos(2)},
+		}, []int{3, 0}, []int{1, 0}},
+		{"sprint", []Result{
+			{RaceType: "sprint", Position: pos(2)}, {RaceType: "sprint", Position: pos(6)},
+		}, []int{0, 0}, []int{0, 0}},
+		{"sprint vinta davanti alla IA", []Result{
+			{RaceType: "sprint", Position: pos(1)}, {RaceType: "sprint", Position: pos(6)},
+		}, []int{1, 0}, []int{1, 0}},
+		{"tre piloti", []Result{
+			{RaceType: "race", Position: pos(8)}, {RaceType: "race", Position: pos(2)}, {RaceType: "race", Position: pos(5)},
+		}, []int{0, 1, 0}, []int{0, 0, 0}},
+	}
+	for _, tt := range tests {
+		for i, sc := range ScoreRace(tt.results, rules) {
+			if sc.Points != tt.want[i] || sc.WinBonus != tt.win[i] {
+				t.Errorf("%s: pilota %d con %d punti (vittoria +%d), attesi %d (+%d)", tt.name, i+1, sc.Points, sc.WinBonus, tt.want[i], tt.win[i])
+			}
+		}
+	}
+
+	// In classifica le sprint contano, e il punto della vittoria finisce nella gara.
+	st := Standings([]Result{
+		{RaceID: 1, RaceType: "sprint", PlayerID: 1, Name: "A", Position: pos(1)},
+		{RaceID: 1, RaceType: "sprint", PlayerID: 2, Name: "B", Position: pos(3)},
+		{RaceID: 2, RaceType: "race", PlayerID: 1, Name: "A", Position: pos(4)},
+		{RaceID: 2, RaceType: "race", PlayerID: 2, Name: "B", Position: pos(1)},
+	}, rules)
+	if st[0].Name != "B" || st[0].Points != 2 || st[0].PerRace[2].WinBonus != 1 || st[1].Points != 1 || st[1].PerRace[1].WinBonus != 1 {
+		t.Errorf("classifica %+v", st)
 	}
 }

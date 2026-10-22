@@ -274,6 +274,11 @@ function ResultsTable({ race, rules, playerName }: { race: RaceWithResults; rule
                     (+{r.bonus} {race.type === 'qualifying' ? 'pole' : 'GV'})
                   </span>
                 )}
+                {r.win_bonus > 0 && (
+                  <span className="ml-1 text-xs text-muted" title="Vittoria davanti alla IA, già compresa">
+                    (+{r.win_bonus} 1° assoluto)
+                  </span>
+                )}
               </Td>
             )}
           </Tr>
