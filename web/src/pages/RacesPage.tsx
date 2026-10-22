@@ -154,7 +154,8 @@ function RaceList({ races, players, rules, editing, onEdit, onDelete, onResync, 
   const labels = raceLabels(races);
   const playerName = (id: number) => players.find((p) => p.id === id)?.name ?? '?';
 
-  return races.map((race) => {
+  // La più recente in cima; le etichette (G1, G2…) restano in ordine cronologico.
+  return [...races].reverse().map((race) => {
     const what = editing?.raceId === race.id ? editing.what : null;
     const source = race.recordings.find((r) => r.source);
     const replay = source ?? race.recordings[0];
