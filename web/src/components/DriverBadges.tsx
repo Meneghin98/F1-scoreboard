@@ -7,7 +7,7 @@ import { cx } from './ui';
 export function DriverBadges({ driver: d, fastestLap, className }: { driver: LiveDriver; fastestLap: boolean; className?: string }) {
   const badges = [
     d.inPit && { key: 'pit', label: 'PIT', title: 'Ai box', className: 'text-sprint' },
-    d.overtake && { key: 'ovt', label: 'OVT', title: 'Overtake: potenza extra per sorpassare', className: 'bg-yellow-300/15 text-yellow-300' },
+    d.overtake && { key: 'ovt', label: 'OVT', title: 'Overtake: potenza extra per sorpassare', className: 'bg-sky-400/15 text-sky-300' },
     d.drs && { key: 'drs', label: 'DRS', title: 'Ala mobile aperta', className: 'bg-green-400/15 text-green-400' },
     d.blueFlag && { key: 'blue', label: '⚑', title: 'Bandiera blu: sta per essere doppiato', className: 'text-blue-400' },
     fastestLap && { key: 'fl', label: 'GV', title: 'Giro più veloce', className: 'bg-purple-500/20 text-purple-300' },

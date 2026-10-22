@@ -363,10 +363,16 @@ function CompactStandings({ session, drivers }: { session: LiveSession; drivers:
               <Td className={cx(rankClass(d.position), compact, 'w-8 pl-4 text-right')}>{d.position}</Td>
               <Td className={cx(compact, 'max-w-0 w-full', d.controller > 0 && 'font-bold')}>
                 <span className="flex items-center gap-2">
-                  <span className="h-4 w-1 shrink-0 rounded-full" style={{ background: teamColor(d.team) }} />
-                  <span className="truncate" title={d.team}>{d.name}</span>
-                  {d.controller > 0 && <PlayerTag driver={d} />}
-                  <DriverBadges driver={d} fastestLap={!!d.bestLapMs && d.bestLapMs === fastest} className="text-xs" />
+                  <span className="h-8 w-1 shrink-0 rounded-full" style={{ background: teamColor(d.team) }} />
+                  {/* Nome sopra, giocatore e indicatori sotto: la riga c'è sempre, così
+                      l'altezza non cambia quando un indicatore compare o sparisce (DRS). */}
+                  <span className="flex min-w-0 flex-col leading-tight">
+                    <span className="truncate" title={d.team}>{d.name}</span>
+                    <span className="flex h-4 items-center gap-2 overflow-hidden">
+                      {d.controller > 0 && <PlayerTag driver={d} />}
+                      <DriverBadges driver={d} fastestLap={!!d.bestLapMs && d.bestLapMs === fastest} className="text-xs" />
+                    </span>
+                  </span>
                 </span>
               </Td>
               <Td num className={cx(compact, 'pr-4 text-sm')} title={toAhead && `Intervallo ${toAhead}`}>
