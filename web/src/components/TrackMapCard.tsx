@@ -108,6 +108,7 @@ function TrackMapSvg({ map, drivers, marshalZones }: { map: TrackMap; drivers: L
           <title>Bandiera gialla</title>
         </path>
       )}
+      <FinishLine map={map} size={r} />
       {cars.map((d) => (
         <g
           key={d.carIndex}
@@ -144,6 +145,30 @@ function TrackMapSvg({ map, drivers, marshalZones }: { map: TrackMap; drivers: L
         </g>
       ))}
     </svg>
+  );
+}
+
+// Linea del traguardo a scacchi, di traverso al tracciato. Si disegna solo
+// quando il tratto del traguardo è già stato visto (distanza dal traguardo ~0).
+const FINISH_MAX_D = 20; // metri
+const FINISH_COLUMNS = 6;
+
+function FinishLine({ map, size }: { map: TrackMap; size: number }) {
+  const [start, next] = map.points;
+  if (!next || start.d > FINISH_MAX_D || Math.hypot(next.x - start.x, next.z - start.z) > MAX_GAP) return null;
+  const angle = (Math.atan2(next.z - start.z, next.x - start.x) * 180) / Math.PI;
+  const sq = size * 0.3; // lato di un quadretto
+  const half = (FINISH_COLUMNS * sq) / 2;
+  // In coordinate locali X va nel senso di marcia e Y di traverso.
+  return (
+    <g transform={`translate(${start.x} ${start.z}) rotate(${angle})`}>
+      <title>Partenza / Arrivo</title>
+      <rect x={-sq} y={-half} width={2 * sq} height={2 * half} fill="white" stroke="var(--color-bg)" strokeWidth={sq * 0.3} />
+      {Array.from({ length: FINISH_COLUMNS * 2 }, (_, i) => {
+        const row = i % 2, col = Math.floor(i / 2);
+        return (row + col) % 2 ? null : <rect key={i} x={(row - 1) * sq} y={col * sq - half} width={sq} height={sq} fill="black" />;
+      })}
+    </g>
   );
 }
 
