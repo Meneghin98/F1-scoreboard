@@ -1,0 +1,72 @@
+# Crea il tag della versione successiva quando si unisce in main una PR con
+# l'etichetta release:patch, release:minor o release:major, e pubblica la
+# release. Con più etichette vale la più alta; senza nessuna non succede nulla.
+#
+# La release va richiamata da qui: un tag creato con il GITHUB_TOKEN non avvia
+# altri workflow, quindi il push del tag non farebbe partire release.yml.
+name: Tag al merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+# Un merge alla volta: due PR unite di seguito non devono calcolare lo stesso tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    if: github.event.pull_request.merged && contains(join(github.event.pull_request.labels.*.name, ' '), 'release:')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # per il push del tag
+    outputs:
+      tag: ${{ steps.next.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # servono i tag esistenti
+
+      - id: next
+        name: Calcola e crea il tag
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          COMMIT: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          bump=""
+          for level in major minor patch; do
+            if jq -e --arg l "release:$level" 'index($l) != null' <<<"$LABELS" >/dev/null; then
+              bump=$level
+              break
+            fi
+          done
+          if [ -z "$bump" ]; then
+            echo "::error::etichetta di release non valida: usa release:patch, release:minor o release:major"
+            exit 1
+          fi
+
+          # Ultima versione pubblicata, senza le pre-release (v1.2.0-rc.1).
+          last=$(git tag --list 'v*' --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+          IFS=. read -r major minor patch <<<"${last:-v0.0.0}"
+          major=${major#v}
+          case $bump in
+            major) tag="v$((major + 1)).0.0" ;;
+            minor) tag="v$major.$((minor + 1)).0" ;;
+            patch) tag="v$major.$minor.$((patch + 1))" ;;
+          esac
+
+          echo "Ultima versione ${last:-nessuna}, $bump: $tag sul commit $COMMIT"
+          git tag "$tag" "$COMMIT"
+          git push origin "refs/tags/$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: tag
+    permissions:
+      contents: write # per creare la release
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.tag.outputs.tag }}
+    secrets: inherit

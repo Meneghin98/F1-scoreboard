@@ -6,11 +6,19 @@
 # Compila frontend ed eseguibili per tutte le piattaforme, calcola i checksum,
 # li firma con la chiave nel secret UPDATE_SIGNING_KEY e crea la release su
 # GitHub. Il server installato scarica da qui gli aggiornamenti.
+#
+# Lo richiama anche tag-on-merge.yml, con il tag appena creato al merge di una PR.
 name: Release
 
 on:
   push:
     tags: ['v[0-9]+.[0-9]+.[0-9]+*']
+  workflow_call:
+    inputs:
+      tag:
+        description: tag della versione da pubblicare (v1.2.3)
+        required: true
+        type: string
 
 permissions:
   contents: write # per creare la release
@@ -18,8 +26,12 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
 
       - uses: actions/setup-node@v5
         with:
@@ -43,7 +55,7 @@ jobs:
         env:
           CGO_ENABLED: '0'
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version="${TAG#v}"
           mkdir dist
           for target in windows/amd64 linux/amd64 linux/arm64 linux/arm; do
             os="${target%/*}"
@@ -65,5 +77,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           prerelease=""
-          case "$GITHUB_REF_NAME" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes $prerelease
+          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$TAG" dist/* --title "$TAG" --generate-notes $prerelease
