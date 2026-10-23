@@ -4,7 +4,7 @@ import { href } from '../lib/route';
 import type { CareerStats, StatsResponse, Tournament } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { ALL_TOURNAMENTS, TournamentSelect, useTournamentFilter } from '../components/TournamentFilter';
-import { buttonClass, Card, ColorDot, cx, Empty, Loading, rankClass, Table, Td, Th, Tr } from '../components/ui';
+import { buttonClass, Card, ColorDot, cx, Empty, Loading, PageToolbar, rankClass, Table, Td, Th, Tr } from '../components/ui';
 
 // Statistiche di tutti i tornei o di uno solo: carriera dei piloti, record dei circuiti e testa a testa.
 export function StatsPage({ tournaments }: { tournaments: Tournament[] }) {
@@ -15,11 +15,11 @@ export function StatsPage({ tournaments }: { tournaments: Tournament[] }) {
 
   return (
     <>
-      <Card className="flex flex-wrap items-center gap-2">
+      <PageToolbar>
         <TournamentSelect tournaments={tournaments} value={filter} onChange={setFilter}>
           <option value={ALL_TOURNAMENTS}>Tutti i tornei</option>
         </TournamentSelect>
-      </Card>
+      </PageToolbar>
       {!data ? (
         <Loading />
       ) : !data.career.length ? (

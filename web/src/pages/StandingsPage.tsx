@@ -7,16 +7,16 @@ import { href } from '../lib/route';
 import { useLoad } from '../lib/useLoad';
 import { PointsChart } from '../components/PointsChart';
 import { TournamentSelect, useTournamentFilter } from '../components/TournamentFilter';
-import { Card, ColorDot, cx, dnfClass, Empty, Loading, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
+import { Card, ColorDot, cx, dnfClass, Empty, Loading, PageToolbar, rankClass, Table, Td, TeamTag, Th, Tr } from '../components/ui';
 
 export function StandingsPage({ tournaments }: { tournaments: Tournament[] }) {
   const [filter, setFilter] = useTournamentFilter(tournaments);
   const tournamentId = Number(filter);
   return (
     <>
-      <Card className="flex flex-wrap items-center gap-2">
+      <PageToolbar>
         <TournamentSelect tournaments={tournaments} value={filter} onChange={setFilter} />
-      </Card>
+      </PageToolbar>
       {/* key: cambiando torneo la classifica riparte da zero. */}
       {tournamentId > 0 && <Standings key={tournamentId} tournamentId={tournamentId} />}
     </>

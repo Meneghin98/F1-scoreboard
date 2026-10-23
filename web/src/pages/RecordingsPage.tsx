@@ -11,7 +11,7 @@ import { AssignRaceDialog } from '../components/AssignRaceDialog';
 import { LiveDot } from '../components/LiveBadge';
 import { ALL_TOURNAMENTS, TournamentSelect, UNASSIGNED, useTournamentFilter } from '../components/TournamentFilter';
 import {
-  Button, buttonClass, Card, cx, dnfClass, Empty, fieldSmClass, Loading, rankClass, Table, Td, Th, Tr,
+  Button, buttonClass, Card, cx, dnfClass, Empty, fieldSmClass, Filter, Loading, PageToolbar, rankClass, Table, Td, Th, Tr,
 } from '../components/ui';
 
 // Voce "tutti" dei filtri pilota e circuito: nell'indirizzo non c'è.
@@ -85,40 +85,43 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
 
   return (
     <>
-      <Card className="flex flex-wrap items-center gap-2">
+      <PageToolbar
+        actions={
+          <>
+            <span className="text-sm text-muted">
+              {visible.length} {visible.length === 1 ? 'registrazione' : 'registrazioni'}
+              {visible.length !== sessions.length && ` su ${sessions.length}`}
+            </span>
+            <Button variant="ghost" size="sm" onClick={reload}>Aggiorna</Button>
+          </>
+        }
+      >
         <TournamentSelect tournaments={tournaments} value={tournamentFilter} onChange={setTournamentFilter}>
           <option value={ALL_TOURNAMENTS}>Tutti i tornei</option>
           <option value={UNASSIGNED} title="Prove a tempo e registrazioni delle gare eliminate da &quot;Nessun torneo&quot;">
             Non assegnate
           </option>
         </TournamentSelect>
-        <select
-          aria-label="Filtra per pilota"
-          className={fieldSmClass}
-          value={playerFilter ?? ALL}
-          onChange={(e) => setFilters({ pilota: e.target.value === ALL ? null : e.target.value })}
-        >
-          <option value={ALL}>Tutti i piloti</option>
-          {players.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-        <select
-          aria-label="Filtra per circuito"
-          className={fieldSmClass}
-          value={trackFilter ?? ALL}
-          onChange={(e) => setFilters({ circuito: e.target.value === ALL ? null : e.target.value })}
-        >
-          <option value={ALL}>Tutti i circuiti</option>
-          {tracks.map((t) => <option key={t} value={t}>{t}</option>)}
-        </select>
-        {filtered && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setFilters({ torneo: null, pilota: null, circuito: null })}
+        <Filter label="Pilota">
+          <select
+            className={fieldSmClass}
+            value={playerFilter ?? ALL}
+            onChange={(e) => setFilters({ pilota: e.target.value === ALL ? null : e.target.value })}
           >
-            Azzera filtri
-          </Button>
-        )}
+            <option value={ALL}>Tutti i piloti</option>
+            {players.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </Filter>
+        <Filter label="Circuito">
+          <select
+            className={fieldSmClass}
+            value={trackFilter ?? ALL}
+            onChange={(e) => setFilters({ circuito: e.target.value === ALL ? null : e.target.value })}
+          >
+            <option value={ALL}>Tutti i circuiti</option>
+            {tracks.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </Filter>
         {unfinishedCount > 0 && (
           <Button
             variant="ghost"
@@ -131,12 +134,12 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
             {showUnfinished ? 'Nascondi' : 'Mostra'} non terminate ({unfinishedCount})
           </Button>
         )}
-        <span className="ml-auto text-sm text-muted">
-          {visible.length} {visible.length === 1 ? 'registrazione' : 'registrazioni'}
-          {visible.length !== sessions.length && ` su ${sessions.length}`}
-        </span>
-        <Button variant="ghost" size="sm" onClick={reload}>Aggiorna</Button>
-      </Card>
+        {filtered && (
+          <Button variant="ghost" size="sm" onClick={() => setFilters({ torneo: null, pilota: null, circuito: null })}>
+            Azzera filtri
+          </Button>
+        )}
+      </PageToolbar>
 
       {!sessions.length ? (
         <Empty>Nessuna registrazione: le sessioni vengono registrate da sole quando il gioco invia la telemetria.</Empty>

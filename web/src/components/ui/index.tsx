@@ -99,3 +99,24 @@ export function rankClass(position: number | null): string {
 
 export const dnfClass = 'font-bold text-accent-text';
 export { Dialog } from './Dialog';
+
+// Barra in cima a una pagina, fuori dalle card e uguale in tutte le pagine:
+// i filtri a sinistra, informazioni e azioni sulla pagina a destra.
+export function PageToolbar({ children, actions }: { children: ReactNode; actions?: ReactNode }) {
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+      {children}
+      {actions && <div className="ml-auto flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+// Filtro della barra della pagina, con l'etichetta davanti.
+export function Filter({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex items-center gap-2 text-sm">
+      <span className="text-muted">{label}</span>
+      {children}
+    </label>
+  );
+}

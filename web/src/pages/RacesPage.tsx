@@ -9,7 +9,7 @@ import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
 import { ResultsEditor } from '../components/ResultsEditor';
 import { TournamentSelect, useTournamentFilter } from '../components/TournamentFilter';
-import { Button, buttonClass, Card, cx, dnfClass, Empty, fieldClass, Loading, rankClass, Table, Td, Th, Tr } from '../components/ui';
+import { Button, buttonClass, Card, cx, dnfClass, Empty, fieldClass, Loading, PageToolbar, rankClass, Table, Td, Th, Tr } from '../components/ui';
 
 // Cosa si sta modificando di una gara: i risultati o circuito, tipo e data.
 type Editing = { raceId: number; what: 'results' | 'details' } | null;
@@ -21,9 +21,9 @@ export function RacesPage({ tournaments }: { tournaments: Tournament[] }) {
   const tournament = tournaments.find((t) => String(t.id) === filter);
   return (
     <>
-      <Card className="flex flex-wrap items-center gap-2">
+      <PageToolbar>
         <TournamentSelect tournaments={tournaments} value={filter} onChange={setFilter} />
-      </Card>
+      </PageToolbar>
       {/* key: cambiando torneo la pagina riparte da zero (es. chiude l'editor dei risultati). */}
       {tournament && <Races key={tournament.id} tournament={tournament} />}
     </>

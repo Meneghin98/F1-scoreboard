@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { setFilters, useFilter } from '../lib/route';
 import type { Tournament } from '../lib/types';
-import { fieldSmClass } from './ui';
+import { fieldSmClass, Filter } from './ui';
 
 // Voci dei filtri oltre ai tornei, come compaiono nell'indirizzo.
 export const ALL_TOURNAMENTS = 'tutti';
@@ -50,9 +50,11 @@ interface SelectProps {
 
 export function TournamentSelect({ tournaments, value, onChange, children }: SelectProps) {
   return (
-    <select aria-label="Torneo" className={fieldSmClass} value={value} onChange={(e) => onChange(e.target.value)}>
-      {children}
-      {tournaments.map((t) => <option key={t.id} value={t.id}>{tournamentLabel(t)}</option>)}
-    </select>
+    <Filter label="Torneo">
+      <select className={fieldSmClass} value={value} onChange={(e) => onChange(e.target.value)}>
+        {children}
+        {tournaments.map((t) => <option key={t.id} value={t.id}>{tournamentLabel(t)}</option>)}
+      </select>
+    </Filter>
   );
 }
