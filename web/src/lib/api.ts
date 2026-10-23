@@ -54,7 +54,9 @@ export const api = {
   resyncRace: (raceId: number) => request<void>(`/races/${raceId}/resync`, 'POST'),
 
   standings: (tournamentId: number) => request<StandingsResponse>(`/tournaments/${tournamentId}/standings`),
-  stats: () => request<StatsResponse>('/stats'),
+  // Statistiche di tutti i tornei o, con tournamentId, di uno solo.
+  stats: (tournamentId?: number) =>
+    request<StatsResponse>(tournamentId ? `/stats?tournament=${tournamentId}` : '/stats'),
   playerStats: (id: number) => request<PlayerProfile>(`/players/${id}/stats`),
 
   liveTrack: () => request<TrackMap>('/live/track'),

@@ -1,31 +1,53 @@
 import { api } from '../lib/api';
 import { formatLapTime, formatUtcDate } from '../lib/format';
 import { href } from '../lib/route';
-import type { CareerStats, StatsResponse } from '../lib/types';
+import type { CareerStats, StatsResponse, Tournament } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
+import { ALL_TOURNAMENTS, TournamentSelect, useTournamentFilter } from '../components/TournamentFilter';
 import { buttonClass, Card, ColorDot, cx, Empty, Loading, rankClass, Table, Td, Th, Tr } from '../components/ui';
 
-// Statistiche di tutti i tornei: carriera dei piloti, record dei circuiti e testa a testa.
-export function StatsPage() {
-  const { data } = useLoad(api.stats, []);
-  if (!data) return <Loading />;
-  if (!data.career.length) return <Empty>Nessun risultato ancora: le statistiche compaiono dopo le prime gare.</Empty>;
+// Statistiche di tutti i tornei o di uno solo: carriera dei piloti, record dei circuiti e testa a testa.
+export function StatsPage({ tournaments }: { tournaments: Tournament[] }) {
+  const [filter, setFilter] = useTournamentFilter(tournaments, [ALL_TOURNAMENTS]);
+  const tournamentId = filter === ALL_TOURNAMENTS ? undefined : Number(filter);
+  const { data } = useLoad(() => api.stats(tournamentId), [tournamentId]);
+  const single = tournamentId !== undefined;
 
   return (
     <>
-      <CareerCard career={data.career} />
-      <RecordsCard records={data.records} />
-      <HeadToHeadCard h2h={data.headToHead} />
+      <Card className="flex flex-wrap items-center gap-2">
+        <TournamentSelect tournaments={tournaments} value={filter} onChange={setFilter}>
+          <option value={ALL_TOURNAMENTS}>Tutti i tornei</option>
+        </TournamentSelect>
+      </Card>
+      {!data ? (
+        <Loading />
+      ) : !data.career.length ? (
+        <Empty>
+          {single
+            ? 'Nessun risultato in questo torneo.'
+            : 'Nessun risultato ancora: le statistiche compaiono dopo le prime gare.'}
+        </Empty>
+      ) : (
+        <>
+          <CareerCard career={data.career} single={single} />
+          <RecordsCard records={data.records} single={single} />
+          <HeadToHeadCard h2h={data.headToHead} />
+        </>
+      )}
     </>
   );
 }
 
-function CareerCard({ career }: { career: CareerStats[] }) {
+// single: statistiche di un solo torneo, dove i titoli non hanno senso (colonna vuota).
+function CareerCard({ career, single }: { career: CareerStats[]; single: boolean }) {
   return (
     <Card>
       <h2 className="mb-1 font-bold">Carriera</h2>
       <p className="mb-3 text-sm text-muted">
-        Tutte le gare, di tutti i tornei. I punti sono la somma delle classifiche dei tornei (senza "Nessun torneo");
+        {single
+          ? 'Tutte le gare del torneo. I punti sono quelli della sua classifica; '
+          : 'Tutte le gare, di tutti i tornei. I punti sono la somma delle classifiche dei tornei (senza "Nessun torneo"); '}
         vittorie, podi e piazzamenti sono quelli d'arrivo, IA compresa.
       </p>
       <Table>
@@ -54,7 +76,7 @@ function CareerCard({ career }: { career: CareerStats[] }) {
                   {c.name}
                 </a>
               </Td>
-              <Td num className={cx(c.titles > 0 && 'font-bold text-gold')}>{c.titles || '–'}</Td>
+              <Td num className={cx(!single && c.titles > 0 && 'font-bold text-gold')}>{single ? '' : c.titles || '–'}</Td>
               <Td num className="font-extrabold">{c.points}</Td>
               <Td num>{c.races}</Td>
               <Td num>{c.wins}</Td>
@@ -73,11 +95,15 @@ function CareerCard({ career }: { career: CareerStats[] }) {
   );
 }
 
-function RecordsCard({ records }: { records: StatsResponse['records'] }) {
+function RecordsCard({ records, single }: { records: StatsResponse['records']; single: boolean }) {
   return (
     <Card>
       <h2 className="mb-1 font-bold">Record dei circuiti</h2>
-      <p className="mb-3 text-sm text-muted">Il giro più veloce dei piloti su ogni circuito, in qualunque sessione registrata.</p>
+      <p className="mb-3 text-sm text-muted">
+        {single
+          ? 'Il giro più veloce dei piloti su ogni circuito, nelle registrazioni delle gare del torneo.'
+          : 'Il giro più veloce dei piloti su ogni circuito, in qualunque sessione registrata.'}
+      </p>
       {records.length ? (
         <Table>
           <thead>

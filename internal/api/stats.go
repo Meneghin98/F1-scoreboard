@@ -4,14 +4,15 @@ import (
 	"cmp"
 	"net/http"
 	"slices"
+	"strconv"
 
 	"f1-scoreboard/internal/live"
 	"f1-scoreboard/internal/scoring"
 	"f1-scoreboard/internal/telemetry"
 )
 
-// Statistiche di tutti i tornei: carriera dei piloti, record dei circuiti
-// (dai giri delle registrazioni) e testa a testa. I dati sono pochi (qualche
+// Statistiche di tutti i tornei, o di uno solo: carriera dei piloti, record dei
+// circuiti (dai giri delle registrazioni) e testa a testa. I dati sono pochi (qualche
 // centinaio di risultati): si leggono tutti e si contano in memoria.
 
 // CareerStats sono i numeri di un pilota su tutte le gare, di tutti i tornei.
@@ -121,12 +122,13 @@ func (s *Server) loadStats() (*statsData, error) {
 	return d, rows.Err()
 }
 
-// standings calcola la classifica di ogni torneo (non "Nessun torneo"), con le sue regole.
-func (d *statsData) standings() map[int64][]scoring.Standing {
+// standings calcola la classifica di ogni torneo, con le sue regole. "Nessun
+// torneo" conta solo con withFree: nella somma di tutti i tornei non c'è.
+func (d *statsData) standings(withFree bool) map[int64][]scoring.Standing {
 	byTournament := map[int64][]scoring.Result{}
 	rules := map[int64]scoring.Rules{}
 	for _, r := range d.results {
-		if r.free {
+		if r.free && !withFree {
 			continue
 		}
 		p := d.players[r.playerID]
@@ -265,14 +267,16 @@ func aheadOf(a, b statResult) bool {
 
 // lapRecords restituisce il giro più veloce dei piloti su ogni circuito,
 // nell'ordine del calendario, e i migliori giri di ogni pilota per circuito.
-func (s *Server) lapRecords() (records []TrackRecord, bestLaps map[int64][]TrackRecord, err error) {
+// Con tournamentID diverso da 0 contano solo le registrazioni delle gare di quel torneo.
+func (s *Server) lapRecords(tournamentID int64) (records []TrackRecord, bestLaps map[int64][]TrackRecord, err error) {
 	rows, err := s.db.Query(`
 		SELECT s.track_id, tp.best_lap_ms, tp.player_id, p.name, COALESCE(p.color, ''), s.id, s.session_type, s.started_at
 		FROM telemetry_players tp
 		JOIN telemetry_sessions s ON s.id = tp.session_id
 		JOIN players p ON p.id = tp.player_id
 		WHERE tp.best_lap_ms IS NOT NULL AND s.track_id IS NOT NULL AND s.track_id >= 0
-		ORDER BY s.track_id, tp.best_lap_ms, s.id`)
+		  AND (? = 0 OR s.race_id IN (SELECT id FROM races WHERE tournament_id = ?))
+		ORDER BY s.track_id, tp.best_lap_ms, s.id`, tournamentID, tournamentID)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -328,17 +332,35 @@ func (s *Server) lapRecords() (records []TrackRecord, bestLaps map[int64][]Track
 	return records, bestLaps, nil
 }
 
-// getStats restituisce le statistiche di tutti i tornei.
+// getStats restituisce le statistiche di tutti i tornei o, con ?tournament=N, di uno solo.
 func (s *Server) getStats(w http.ResponseWriter, r *http.Request) error {
+	var tournamentID int64
+	if q := r.URL.Query().Get("tournament"); q != "" {
+		id, err := strconv.ParseInt(q, 10, 64)
+		found := false
+		if err == nil {
+			if found, err = s.exists("SELECT 1 FROM tournaments WHERE id = ?", id); err != nil {
+				return err
+			}
+		}
+		if !found {
+			return errorf(http.StatusNotFound, "torneo non trovato")
+		}
+		tournamentID = id
+	}
 	d, err := s.loadStats()
 	if err != nil {
 		return err
 	}
-	records, _, err := s.lapRecords()
+	if tournamentID != 0 {
+		d.results = slices.DeleteFunc(d.results, func(r statResult) bool { return r.tournamentID != tournamentID })
+	}
+	records, _, err := s.lapRecords(tournamentID)
 	if err != nil {
 		return err
 	}
-	career := d.career(d.standings())
+	// Scelto un solo torneo, anche "Nessun torneo", i punti sono quelli della sua classifica.
+	career := d.career(d.standings(tournamentID != 0))
 	return writeJSON(w, http.StatusOK, map[string]any{
 		"career":     career,
 		"records":    records,
@@ -391,11 +413,11 @@ func (s *Server) getPlayerStats(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	records, bestLaps, err := s.lapRecords()
+	records, bestLaps, err := s.lapRecords(0)
 	if err != nil {
 		return err
 	}
-	standings := d.standings()
+	standings := d.standings(false)
 	career := d.career(standings)
 
 	profile := struct {

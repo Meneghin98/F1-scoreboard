@@ -129,4 +129,33 @@ func TestStats(t *testing.T) {
 		t.Errorf("profilo %+v", profile)
 	}
 	expectStatus(t, call(t, srv, "GET", "/players/99/stats", nil, nil), 404, "pilota inesistente")
+
+	// Statistiche di un solo torneo: un secondo torneo con una gara vinta da Luca.
+	var trophy struct {
+		ID int `json:"id"`
+	}
+	call(t, srv, "POST", "/tournaments", map[string]string{"name": "Trofeo"}, &trophy)
+	var spa struct {
+		ID int `json:"id"`
+	}
+	call(t, srv, "POST", fmt.Sprintf("/tournaments/%d/races", trophy.ID), map[string]string{"track": "Belgio – Spa", "type": "race"}, &spa)
+	save(spa.ID, res{PlayerID: 2, Position: pos(1)}, res{PlayerID: 1, Position: pos(2)})
+
+	call(t, srv, "GET", fmt.Sprintf("/stats?tournament=%d", cup.ID), nil, &stats)
+	if len(stats.Career) != 2 || stats.Career[0].Name != "Luca" || stats.Career[0].Wins != 0 || stats.Career[0].Points != 18+15 ||
+		len(stats.Records) != 1 {
+		t.Errorf("statistiche della Coppa %+v %+v", stats.Career, stats.Records)
+	}
+	call(t, srv, "GET", fmt.Sprintf("/stats?tournament=%d", trophy.ID), nil, &stats)
+	// Il record di Monza è di una gara della Coppa: nel Trofeo non conta.
+	if len(stats.Career) != 2 || stats.Career[0].Name != "Luca" || stats.Career[0].Wins != 1 || stats.Career[0].Races != 1 ||
+		len(stats.Records) != 0 || len(stats.HeadToHead.Players) != 2 || stats.HeadToHead.Ahead[0][1] != 1 {
+		t.Errorf("statistiche del Trofeo %+v %+v %+v", stats.Career, stats.Records, stats.HeadToHead)
+	}
+	call(t, srv, "GET", "/stats", nil, &stats)
+	if stats.Career[0].Name != "Luca" || stats.Career[0].Wins != 1 || stats.Career[0].Races != 3 {
+		t.Errorf("statistiche di tutti i tornei %+v", stats.Career)
+	}
+	expectStatus(t, call(t, srv, "GET", "/stats?tournament=99", nil, nil), 404, "torneo inesistente")
+	expectStatus(t, call(t, srv, "GET", "/stats?tournament=abc", nil, nil), 404, "torneo non valido")
 }

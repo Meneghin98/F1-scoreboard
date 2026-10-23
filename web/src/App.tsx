@@ -142,7 +142,7 @@ function MainApp({ view }: { view: View }) {
             {view === 'dashboard' && <DashboardPage tournaments={tournaments} />}
             {view === 'standings' && <StandingsPage tournaments={tournaments} />}
             {view === 'races' && <RacesPage tournaments={tournaments} />}
-            {view === 'stats' && <StatsPage />}
+            {view === 'stats' && <StatsPage tournaments={tournaments} />}
             {view === 'players' && <PlayersPage />}
             {view === 'player' && (
               viewParam ? <PlayerPage key={viewParam} playerId={viewParam} /> : <Empty>Pilota non trovato.</Empty>
