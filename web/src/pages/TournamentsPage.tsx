@@ -62,9 +62,6 @@ export function TournamentsPage({ tournaments, onChanged }: Props) {
     });
   }
 
-  function openStandings(t: Tournament) {
-    navigate(t.free ? 'races' : 'standings', undefined, { torneo: t.id });
-  }
 
   return (
     <>
@@ -95,9 +92,14 @@ export function TournamentsPage({ tournaments, onChanged }: Props) {
               )}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="ghost" size="sm" onClick={() => openStandings(t)}>
-                {t.free ? 'Gare' : 'Classifica'}
+              <Button variant="ghost" size="sm" onClick={() => navigate('standings', undefined, { torneo: t.id })}>
+                Classifica
               </Button>
+              {t.free && (
+                <Button variant="ghost" size="sm" onClick={() => navigate('races', undefined, { torneo: t.id })}>
+                  Gare
+                </Button>
+              )}
               {t.active ? (
                 <Button variant="ghost" size="sm" onClick={() => handleEnd(t)}>Termina</Button>
               ) : !t.free && (
