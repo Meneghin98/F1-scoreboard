@@ -1,5 +1,5 @@
 import type {
-  BackupInfo, Player, PlayerProfile, Race, RaceType, RaceWithResults, ResultInput, ScoringRules, SessionRaceInput,
+  BackupInfo, LineupTournament, Player, PlayerProfile, Race, RaceType, RaceWithResults, ResultInput, ScoringRules, SessionRaceInput,
   SessionRecord, Settings, SettingsSaved, StandingsResponse, StatsResponse, SystemInfo, Tournament,
   ReplayFrame, ReplayInfo, Track, TrackMap, UnfinishedDeleted, UpdateStatus,
 } from './types';
@@ -54,12 +54,15 @@ export const api = {
   resyncRace: (raceId: number) => request<void>(`/races/${raceId}/resync`, 'POST'),
 
   standings: (tournamentId: number) => request<StandingsResponse>(`/tournaments/${tournamentId}/standings`),
-  stats: () => request<StatsResponse>('/stats'),
+  // Statistiche di tutti i tornei o, con tournamentId, di uno solo.
+  stats: (tournamentId?: number) =>
+    request<StatsResponse>(tournamentId ? `/stats?tournament=${tournamentId}` : '/stats'),
   playerStats: (id: number) => request<PlayerProfile>(`/players/${id}/stats`),
 
   liveTrack: () => request<TrackMap>('/live/track'),
-  setLineup: (players: { carIndex: number; playerId: number | null }[], confirm: boolean) =>
-    request<void>('/live/lineup', 'PUT', { players, confirm }),
+  // Risponde con il torneo in cui è salvata la sessione, null se non lo è ancora.
+  setLineup: (sessionId: number, players: { carIndex: number; playerId: number | null }[], confirm: boolean) =>
+    request<{ tournament: LineupTournament | null }>('/live/lineup', 'PUT', { sessionId, players, confirm }),
 
   sessions: () => request<SessionRecord[]>('/telemetry/sessions'),
   deleteSession: (id: number) => request<void>(`/telemetry/sessions/${id}`, 'DELETE'),

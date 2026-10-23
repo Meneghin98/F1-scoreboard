@@ -2,16 +2,21 @@ import type { ReactNode } from 'react';
 import { api } from '../lib/api';
 import { formatDate, formatDateTime } from '../lib/format';
 import { isLive, sessionSummary } from '../lib/live';
-import { href, VIEW_LABELS, type View } from '../lib/route';
+import { type Filters, href, VIEW_LABELS, type View } from '../lib/route';
 import type { CareerStats, Tournament } from '../lib/types';
 import { useLive } from '../lib/useLive';
 import { useLoad } from '../lib/useLoad';
 import { LiveDot } from '../components/LiveBadge';
+import { ALL_TOURNAMENTS, defaultTournament } from '../components/TournamentFilter';
 import { ColorDot, cx, rankClass } from '../components/ui';
 
 // Pagina iniziale: una card per ogni sezione, con un riassunto e il link per aprirla.
-export function DashboardPage({ tournamentId, tournaments }: { tournamentId: number | null; tournaments: Tournament[] }) {
+// Classifica e gare sono quelle del torneo in corso, o di "Nessun torneo" se non ce n'è uno.
+export function DashboardPage({ tournaments }: { tournaments: Tournament[] }) {
   const live = useLive();
+  const tournamentId = defaultTournament(tournaments)?.id ?? null;
+  // Le card aprono la pagina sul torneo mostrato qui.
+  const filters = { torneo: tournamentId };
   const { data: standings } = useLoad(
     () => (tournamentId ? api.standings(tournamentId) : Promise.resolve(null)),
     [tournamentId],
@@ -50,7 +55,7 @@ export function DashboardPage({ tournamentId, tournaments }: { tournamentId: num
         )}
       </DashboardCard>
 
-      <DashboardCard view="standings" className="sm:row-span-2">
+      <DashboardCard view="standings" filters={filters} className="sm:row-span-2">
         {!tournamentId ? (
           <p className="text-muted">Crea un torneo per iniziare.</p>
         ) : !standings ? null : standings.standings.length ? (
@@ -67,7 +72,7 @@ export function DashboardPage({ tournamentId, tournaments }: { tournamentId: num
         )}
       </DashboardCard>
 
-      <DashboardCard view="races">
+      <DashboardCard view="races" filters={filters}>
         {!tournamentId ? (
           <p className="text-muted">Crea un torneo per aggiungere le gare.</p>
         ) : standings && (
@@ -124,7 +129,9 @@ export function DashboardPage({ tournamentId, tournaments }: { tournamentId: num
         )}
       </DashboardCard>
 
-      <DashboardCard view="stats">
+      <DashboardCard view="stats" filters={{ torneo: ALL_TOURNAMENTS }}>
+        {/* Come la classifica dice il suo torneo: qui si contano tutti. */}
+        <p className="text-sm text-muted">Tutti i tornei</p>
         {stats && (stats.career.length ? (
           <ul className="flex flex-col gap-1">
             <StatLeader label="Titoli" career={stats.career} pick={(c) => c.titles} />
@@ -142,15 +149,16 @@ export function DashboardPage({ tournamentId, tournaments }: { tournamentId: num
 
 interface DashboardCardProps {
   view: View;
+  filters?: Filters; // filtri della pagina aperta dalla card
   highlight?: boolean;
   className?: string;
   children: ReactNode;
 }
 
-function DashboardCard({ view, highlight, className, children }: DashboardCardProps) {
+function DashboardCard({ view, filters, highlight, className, children }: DashboardCardProps) {
   return (
     <a
-      href={href(view)}
+      href={href(view, undefined, filters)}
       className={cx(
         'group flex flex-col gap-3 rounded-lg border bg-surface p-5 transition-colors hover:bg-surface-2',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',

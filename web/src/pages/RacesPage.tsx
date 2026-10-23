@@ -8,14 +8,29 @@ import type { Player, RaceType, RaceWithResults, ScoringRules, Tournament } from
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
 import { ResultsEditor } from '../components/ResultsEditor';
-import { Button, buttonClass, Card, cx, dnfClass, Empty, fieldClass, Loading, rankClass, Table, Td, Th, Tr } from '../components/ui';
+import { TournamentSelect, useTournamentFilter } from '../components/TournamentFilter';
+import { Button, buttonClass, Card, cx, dnfClass, Empty, fieldClass, Loading, PageToolbar, rankClass, Table, Td, Th, Tr } from '../components/ui';
 
 // Cosa si sta modificando di una gara: i risultati o circuito, tipo e data.
 type Editing = { raceId: number; what: 'results' | 'details' } | null;
 
 // Le gare del torneo con i risultati, e i punti calcolati con le sue regole.
 // In "Nessun torneo" (free), eliminando una gara la registrazione resta senza torneo.
-export function RacesPage({ tournament }: { tournament: Tournament }) {
+export function RacesPage({ tournaments }: { tournaments: Tournament[] }) {
+  const [filter, setFilter] = useTournamentFilter(tournaments);
+  const tournament = tournaments.find((t) => String(t.id) === filter);
+  return (
+    <>
+      <PageToolbar>
+        <TournamentSelect tournaments={tournaments} value={filter} onChange={setFilter} />
+      </PageToolbar>
+      {/* key: cambiando torneo la pagina riparte da zero (es. chiude l'editor dei risultati). */}
+      {tournament && <Races key={tournament.id} tournament={tournament} />}
+    </>
+  );
+}
+
+function Races({ tournament }: { tournament: Tournament }) {
   const { id: tournamentId, free } = tournament;
   const { run, toast } = useToast();
   const confirm = useConfirm();

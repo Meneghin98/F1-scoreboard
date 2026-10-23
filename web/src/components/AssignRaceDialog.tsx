@@ -26,12 +26,8 @@ export function AssignRaceDialog({ session, tournaments, onClose, onSaved }: Pro
 function AssignRaceForm({ session, tournaments, onClose, onSaved }: Omit<Props, 'session'> & { session: SessionRecord }) {
   const { run } = useToast();
   const [saving, setSaving] = useState(false);
-  // Di partenza: il torneo della registrazione, altrimenti quello selezionato in alto.
-  const [tournamentId, setTournamentId] = useState<number | null>(() => {
-    const selected = Number(localStorage.getItem('tournamentId'));
-    const fallback = tournaments.some((t) => t.id === selected) ? selected : tournaments[0]?.id;
-    return session.race?.tournamentId ?? fallback ?? null;
-  });
+  // Di partenza: il torneo della registrazione; se non ne ha uno lo si sceglie qui.
+  const [tournamentId, setTournamentId] = useState<number | null>(session.race?.tournamentId ?? null);
   // 'new' crea una nuova gara sul circuito della registrazione.
   const [raceId, setRaceId] = useState<number | 'new'>(session.race?.id ?? 'new');
   // Il tipo proposto viene dalla sessione; le sprint il frontend non le riconosce.
@@ -83,6 +79,7 @@ function AssignRaceForm({ session, tournaments, onClose, onSaved }: Omit<Props, 
             setRaceId('new');
           }}
         >
+          {tournamentId === null && <option value="" disabled>Scegli un torneo…</option>}
           {tournaments.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
       </label>
@@ -92,7 +89,7 @@ function AssignRaceForm({ session, tournaments, onClose, onSaved }: Omit<Props, 
         <select
           className={fieldClass}
           value={raceId}
-          disabled={!races}
+          disabled={!tournamentId || !races}
           onChange={(e) => setRaceId(e.target.value === 'new' ? 'new' : Number(e.target.value))}
         >
           <option value="new">Nuova gara: {session.track}</option>

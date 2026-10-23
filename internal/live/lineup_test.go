@@ -94,7 +94,7 @@ func TestLineupFlow(t *testing.T) {
 			}
 			carIndex = v.Cars[0].CarIndex
 			// Una modifica ferma il conto alla rovescia.
-			if err := s.SetLineup([]LineupChoice{{CarIndex: carIndex, PlayerID: &marco}}, false); err != nil {
+			if _, err := s.SetLineup(s.current.id, []LineupChoice{{CarIndex: carIndex, PlayerID: &marco}}, false); err != nil {
 				t.Fatal(err)
 			}
 			if v := liveSnapshot(t, s).Lineup; v.SecondsLeft != nil || v.Cars[0].PlayerName != "Marco" {
@@ -110,8 +110,8 @@ func TestLineupFlow(t *testing.T) {
 				}
 			}
 			// Correzione e conferma: la gara viene salvata subito nel torneo in corso.
-			if err := s.SetLineup([]LineupChoice{{CarIndex: carIndex, PlayerID: &luca}}, true); err != nil {
-				t.Fatal(err)
+			if saved, err := s.SetLineup(s.current.id, []LineupChoice{{CarIndex: carIndex, PlayerID: &luca}}, true); err != nil || saved == nil || saved.ID != cup {
+				t.Fatalf("conferma: %v, %+v", err, saved)
 			}
 			v = liveSnapshot(t, s).Lineup
 			if v.Stage != StageSaved || v.Tournament.ID != cup || v.RaceID == nil {
@@ -120,8 +120,12 @@ func TestLineupFlow(t *testing.T) {
 			if res := resultsOf(t, s, *v.RaceID); len(res) != 1 || res[0].playerID != luca || *res[0].position != 7 {
 				t.Fatalf("risultati %+v", res)
 			}
-			if err := s.SetLineup(nil, true); err == nil {
+			if _, err := s.SetLineup(s.current.id, []LineupChoice{{CarIndex: carIndex, PlayerID: &marco}}, false); err == nil {
 				t.Error("modifica dopo il salvataggio accettata")
+			}
+			// Confermare di nuovo dice solo dove è stata salvata.
+			if saved, err := s.SetLineup(s.current.id, nil, true); err != nil || saved == nil || saved.ID != cup {
+				t.Errorf("seconda conferma: %v, %+v", err, saved)
 			}
 		}
 	}
@@ -156,9 +160,85 @@ func TestLineupFlow(t *testing.T) {
 	}
 }
 
+// Se nel gioco si passa alla sessione successiva mentre la pagina mostra ancora
+// i risultati, la gara si salva da sola: la conferma arrivata in ritardo non
+// tocca la sessione nuova, e il riepilogo resta visibile e correggibile.
+func TestLineupConfirmAfterSessionEnd(t *testing.T) {
+	packets := loadRecording(t)
+	s, _ := newTestService(t, false)
+	luca := insertID(t, s, "INSERT INTO players (name) VALUES ('Luca')")
+	cup := insertID(t, s, "INSERT INTO tournaments (name, started_at) VALUES ('Campionato', datetime('now'))")
+
+	base := time.Date(2026, 10, 16, 13, 31, 38, 0, time.UTC)
+	var first int64
+	var carIndex int
+	for _, p := range raceOnly(t, packets, 1) {
+		s.Handle(base.Add(p.At), p.Data)
+		if l := s.current.lineup; l != nil && l.stage == StageResults {
+			first, carIndex = s.current.id, l.cars[0].carIndex
+			break
+		}
+	}
+	if first == 0 {
+		t.Fatal("risultati mai arrivati")
+	}
+
+	// Parte la sessione successiva, ancora alla scelta dei piloti.
+	next := raceOnly(t, packets, 2)
+	rest := next
+	for i, p := range next {
+		s.Handle(base.Add(time.Hour+p.At), p.Data)
+		if l := s.current.lineup; l != nil {
+			rest = next[i+1:]
+			break
+		}
+	}
+	if l := s.current.lineup; l == nil || l.stage != StageDrivers {
+		t.Fatalf("sessione successiva %+v", l)
+	}
+	v := liveSnapshot(t, s).LastSaved
+	if v == nil || v.SessionID != first || v.Stage != StageSaved || v.Tournament == nil || v.Tournament.ID != cup ||
+		v.Track != "Monza" || v.Cars[0].Position == nil || *v.Cars[0].Position != 7 {
+		t.Fatalf("riepilogo %+v", v)
+	}
+
+	if saved, err := s.SetLineup(first, nil, true); err != nil || saved == nil || saved.ID != cup {
+		t.Fatalf("conferma in ritardo: %v, %+v", err, saved)
+	}
+	if l := s.current.lineup; l.stage != StageDrivers {
+		t.Fatalf("la conferma ha chiuso la scelta della sessione successiva: %s", l.stage)
+	}
+	var invalidErr *InvalidError
+	if _, err := s.SetLineup(first, []LineupChoice{{CarIndex: carIndex, PlayerID: &luca}}, false); !errors.As(err, &invalidErr) {
+		t.Errorf("modifica in ritardo: %v", err)
+	}
+
+	// La correzione dalla scheda del riepilogo si vede subito.
+	if err := s.SetSessionPlayers(first, map[int]*int64{carIndex: &luca}); err != nil {
+		t.Fatal(err)
+	}
+	if v := liveSnapshot(t, s).LastSaved; v == nil || v.Cars[0].PlayerName != "Luca" {
+		t.Fatalf("dopo la correzione %+v", v)
+	}
+	if s.savedView(s.lastSaved.until.Add(time.Second)) != nil {
+		t.Error("riepilogo ancora visibile dopo la scadenza")
+	}
+
+	// Alla partenza della sessione successiva il riepilogo sparisce.
+	for _, p := range rest {
+		s.Handle(base.Add(time.Hour+p.At), p.Data)
+		if s.current.lineup.stage != StageDrivers {
+			break
+		}
+	}
+	if v := liveSnapshot(t, s).LastSaved; v != nil {
+		t.Fatalf("riepilogo dopo la partenza %+v", v)
+	}
+}
+
 func TestSetLineupErrors(t *testing.T) {
 	s, _ := newTestService(t, false)
-	if err := s.SetLineup(nil, true); err != ErrNoLineup {
+	if _, err := s.SetLineup(0, nil, true); err != ErrNoLineup {
 		t.Fatalf("senza gara: %v", err)
 	}
 
@@ -172,15 +252,15 @@ func TestSetLineupErrors(t *testing.T) {
 		"pilota su due auto": {{CarIndex: 3, PlayerID: &marco}, {CarIndex: 5, PlayerID: &marco}},
 	} {
 		var invalidErr *InvalidError
-		if err := s.SetLineup(choices, false); !errors.As(err, &invalidErr) {
+		if _, err := s.SetLineup(0, choices, false); !errors.As(err, &invalidErr) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
 	// Uno scambio tra le due auto invece va bene.
-	if err := s.SetLineup([]LineupChoice{{CarIndex: 3, PlayerID: &marco}}, false); err != nil {
+	if _, err := s.SetLineup(0, []LineupChoice{{CarIndex: 3, PlayerID: &marco}}, false); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetLineup([]LineupChoice{{CarIndex: 3, PlayerID: nil}, {CarIndex: 5, PlayerID: &marco}}, true); err != nil {
+	if _, err := s.SetLineup(0, []LineupChoice{{CarIndex: 3, PlayerID: nil}, {CarIndex: 5, PlayerID: &marco}}, true); err != nil {
 		t.Fatal(err)
 	}
 	if l := s.current.lineup; l.stage != StageRacing || l.cars[1].playerName != "Marco" {

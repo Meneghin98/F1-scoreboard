@@ -10,7 +10,7 @@ import { href } from '../lib/route';
 import { DriverBadges } from '../components/DriverBadges';
 import { DuelCard } from '../components/DuelCard';
 import { LiveDot } from '../components/LiveBadge';
-import { LineupSection, LineupSummary, lineupWaiting, useLineupSummary } from '../components/LineupSection';
+import { LineupSection, LineupSummary, lineupNeedsAttention, SavedLineupCard, useLineupSummary } from '../components/LineupSection';
 import { PlayerCarCard } from '../components/PlayerCarCard';
 import { PositionsGained } from '../components/PositionsGained';
 import { RaceControlCard } from '../components/RaceControlCard';
@@ -24,26 +24,34 @@ export function LivePage() {
   const [summary, setEditing] = useLineupSummary(live?.lineup?.stage);
 
   if (!live) return <Empty>Connessione al server in corso…</Empty>;
-  if (!isLive(live)) return <WaitingCard telemetry={live.telemetry} />;
+  // L'ultima sessione salvata resta in vista anche quando il gioco è già passato alla successiva.
+  const saved = live.lastSaved && live.lastSaved.sessionId !== live.lineup?.sessionId
+    ? <SavedLineupCard saved={live.lastSaved} />
+    : null;
+  if (!isLive(live)) return <>{saved}<WaitingCard telemetry={live.telemetry} /></>;
 
   if (isLoading(live.session)) {
     return (
-      <Card className="flex items-center gap-3">
-        <LiveDot active />
-        <div>
-          <div className="text-xl font-bold">Sessione in caricamento…</div>
-          <div className="text-sm text-muted">Circuito e piloti arrivano quando il gioco ti porta ai box o in pista.</div>
-        </div>
-      </Card>
+      <>
+        {saved}
+        <Card className="flex items-center gap-3">
+          <LiveDot active />
+          <div>
+            <div className="text-xl font-bold">Sessione in caricamento…</div>
+            <div className="text-sm text-muted">Circuito e piloti arrivano quando il gioco ti porta ai box o in pista.</div>
+          </div>
+        </Card>
+      </>
     );
   }
 
   return (
     <>
+      {saved}
       <SessionCard
         live={live}
         session={live.session}
-        className={cx(live.lineup && lineupWaiting(live.lineup) && 'border-accent')}
+        className={cx(live.lineup && lineupNeedsAttention(live.lineup) && 'border-accent')}
         summary={live.lineup && summary && <LineupSummary lineup={live.lineup} onEdit={() => setEditing(true)} />}
         footer={live.lineup && !summary && <LineupSection lineup={live.lineup} onDone={() => setEditing(false)} />}
         actions={

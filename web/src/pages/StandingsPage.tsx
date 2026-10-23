@@ -2,13 +2,28 @@ import { useLayoutEffect, useRef } from 'react';
 import { api } from '../lib/api';
 import { rulesSummary } from '../lib/f1';
 import { raceLabels } from '../lib/format';
-import type { Race, Standing } from '../lib/types';
+import type { Race, Standing, Tournament } from '../lib/types';
 import { href } from '../lib/route';
 import { useLoad } from '../lib/useLoad';
 import { PointsChart } from '../components/PointsChart';
-import { Card, ColorDot, cx, dnfClass, Empty, Loading, rankClass, Table, TeamTag, Td, Th, Tr } from '../components/ui';
+import { TournamentSelect, useTournamentFilter } from '../components/TournamentFilter';
+import { Card, ColorDot, cx, dnfClass, Empty, Loading, PageToolbar, rankClass, Table, Td, TeamTag, Th, Tr } from '../components/ui';
 
-export function StandingsPage({ tournamentId }: { tournamentId: number }) {
+export function StandingsPage({ tournaments }: { tournaments: Tournament[] }) {
+  const [filter, setFilter] = useTournamentFilter(tournaments);
+  const tournamentId = Number(filter);
+  return (
+    <>
+      <PageToolbar>
+        <TournamentSelect tournaments={tournaments} value={filter} onChange={setFilter} />
+      </PageToolbar>
+      {/* key: cambiando torneo la classifica riparte da zero. */}
+      {tournamentId > 0 && <Standings key={tournamentId} tournamentId={tournamentId} />}
+    </>
+  );
+}
+
+function Standings({ tournamentId }: { tournamentId: number }) {
   const { data } = useLoad(() => api.standings(tournamentId), [tournamentId]);
   const tableRef = useStickyColumns(FIXED_LEFT, FIXED_RIGHT, data);
   if (!data) return <Loading />;
