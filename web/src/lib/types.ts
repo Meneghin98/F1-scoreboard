@@ -111,8 +111,15 @@ export interface Standing {
 
 export interface StandingsResponse {
   tournament: Tournament;
-  races: Race[];
+  races: StandingRace[];
   standings: Standing[];
+}
+
+// Gara in classifica, con riavvii e flashback della sua registrazione
+// (null se non ne ha o non sono ancora contati).
+export interface StandingRace extends Race {
+  restarts: number | null;
+  flashbacks: number | null;
 }
 
 export interface ResultInput {

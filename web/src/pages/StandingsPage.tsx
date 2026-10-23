@@ -31,6 +31,14 @@ const STATS: { label: string; title?: string; value: (s: Standing) => number; cl
   { label: 'DNF', value: (s) => s.dnf },
 ];
 
+// Riavvii e flashback di ogni gara, in due colonne dopo i piloti: sono della
+// sessione, non di un pilota. In cima il totale del torneo.
+const COUNTERS: { key: 'restarts' | 'flashbacks'; icon: string; label: string; title: string }[] = [
+  { key: 'restarts', icon: '↻', label: 'Riavvii', title: 'Volte che la sessione è stata ricominciata dal gioco' },
+  { key: 'flashbacks', icon: '⟲', label: 'Flashback', title: 'Flashback usati nella sessione' },
+];
+const counterBorder = 'border-l-2';
+
 // Classifica in verticale: un pilota per colonna (in ordine di classifica),
 // una gara per riga. In cima punti e distacco, in fondo le statistiche.
 // Sopra c'è il grafico dei punti.
@@ -46,6 +54,8 @@ function Standings({ tournamentId }: { tournamentId: number }) {
   const labels = raceLabels(races);
   const leader = standings[0].points;
   const playersMode = tournament.points_mode === 'players';
+  // Le colonne di riavvii e flashback servono solo se qualche gara ha una registrazione.
+  const counters = races.some((r) => r.restarts !== null || r.flashbacks !== null);
   return (
     <>
       <PointsChart races={races} standings={standings} labels={labels} />
@@ -65,11 +75,22 @@ function Standings({ tournamentId }: { tournamentId: number }) {
                   <div className="font-normal"><TeamTag team={s.team} /></div>
                 </Th>
               ))}
+              {counters && COUNTERS.map((c, i) => (
+                <Th key={c.key} className={cx(colClass, i === 0 && counterBorder, 'w-[1%] px-4 whitespace-nowrap tracking-normal normal-case')} title={c.title}>
+                  <div className="text-base text-muted">{c.icon}</div>
+                  <div className="text-sm text-fg">{c.label}</div>
+                </Th>
+              ))}
             </tr>
             <tr className="group hover:bg-surface-2">
               <Th className={stickyClass}>Punti</Th>
               {standings.map((s) => (
                 <Td key={s.player_id} className={cx(colClass, 'text-lg font-extrabold')}>{s.points}</Td>
+              ))}
+              {counters && COUNTERS.map((c, i) => (
+                <Td key={c.key} className={cx(colClass, i === 0 && counterBorder, 'text-lg font-extrabold')} title={`${c.label} in tutto il torneo`}>
+                  {races.reduce((sum, r) => sum + (r[c.key] ?? 0), 0)}
+                </Td>
               ))}
             </tr>
             <tr className="group hover:bg-surface-2">
@@ -79,6 +100,7 @@ function Standings({ tournamentId }: { tournamentId: number }) {
                   {s.points < leader ? `−${leader - s.points}` : ''}
                 </Td>
               ))}
+              {counters && COUNTERS.map((c, i) => <Td key={c.key} className={cx(colClass, i === 0 && counterBorder, 'border-b-2')} />)}
             </tr>
           </thead>
           <tbody>
@@ -86,6 +108,14 @@ function Standings({ tournamentId }: { tournamentId: number }) {
               <Tr key={race.id} className="group hover:bg-surface-2">
                 <Th className={stickyClass} title={race.track}>{labels.get(race.id)}</Th>
                 {standings.map((s) => <RaceCell key={s.player_id} standing={s} race={race} playersMode={playersMode} />)}
+                {counters && COUNTERS.map((c, i) => {
+                  const n = race[c.key];
+                  return (
+                    <Td key={c.key} className={cx(colClass, i === 0 && counterBorder, n ? 'text-sprint' : 'text-muted')}>
+                      {n ?? '–'}
+                    </Td>
+                  );
+                })}
               </Tr>
             ))}
           </tbody>
@@ -98,6 +128,7 @@ function Standings({ tournamentId }: { tournamentId: number }) {
                     {stat.value(s)}
                   </Td>
                 ))}
+                {counters && COUNTERS.map((c, j) => <Td key={c.key} className={cx(colClass, j === 0 && counterBorder, i === 0 && 'border-t-2')} />)}
               </Tr>
             ))}
           </tfoot>
