@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react';
 import { LiveBadge } from './components/LiveBadge';
-import { cx, Empty, fieldSmClass, Loading } from './components/ui';
+import { cx, Empty, Loading } from './components/ui';
 import { api } from './lib/api';
 import { TEAMS } from './lib/f1';
 import {
-  href, NAV_VIEWS, STANDALONE_VIEWS, useView, useViewParam, VIEW_LABELS, VIEW_PARENT, type View,
+  href, NAV_VIEWS, previousView, STANDALONE_VIEWS, useView, useViewParam, VIEW_LABELS, VIEW_PARENT, type View,
 } from './lib/route';
 import type { Tournament } from './lib/types';
 import { useLoad } from './lib/useLoad';
@@ -22,10 +21,19 @@ import { SystemPage } from './pages/SystemPage';
 import { TournamentsPage } from './pages/TournamentsPage';
 import { TvPage } from './pages/TvPage';
 
-function tournamentLabel(t: Tournament): string {
-  if (t.active) return `${t.name} (in corso)`;
-  if (t.ended_at) return `${t.name} (terminato)`;
-  return t.name;
+// Torneo in cui vengono salvate le gare finite: nell'header, uguale in tutte le pagine.
+function ActiveTournament({ tournaments }: { tournaments: Tournament[] | null }) {
+  if (!tournaments) return null;
+  const active = tournaments.find((t) => t.active);
+  return (
+    <a
+      href={href('tournaments')}
+      title="Le gare finite vengono salvate nel torneo in corso; se non ce n'è uno, in &quot;Nessun torneo&quot;"
+      className="text-sm text-muted hover:text-fg"
+    >
+      {active ? <>Torneo in corso: <span className="font-semibold text-fg">{active.name}</span></> : 'Nessun torneo in corso'}
+    </a>
+  );
 }
 
 function GearIcon() {
@@ -59,19 +67,6 @@ function MainApp({ view }: { view: View }) {
   // I tornei si ricaricano da soli quando cambiano (vedi useLoad).
   const { data: tournaments, reload: reloadTournaments } = useLoad(api.tournaments, []);
   const { data: tracks } = useLoad(api.tracks, []);
-  const [selectedId, setSelectedId] = useState<number | null>(
-    () => Number(localStorage.getItem('tournamentId')) || null,
-  );
-
-  // Il torneo scelto in alto o, se non esiste più, il primo dell'elenco (quello in corso).
-  const tournamentId = tournaments?.some((t) => t.id === selectedId) ? selectedId : tournaments?.[0]?.id ?? null;
-  const current = tournaments?.find((t) => t.id === tournamentId);
-  useEffect(() => {
-    if (tournamentId !== null) localStorage.setItem('tournamentId', String(tournamentId));
-  }, [tournamentId]);
-
-  // Classifica e gare appartengono a un torneo: senza tornei non c'è niente da mostrare.
-  const missing = (view === 'standings' || view === 'races') && !tournamentId;
   const parent = VIEW_PARENT[view];
   const section = parent ?? view; // pagina evidenziata nella barra
 
@@ -88,17 +83,7 @@ function MainApp({ view }: { view: View }) {
             <LiveBadge />
           </div>
           <div className="flex items-center gap-2">
-            <select
-              aria-label="Torneo"
-              title="Torneo mostrato in dashboard, classifica e gare"
-              className={fieldSmClass}
-              value={tournamentId ?? ''}
-              onChange={(e) => setSelectedId(Number(e.target.value))}
-            >
-              {tournaments?.length
-                ? tournaments.map((t) => <option key={t.id} value={t.id}>{tournamentLabel(t)}</option>)
-                : <option value="">Nessun torneo</option>}
-            </select>
+            <ActiveTournament tournaments={tournaments} />
             <a
               href={href('system')}
               aria-label={VIEW_LABELS.system}
@@ -130,47 +115,48 @@ function MainApp({ view }: { view: View }) {
         </nav>
       </header>
 
-      {/* Le pagine montano solo dopo aver caricato i tornei, per non chiedere un torneo salvato che non esiste più. */}
+      {/* Le pagine montano solo dopo aver caricato i tornei: i filtri partono dal torneo in corso. */}
       {tournaments ? (
         <main className="mx-auto max-w-300 p-6">
           {/* Sistema non è nella barra: il titolo dice dove ci si trova. */}
           {view === 'system' && <h2 className="mb-4 text-xl font-bold">{VIEW_LABELS.system}</h2>}
           {parent && (
             <nav aria-label="Percorso" className="mb-4 flex items-center gap-2 text-sm">
-              <a href={href(parent)} className="text-muted hover:text-fg">{VIEW_LABELS[parent]}</a>
+              <a
+                href={href(parent)}
+                className="text-muted hover:text-fg"
+                onClick={(e) => {
+                  // Arrivando da lì si torna indietro, così la pagina riapre con i filtri com'erano.
+                  if (previousView() !== parent) return;
+                  e.preventDefault();
+                  history.back();
+                }}
+              >
+                {VIEW_LABELS[parent]}
+              </a>
               <span className="text-muted">/</span>
               <span aria-current="page" className="font-semibold">{VIEW_LABELS[view]}</span>
             </nav>
           )}
-          {missing ? (
-            <Empty>Crea un torneo nella pagina <a href={href('tournaments')} className="underline">Tornei</a> per iniziare.</Empty>
-          ) : (
-            <section>
-              {/* key: cambiando torneo la pagina riparte da zero (es. chiude l'editor dei risultati). */}
-              {view === 'dashboard' && <DashboardPage key={tournamentId} tournamentId={tournamentId} tournaments={tournaments} />}
-              {view === 'standings' && tournamentId !== null && <StandingsPage key={tournamentId} tournamentId={tournamentId} />}
-              {view === 'races' && current && <RacesPage key={tournamentId} tournament={current} />}
-              {view === 'stats' && <StatsPage />}
-              {view === 'players' && <PlayersPage />}
-              {view === 'player' && (
-                viewParam ? <PlayerPage key={viewParam} playerId={viewParam} /> : <Empty>Pilota non trovato.</Empty>
-              )}
-              {view === 'tournaments' && (
-                <TournamentsPage
-                  tournaments={tournaments}
-                  selectedId={tournamentId}
-                  onSelect={setSelectedId}
-                  onChanged={reloadTournaments}
-                />
-              )}
-              {view === 'live' && <LivePage />}
-              {view === 'recordings' && <RecordingsPage tournaments={tournaments} />}
-              {view === 'replay' && (
-                viewParam ? <ReplayPage key={viewParam} sessionId={viewParam} /> : <Empty>Registrazione non trovata.</Empty>
-              )}
-              {view === 'system' && <SystemPage />}
-            </section>
-          )}
+          <section>
+            {view === 'dashboard' && <DashboardPage tournaments={tournaments} />}
+            {view === 'standings' && <StandingsPage tournaments={tournaments} />}
+            {view === 'races' && <RacesPage tournaments={tournaments} />}
+            {view === 'stats' && <StatsPage />}
+            {view === 'players' && <PlayersPage />}
+            {view === 'player' && (
+              viewParam ? <PlayerPage key={viewParam} playerId={viewParam} /> : <Empty>Pilota non trovato.</Empty>
+            )}
+            {view === 'tournaments' && (
+              <TournamentsPage tournaments={tournaments} onChanged={reloadTournaments} />
+            )}
+            {view === 'live' && <LivePage />}
+            {view === 'recordings' && <RecordingsPage tournaments={tournaments} />}
+            {view === 'replay' && (
+              viewParam ? <ReplayPage key={viewParam} sessionId={viewParam} /> : <Empty>Registrazione non trovata.</Empty>
+            )}
+            {view === 'system' && <SystemPage />}
+          </section>
         </main>
       ) : (
         <Loading />

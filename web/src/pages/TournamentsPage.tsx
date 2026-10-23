@@ -11,15 +11,12 @@ import type { Tournament } from '../lib/types';
 
 interface Props {
   tournaments: Tournament[];
-  selectedId: number | null; // torneo scelto in alto
-  onSelect: (id: number) => void;
   onChanged: () => Promise<void>; // ricarica l'elenco dopo una modifica
 }
 
 // Tutti i tornei con il loro stato: qui si creano, si iniziano, si terminano,
-// si cambiano nome e regole di punteggio e si eliminano. Nell'header resta solo
-// la scelta del torneo da mostrare.
-export function TournamentsPage({ tournaments, selectedId, onSelect, onChanged }: Props) {
+// si cambiano nome e regole di punteggio e si eliminano.
+export function TournamentsPage({ tournaments, onChanged }: Props) {
   const { run, toast } = useToast();
   const confirm = useConfirm();
   const [creating, setCreating] = useState(false);
@@ -66,8 +63,7 @@ export function TournamentsPage({ tournaments, selectedId, onSelect, onChanged }
   }
 
   function openStandings(t: Tournament) {
-    onSelect(t.id);
-    navigate(t.free ? 'races' : 'standings');
+    navigate(t.free ? 'races' : 'standings', undefined, { torneo: t.id });
   }
 
   return (
@@ -80,7 +76,7 @@ export function TournamentsPage({ tournaments, selectedId, onSelect, onChanged }
       </Card>
 
       {tournaments.map((t) => (
-        <Card key={t.id} className={cx(t.active && 'border-green-500/60', t.id === selectedId && 'bg-surface-2/40')}>
+        <Card key={t.id} className={cx(t.active && 'border-green-500/60')}>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <h2 className="flex flex-wrap items-center gap-2 text-lg font-bold">
@@ -133,10 +129,7 @@ export function TournamentsPage({ tournaments, selectedId, onSelect, onChanged }
         defaultName={`Torneo ${new Date().toLocaleDateString('it-IT')}`}
         canStart={!active}
         onClose={() => setCreating(false)}
-        onSaved={async (t) => {
-          onSelect(t.id);
-          await onChanged();
-        }}
+        onSaved={onChanged}
       />
       <TournamentDialog
         open={editing !== null}
