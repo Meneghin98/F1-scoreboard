@@ -3,21 +3,23 @@ import { api, sessionDownloadUrl } from '../lib/api';
 import { useConfirm } from '../lib/confirm';
 import { raceTypeLabel } from '../lib/f1';
 import { formatBytes, formatDate, formatDateTime, formatDuration } from '../lib/format';
-import { href } from '../lib/route';
+import { href, setFilters, useFilter } from '../lib/route';
 import { useToast } from '../lib/toast';
 import type { Player, SessionPlayer, SessionRecord, Tournament } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { AssignRaceDialog } from '../components/AssignRaceDialog';
 import { LiveDot } from '../components/LiveBadge';
+import { ALL_TOURNAMENTS, TournamentSelect, UNASSIGNED, useTournamentFilter } from '../components/TournamentFilter';
 import {
   Button, buttonClass, Card, cx, dnfClass, Empty, fieldSmClass, Loading, rankClass, Table, Td, Th, Tr,
 } from '../components/ui';
 
-// Valori speciali del filtro torneo.
+// Voce "tutti" dei filtri pilota e circuito: nell'indirizzo non c'è.
 const ALL = 'all';
-const NONE = 'none';
 
-// tournaments arriva dall'header: se cambia (torneo creato o eliminato) si ricaricano anche le registrazioni.
+// I filtri stanno nell'indirizzo (#/recordings?torneo=tutti&pilota=2&circuito=Monza),
+// così tornando dal replay la pagina riapre com'era. Il torneo parte da quello in corso.
+// Se tournaments cambia (torneo creato o eliminato) si ricaricano anche le registrazioni.
 export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
   const { run, toast } = useToast();
   const confirm = useConfirm();
@@ -25,9 +27,10 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
     () => Promise.all([api.sessions(), api.players()]),
     [tournaments],
   );
-  const [tournamentFilter, setTournamentFilter] = useState(ALL);
-  const [playerFilter, setPlayerFilter] = useState(ALL);
-  const [trackFilter, setTrackFilter] = useState(ALL);
+  const [tournamentFilter, setTournamentFilter] = useTournamentFilter(tournaments, [ALL_TOURNAMENTS, UNASSIGNED]);
+  const tournamentChosen = useFilter('torneo') !== null; // diverso da quello di partenza
+  const playerParam = useFilter('pilota');
+  const trackParam = useFilter('circuito');
   const [showUnfinished, setShowUnfinished] = useState(false);
   const [assigning, setAssigning] = useState<SessionRecord | null>(null);
 
@@ -36,16 +39,19 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
 
   // Circuiti presenti nelle registrazioni, in ordine alfabetico.
   const tracks = [...new Set(sessions.map((s) => s.track).filter(Boolean))].sort();
+  // Un pilota o un circuito che non c'è (es. da un vecchio link) vale come "tutti".
+  const playerFilter = players.some((p) => String(p.id) === playerParam) ? Number(playerParam) : null;
+  const trackFilter = trackParam !== null && tracks.includes(trackParam) ? trackParam : null;
 
   const unfinishedCount = sessions.filter(isUnfinished).length;
-  const visible = sessions.filter((s) =>
-    (showUnfinished || !isUnfinished(s)) &&
-    (tournamentFilter === ALL ||
-      (tournamentFilter === NONE ? !s.race : s.race?.tournamentId === Number(tournamentFilter))) &&
-    (playerFilter === ALL || s.players.some((p) => p.playerId === Number(playerFilter))) &&
-    (trackFilter === ALL || s.track === trackFilter),
+  const matching = sessions.filter((s) =>
+    (tournamentFilter === ALL_TOURNAMENTS ||
+      (tournamentFilter === UNASSIGNED ? !s.race : s.race?.tournamentId === Number(tournamentFilter))) &&
+    (playerFilter === null || s.players.some((p) => p.playerId === playerFilter)) &&
+    (trackFilter === null || s.track === trackFilter),
   );
-  const filtered = tournamentFilter !== ALL || playerFilter !== ALL || trackFilter !== ALL;
+  const visible = showUnfinished ? matching : matching.filter((s) => !isUnfinished(s));
+  const filtered = tournamentChosen || playerFilter !== null || trackFilter !== null;
 
   async function handleDelete(session: SessionRecord) {
     const ok = await confirm({
@@ -80,21 +86,17 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
   return (
     <>
       <Card className="flex flex-wrap items-center gap-2">
-        <select
-          aria-label="Filtra per torneo"
-          className={fieldSmClass}
-          value={tournamentFilter}
-          onChange={(e) => setTournamentFilter(e.target.value)}
-        >
-          <option value={ALL}>Tutti i tornei</option>
-          <option value={NONE}>Senza torneo</option>
-          {tournaments.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+        <TournamentSelect tournaments={tournaments} value={tournamentFilter} onChange={setTournamentFilter}>
+          <option value={ALL_TOURNAMENTS}>Tutti i tornei</option>
+          <option value={UNASSIGNED} title="Prove a tempo e registrazioni delle gare eliminate da &quot;Nessun torneo&quot;">
+            Non assegnate
+          </option>
+        </TournamentSelect>
         <select
           aria-label="Filtra per pilota"
           className={fieldSmClass}
-          value={playerFilter}
-          onChange={(e) => setPlayerFilter(e.target.value)}
+          value={playerFilter ?? ALL}
+          onChange={(e) => setFilters({ pilota: e.target.value === ALL ? null : e.target.value })}
         >
           <option value={ALL}>Tutti i piloti</option>
           {players.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -102,8 +104,8 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
         <select
           aria-label="Filtra per circuito"
           className={fieldSmClass}
-          value={trackFilter}
-          onChange={(e) => setTrackFilter(e.target.value)}
+          value={trackFilter ?? ALL}
+          onChange={(e) => setFilters({ circuito: e.target.value === ALL ? null : e.target.value })}
         >
           <option value={ALL}>Tutti i circuiti</option>
           {tracks.map((t) => <option key={t} value={t}>{t}</option>)}
@@ -112,11 +114,7 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => {
-              setTournamentFilter(ALL);
-              setPlayerFilter(ALL);
-              setTrackFilter(ALL);
-            }}
+            onClick={() => setFilters({ torneo: null, pilota: null, circuito: null })}
           >
             Azzera filtri
           </Button>
@@ -144,7 +142,7 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
         <Empty>Nessuna registrazione: le sessioni vengono registrate da sole quando il gioco invia la telemetria.</Empty>
       ) : !visible.length ? (
         <Empty>
-          {!filtered && !showUnfinished
+          {matching.length
             ? 'Ci sono solo sessioni non terminate: usa "Mostra non terminate" per vederle.'
             : 'Nessuna registrazione corrisponde ai filtri.'}
         </Empty>
@@ -222,7 +220,7 @@ function RecordingCard({ session: s, players, onAssign, onDelete, onPlayerChange
                 </span>
               </>
             ) : (
-              <span className="text-muted">Nessun torneo</span>
+              <span className="text-muted">Non assegnata</span>
             )}
           </p>
           {s.deleteAt && (
