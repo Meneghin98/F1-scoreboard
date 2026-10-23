@@ -33,6 +33,7 @@ const STATS: { label: string; title?: string; value: (s: Standing) => number; cl
 
 // Classifica in verticale: un pilota per colonna (in ordine di classifica),
 // una gara per riga. In cima punti e distacco, in fondo le statistiche.
+// Sopra c'è il grafico dei punti.
 function Standings({ tournamentId }: { tournamentId: number }) {
   const { data } = useLoad(() => api.standings(tournamentId), [tournamentId]);
   if (!data) return <Loading />;
@@ -47,6 +48,7 @@ function Standings({ tournamentId }: { tournamentId: number }) {
   const playersMode = tournament.points_mode === 'players';
   return (
     <>
+      <PointsChart races={races} standings={standings} labels={labels} />
       <Card>
         {!tournament.free && <p className="mb-2 text-sm text-muted">{rulesSummary(tournament)}</p>}
         <Table className="border-separate border-spacing-0">
@@ -101,7 +103,6 @@ function Standings({ tournamentId }: { tournamentId: number }) {
           </tfoot>
         </Table>
       </Card>
-      <PointsChart races={races} standings={standings} labels={labels} />
     </>
   );
 }
