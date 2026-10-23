@@ -272,6 +272,7 @@ func (s *Service) Handle(at time.Time, data []byte) {
 			int(ses.TrackID), int(ses.SessionType), int(ses.TotalLaps), cur.id)
 		log.Printf("telemetria: sessione %016x: %s – %s", cur.uid, ses.TrackID, ses.SessionType)
 		s.loadTrackMap(cur, ses)
+		s.dataChangedLocked() // tra le registrazioni compaiono circuito e tipo di sessione
 	}
 	if !cur.classification && s.tracker.Classification() != nil {
 		cur.classification = true
@@ -306,6 +307,7 @@ func (s *Service) startSession(at time.Time, h telemetry.Header) {
 		log.Printf("telemetria: salvataggio della sessione: %v", err)
 	}
 	s.current = cur
+	s.dataChangedLocked() // la sessione compare tra le registrazioni, in registrazione
 	log.Printf("telemetria: nuova sessione %016x (formato %d)", h.SessionUID, h.PacketFormat)
 }
 

@@ -87,13 +87,10 @@ export function RecordingsPage({ tournaments }: { tournaments: Tournament[] }) {
     <>
       <PageToolbar
         actions={
-          <>
-            <span className="text-sm text-muted">
-              {visible.length} {visible.length === 1 ? 'registrazione' : 'registrazioni'}
-              {visible.length !== sessions.length && ` su ${sessions.length}`}
-            </span>
-            <Button variant="ghost" size="sm" onClick={reload}>Aggiorna</Button>
-          </>
+          <span className="text-sm text-muted">
+            {visible.length} {visible.length === 1 ? 'registrazione' : 'registrazioni'}
+            {visible.length !== sessions.length && ` su ${sessions.length}`}
+          </span>
         }
       >
         <TournamentSelect tournaments={tournaments} value={tournamentFilter} onChange={setTournamentFilter}>
