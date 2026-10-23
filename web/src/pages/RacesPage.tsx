@@ -4,7 +4,7 @@ import { useConfirm } from '../lib/confirm';
 import { givesPoints, RACE_TYPES, raceTypeLabel } from '../lib/f1';
 import { formatDate, formatLapTime, raceLabels } from '../lib/format';
 import { href } from '../lib/route';
-import type { Player, RaceType, RaceWithResults, ScoringRules, Tournament } from '../lib/types';
+import type { Player, RaceRecording, RaceType, RaceWithResults, ScoringRules, Tournament } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
 import { ResultsEditor } from '../components/ResultsEditor';
@@ -207,6 +207,7 @@ function RaceList({ races, players, rules, editing, onEdit, onDelete, onResync, 
                   {race.manual_results ? 'Modificati a mano' : 'Dalla telemetria'}
                 </span>
               )}
+              {replay && <SessionCounters recording={replay} />}
             </h3>
             <div className="flex flex-wrap gap-2">
               {replay && (
@@ -302,6 +303,25 @@ function ResultsTable({ race, rules, playerName }: { race: RaceWithResults; rule
       </tbody>
     </Table>
   );
+}
+
+// Riavvii e flashback della sessione registrata, presi dalla telemetria.
+function SessionCounters({ recording }: { recording: RaceRecording }) {
+  const { restarts, flashbacks } = recording;
+  const parts = [
+    restarts !== null && (
+      <span key="restarts" title="Volte che la sessione è stata ricominciata dal gioco. Anche uscire al menù e rientrare subito sulla stessa pista conta come riavvio">
+        ↻ {restarts} {restarts === 1 ? 'riavvio' : 'riavvii'}
+      </span>
+    ),
+    flashbacks !== null && (
+      <span key="flashbacks" title="Flashback usati nella sessione">
+        ⟲ {flashbacks} flashback
+      </span>
+    ),
+  ].filter(Boolean);
+  if (!parts.length) return null;
+  return <span className="flex gap-3 text-sm font-normal text-muted">{parts}</span>;
 }
 
 // Etichetta del tipo per tutto ciò che non è un Gran Premio; in grigio le

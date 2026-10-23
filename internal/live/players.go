@@ -44,7 +44,8 @@ type sessionData struct {
 	classification *telemetry.FinalClassification
 	// assigned sono i piloti scelti dalla pagina Live (indice dell'auto → pilota,
 	// nil se nessuno): per queste auto non si tira a indovinare.
-	assigned map[int]*int64
+	assigned   map[int]*int64
+	flashbacks int // eventi FLBK (vedi counters.go)
 }
 
 // controllerOf restituisce il controller (1 o 2) che guida l'auto i, 0 se nessuno.
@@ -82,6 +83,9 @@ func analyzeFile(path string, uid uint64) (sessionData, error) {
 		h, err := telemetry.ParseHeader(p.Data)
 		if err != nil || h.SessionUID != uid {
 			continue
+		}
+		if code, ok := telemetry.EventCode(p.Data); ok && code == telemetry.EventFlashback {
+			d.flashbacks++
 		}
 		// Si decodificano solo i pacchetti utili: sono pochi rispetto al totale.
 		switch h.PacketID {
@@ -149,6 +153,7 @@ func (s *Service) analyzePending() {
 	s.adoptPending()
 	s.recoverPending()
 	s.backfillStats()
+	s.backfillCounters()
 	s.DataChanged()
 }
 

@@ -75,7 +75,14 @@ export interface RaceResult {
 export interface RaceWithResults extends Race {
   results: RaceResult[];
   // Registrazioni collegate, dalla più recente: quella con source dà i risultati.
-  recordings: { id: number; source: boolean }[];
+  recordings: RaceRecording[];
+}
+
+export interface RaceRecording {
+  id: number;
+  source: boolean;
+  restarts: number | null; // volte che la sessione è stata ricominciata, null se non ancora contate
+  flashbacks: number | null; // flashback usati, null se non ancora contati
 }
 
 export interface RaceScore {
