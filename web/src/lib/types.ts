@@ -299,6 +299,7 @@ export interface LiveSnapshot {
   players: PlayerCar[]; // auto dei giocatori, in ordine di controller
   finished: boolean;
   lineup: Lineup | null;
+  lastSaved?: SavedLineup | null; // ultima sessione salvata nel torneo, anche se già finita (solo nello stato live)
   events: RaceEvent[]; // ultimi messaggi della direzione gara, dal più vecchio
   telemetry?: TelemetryStatus; // solo nello stato live, non nei replay
   dataVersion?: number; // cambia a ogni modifica dei dati salvati: le pagine si ricaricano (solo nello stato live)
@@ -313,8 +314,8 @@ export interface TelemetryStatus {
 }
 
 // Chi guida le auto dei giocatori in gara (vedi internal/live/lineup.go).
-// drivers: scelta prima della partenza; racing: gara in corso; results: conferma
-// dei risultati; saved: gara salvata nel torneo.
+// drivers: scelta prima della partenza; racing: gara in corso; results: classifica
+// finale, in attesa del salvataggio; saved: gara salvata nel torneo.
 export type LineupStage = 'drivers' | 'racing' | 'results' | 'saved';
 
 export interface LineupCar {
@@ -333,14 +334,27 @@ export interface LineupCar {
 // Gruppo del tipo di sessione: 'race' comprende le sprint, 'qualifying' lo Sprint Shootout.
 export type SessionKind = 'race' | 'qualifying' | 'practice' | '';
 
+export interface LineupTournament {
+  id: number;
+  name: string;
+  free: boolean;
+}
+
 export interface Lineup {
+  sessionId: number; // la conferma vale solo per questa sessione
   stage: LineupStage;
   kind: SessionKind;
   secondsLeft: number | null; // al salvataggio automatico, null se non previsto
   cars: LineupCar[];
-  tournament: { id: number; name: string; free: boolean } | null; // dove finisce (o è finita) la gara
+  tournament: LineupTournament | null; // dove finisce (o è finita) la gara
   raceId: number | null;
   error: string; // perché il salvataggio non è riuscito (si riprova da soli), vuoto se nessun errore
+}
+
+// Riepilogo dell'ultima sessione salvata, mostrato finché non parte la successiva.
+export interface SavedLineup extends Lineup {
+  track: string;
+  session: string; // tipo della sessione, per esempio "Gara"
 }
 
 // Pianta del circuito ricostruita dalle posizioni delle auto (metri, X e Z del gioco).

@@ -243,7 +243,7 @@ esempio una scrittura lenta sul disco) non ne fa perdere.
 |-------------------------------------------|----------------------------------------------------------|
 | `GET /api/live`                           | Stato della sessione in corso: circuito, giro, piloti, distacchi, gomme |
 | `GET /api/live/stream`                    | Lo stesso stato in tempo reale (Server-Sent Events, max 4 aggiornamenti/s) |
-| `PUT /api/live/lineup`                    | Sceglie chi guida le auto dei controller nella gara in corso, o conferma |
+| `PUT /api/live/lineup`                    | Sceglie chi guida le auto dei controller nella sessione in corso, o conferma |
 | `GET /api/telemetry/sessions`             | Sessioni registrate                                      |
 | `GET /api/telemetry/sessions/{id}/download` | Scarica la registrazione di una sessione (`.f1rec.gz`) |
 
@@ -275,11 +275,15 @@ i piloti già proposti (quelli che avevano lo stesso controller nella sessione p
 1. **Prima della partenza** si possono cambiare; senza interventi la scelta si conferma da sola
    allo spegnimento del semaforo (fuori dalla gara, al secondo giro) o dopo 5 minuti. Cambiare un
    pilota ferma il conto alla rovescia.
-2. **A fine sessione** compare la classifica dei giocatori da confermare; senza interventi viene
-   salvata dopo 5 minuti (e comunque quando finisce la sessione). Se il salvataggio non riesce,
-   la pagina Live mostra l'errore e il server riprova da solo dopo 30 secondi; se si spegne di
-   colpo prima di salvare, la sessione viene salvata al riavvio.
-3. La sessione diventa una gara del **torneo in corso** o, se nessun torneo è in corso, di
+2. **A fine sessione** compare la classifica dei giocatori; non serve confermarla: viene salvata
+   dopo 5 minuti, o appena nel gioco si passa alla sessione successiva. Fino ad allora si possono
+   correggere i piloti, e "Salva ora" la salva subito. Se il salvataggio non riesce, la pagina
+   Live mostra l'errore e il server riprova da solo dopo 30 secondi; se si spegne di colpo prima
+   di salvare, la sessione viene salvata al riavvio.
+3. **Dopo il salvataggio** la pagina Live mostra per 15 minuti (o fino alla partenza della
+   sessione successiva) dove è finita la sessione e con quali piloti, che lì si possono ancora
+   correggere; più tardi si correggono dalla pagina Registrazioni.
+4. La sessione diventa una gara del **torneo in corso** o, se nessun torneo è in corso, di
    **Nessun torneo**. Se nel torneo c'è già la gara in calendario (stesso circuito e tipo, ancora
    senza risultati) la sessione va lì, altrimenti ne viene creata una nuova. Un torneo si crea,
    si inizia, si termina e se ne cambiano nome e regole di punteggio dalla pagina Tornei;

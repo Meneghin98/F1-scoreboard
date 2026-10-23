@@ -72,11 +72,11 @@ export function LineupSection({ lineup, onDone }: { lineup: Lineup; onDone: () =
     const other = cars.find((c) => c.carIndex !== car.carIndex && playerId !== null && c.playerId === playerId);
     const choices = [{ carIndex: car.carIndex, playerId }];
     if (other) choices.push({ carIndex: other.carIndex, playerId: car.playerId });
-    void run(() => api.setLineup(choices, false));
+    void run(async () => { await api.setLineup(lineup.sessionId, choices, false); });
   }
 
   function confirm() {
-    void run(() => api.setLineup([], true));
+    void run(async () => { await api.setLineup(lineup.sessionId, [], true); });
   }
 
   return (

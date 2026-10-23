@@ -29,6 +29,9 @@ const (
 	// Se il salvataggio dei risultati non riesce (per esempio il database è
 	// occupato) si riprova dopo questo tempo; intanto la pagina Live mostra l'errore.
 	saveRetry = 30 * time.Second
+	// Dopo il salvataggio di una sessione la pagina Live ne mostra il riepilogo
+	// per questo tempo, o finché non parte la sessione successiva.
+	lastSavedFor = 15 * time.Minute
 )
 
 // Fasi della scelta dei piloti.
@@ -59,8 +62,9 @@ type lineupCar struct {
 
 // Lineup è la scelta dei piloti come arriva al frontend.
 type Lineup struct {
-	Stage string `json:"stage"`
-	Kind  string `json:"kind"` // "race", "qualifying" o "practice", vedi sessionKind
+	SessionID int64  `json:"sessionId"` // riga in telemetry_sessions: la conferma vale solo per questa sessione
+	Stage     string `json:"stage"`
+	Kind      string `json:"kind"` // "race", "qualifying" o "practice", vedi sessionKind
 	// SecondsLeft sono i secondi al salvataggio automatico, nil se non è previsto.
 	SecondsLeft *int        `json:"secondsLeft"`
 	Cars        []LineupCar `json:"cars"`
@@ -91,6 +95,16 @@ type LineupTournament struct {
 	Free bool   `json:"free"`
 }
 
+// SavedLineup è il riepilogo dell'ultima sessione salvata nel torneo: la
+// pagina Live lo mostra anche quando è già iniziata la successiva, così si
+// vede dove è finita e si possono correggere i piloti.
+type SavedLineup struct {
+	Lineup
+	Track   string `json:"track"`
+	Session string `json:"session"` // tipo della sessione, per esempio "Gara"
+	until   time.Time
+}
+
 // ErrNoLineup indica che non c'è una gara in corso di cui scegliere i piloti.
 var ErrNoLineup = errors.New("nessuna gara in corso")
 
@@ -109,6 +123,9 @@ func (s *Service) updateLineup(at time.Time) {
 	l := cur.lineup
 	if l.stage == StageDrivers && (s.tracker.RaceStarted() || expired(l, at)) {
 		l.stage, l.deadline = StageRacing, time.Time{}
+	}
+	if l.stage != StageDrivers {
+		s.lastSaved = nil // la sessione successiva è partita: il riepilogo della precedente non serve più
 	}
 	if l.stage == StageRacing && s.tracker.Classification() != nil {
 		l.stage, l.deadline = StageResults, at.Add(lineupTimeout)
@@ -329,9 +346,22 @@ func (s *Service) lineupView(snap *Snapshot, now time.Time) {
 	if cur == nil || cur.lineup == nil {
 		return
 	}
+	v := s.lineupOf(cur, now)
+	for _, c := range cur.lineup.cars {
+		for i := range snap.Drivers {
+			if snap.Drivers[i].CarIndex == c.carIndex {
+				snap.Drivers[i].PlayerName, snap.Drivers[i].PlayerColor = c.playerName, c.playerColor
+			}
+		}
+	}
+	snap.Lineup = v
+}
+
+// lineupOf restituisce la scelta dei piloti della sessione cur come arriva al frontend.
+func (s *Service) lineupOf(cur *session, now time.Time) *Lineup {
 	l := cur.lineup
 	v := &Lineup{
-		Stage: l.stage, Kind: sessionKind(s.tracker.Session().SessionType), Cars: []LineupCar{},
+		SessionID: cur.id, Stage: l.stage, Kind: sessionKind(s.tracker.Session().SessionType), Cars: []LineupCar{},
 		Tournament: l.saved, RaceID: l.raceID, Error: l.saveErr,
 	}
 	if !l.deadline.IsZero() {
@@ -368,13 +398,57 @@ func (s *Service) lineupView(snap *Snapshot, now time.Time) {
 			}
 		}
 		v.Cars = append(v.Cars, car)
-		for i := range snap.Drivers {
-			if snap.Drivers[i].CarIndex == c.carIndex {
-				snap.Drivers[i].PlayerName, snap.Drivers[i].PlayerColor = c.playerName, c.playerColor
+	}
+	return v
+}
+
+// rememberSaved conserva il riepilogo della sessione cur, che sta per finire,
+// se è stata salvata nel torneo. Il tracker ha ancora i suoi dati.
+func (s *Service) rememberSaved(cur *session, at time.Time) {
+	if cur.lineup == nil || cur.lineup.stage != StageSaved {
+		return
+	}
+	ses := s.tracker.Session()
+	s.lastSaved = &SavedLineup{
+		Lineup: *s.lineupOf(cur, at), Track: ses.TrackID.String(), Session: ses.SessionType.String(),
+		until: at.Add(lastSavedFor),
+	}
+}
+
+// savedView restituisce il riepilogo dell'ultima sessione salvata, se è ancora da mostrare.
+func (s *Service) savedView(now time.Time) *SavedLineup {
+	if s.lastSaved == nil || now.After(s.lastSaved.until) {
+		return nil
+	}
+	return s.lastSaved
+}
+
+// updateSaved aggiorna i piloti nel riepilogo dell'ultima sessione salvata,
+// dopo una correzione con SetSessionPlayers.
+func (s *Service) updateSaved(sessionID int64, players map[int]*int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v := s.lastSaved
+	if v == nil || v.SessionID != sessionID {
+		return
+	}
+	cars := slices.Clone(v.Cars)
+	for i, c := range cars {
+		id, ok := players[c.CarIndex]
+		if !ok {
+			continue
+		}
+		var p scoreboardPlayer
+		if id != nil {
+			var err error
+			if p, err = playerInfo(s.db, *id); err != nil {
+				log.Printf("telemetria: %v", err)
+				continue
 			}
 		}
+		cars[i].PlayerID, cars[i].PlayerName, cars[i].PlayerColor = id, p.Name, p.Color
 	}
-	snap.Lineup = v
+	v.Cars = cars
 }
 
 // LineupChoice è il pilota scelto per un'auto.
@@ -383,20 +457,35 @@ type LineupChoice struct {
 	PlayerID *int64 `json:"playerId"`
 }
 
-// SetLineup cambia i piloti alla guida delle auto dei giocatori. Una modifica
-// ferma il salvataggio automatico; confirm chiude la fase attuale: la scelta
-// prima della partenza, oppure i risultati, che vengono salvati nel torneo.
-func (s *Service) SetLineup(choices []LineupChoice, confirm bool) error {
+// SetLineup cambia i piloti alla guida delle auto dei giocatori nella sessione
+// sessionID. Una modifica ferma il salvataggio automatico; confirm chiude la
+// fase attuale: la scelta prima della partenza, oppure i risultati, che vengono
+// salvati nel torneo. Restituisce il torneo in cui è salvata la sessione, nil
+// se non lo è ancora.
+//
+// La sessione può essere finita (e salvata da sola) mentre la pagina ne
+// mostrava ancora i risultati: la conferma allora non tocca la sessione
+// successiva, ma dice dove è stata salvata.
+func (s *Service) SetLineup(sessionID int64, choices []LineupChoice, confirm bool) (*LineupTournament, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	cur := s.current
-	if cur == nil || cur.lineup == nil {
-		return ErrNoLineup
+	if cur == nil || cur.lineup == nil || cur.id != sessionID {
+		if v := s.lastSaved; v != nil && v.SessionID == sessionID {
+			if len(choices) == 0 {
+				return v.Tournament, nil
+			}
+			return nil, invalid("La sessione è terminata ed è già stata salvata: correggi i piloti nel riepilogo")
+		}
+		return nil, ErrNoLineup
 	}
 	l := cur.lineup
 	if l.stage == StageSaved {
-		return invalid("I risultati sono già stati salvati: per correggerli usa la pagina delle registrazioni")
+		if len(choices) == 0 {
+			return l.saved, nil
+		}
+		return nil, invalid("I risultati sono già stati salvati: per correggerli usa la pagina delle registrazioni")
 	}
 
 	cars := slices.Clone(l.cars)
@@ -404,17 +493,17 @@ func (s *Service) SetLineup(choices []LineupChoice, confirm bool) error {
 	for _, ch := range choices {
 		i := slices.IndexFunc(cars, func(c lineupCar) bool { return c.carIndex == ch.CarIndex })
 		if i < 0 {
-			return invalid("Nessun giocatore sull'auto %d", ch.CarIndex)
+			return nil, invalid("Nessun giocatore sull'auto %d", ch.CarIndex)
 		}
 		var p scoreboardPlayer
 		if ch.PlayerID != nil {
 			var err error
 			p, err = playerInfo(s.db, *ch.PlayerID)
 			if errors.Is(err, sql.ErrNoRows) {
-				return invalid("Pilota %d inesistente", *ch.PlayerID)
+				return nil, invalid("Pilota %d inesistente", *ch.PlayerID)
 			}
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 		if !samePlayer(cars[i].playerID, ch.PlayerID) {
@@ -425,7 +514,7 @@ func (s *Service) SetLineup(choices []LineupChoice, confirm bool) error {
 	for i, a := range cars {
 		for _, b := range cars[i+1:] {
 			if a.playerID != nil && samePlayer(a.playerID, b.playerID) {
-				return invalid("%s non può guidare due auto", a.playerName)
+				return nil, invalid("%s non può guidare due auto", a.playerName)
 			}
 		}
 	}
@@ -439,10 +528,12 @@ func (s *Service) SetLineup(choices []LineupChoice, confirm bool) error {
 		case StageDrivers:
 			l.stage, l.deadline = StageRacing, time.Time{}
 		case StageResults:
-			return s.saveLineup(cur, time.Now())
+			if err := s.saveLineup(cur, time.Now()); err != nil {
+				return nil, err
+			}
 		}
 	}
-	return nil
+	return l.saved, nil
 }
 
 func samePlayer(a, b *int64) bool {

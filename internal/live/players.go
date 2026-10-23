@@ -702,6 +702,7 @@ func (s *Service) SetSessionPlayers(sessionID int64, players map[int]*int64) err
 	}
 	// Il replay mostra i nomi dei piloti: va ripreparato.
 	s.dropReplay(sessionID, file)
+	s.updateSaved(sessionID, players)
 	return nil
 }
 

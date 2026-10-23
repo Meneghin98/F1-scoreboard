@@ -72,6 +72,10 @@ type Service struct {
 	target       *LineupTournament
 	targetLoaded bool
 
+	// Ultima sessione salvata nel torneo, mostrata nella pagina Live anche
+	// dopo la sua fine (vedi SavedLineup); nil se non c'è o non serve più.
+	lastSaved *SavedLineup
+
 	// dataVersion cresce a ogni modifica dei dati (tornei, gare, risultati,
 	// registrazioni): arriva ai browser con lo stato live e le pagine aperte
 	// si ricaricano da sole, anche quando una gara viene salvata dalla telemetria.
@@ -357,6 +361,7 @@ func (s *Service) endSession(at time.Time) {
 			log.Printf("telemetria: salvataggio della gara: %v", err)
 		}
 	}
+	s.rememberSaved(cur, at)
 	if !cur.playersSaved {
 		d := s.sessionData()
 		if cur.lineup != nil {
@@ -449,6 +454,7 @@ func (s *Service) snapshotJSON(now time.Time) []byte {
 	} else {
 		snap = emptySnapshot(status)
 	}
+	snap.LastSaved = s.savedView(now)
 	snap.Telemetry = s.diag.status(now)
 	snap.DataVersion = s.dataVersion
 	msg, err := json.Marshal(snap)

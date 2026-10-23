@@ -17,7 +17,10 @@ type Snapshot struct {
 	Players  []PlayerCar  `json:"players"`  // auto dei giocatori (due in split-screen), in ordine di controller
 	Finished bool         `json:"finished"` // classifica finale ricevuta
 	Lineup   *Lineup      `json:"lineup"`   // chi guida le auto dei giocatori, solo in gara
-	Events   []RaceEvent  `json:"events"`   // ultimi messaggi della direzione gara, dal più vecchio
+	// LastSaved è il riepilogo dell'ultima sessione salvata nel torneo, anche se
+	// è già finita; nil se non c'è o se è partita la successiva. Solo nello stato live.
+	LastSaved *SavedLineup `json:"lastSaved"`
+	Events    []RaceEvent  `json:"events"` // ultimi messaggi della direzione gara, dal più vecchio
 	// Telemetry dice se il server riceve la telemetria (porta, errori, indirizzi
 	// da impostare nel gioco). Solo nello stato live, non nei replay.
 	Telemetry *TelemetryStatus `json:"telemetry,omitempty"`

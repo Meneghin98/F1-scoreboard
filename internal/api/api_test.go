@@ -310,7 +310,7 @@ func TestTournamentLifecycle(t *testing.T) {
 
 func TestLiveLineupWithoutRace(t *testing.T) {
 	srv := newTestServer(t)
-	expectStatus(t, call(t, srv, "PUT", "/live/lineup", map[string]any{"confirm": true}, nil), 409, "nessuna gara")
+	expectStatus(t, call(t, srv, "PUT", "/live/lineup", map[string]any{"sessionId": 1, "confirm": true}, nil), 409, "sessione è terminata")
 }
 
 // Piloti, tornei e gare si possono modificare; i circuiti noti hanno il loro identificativo.

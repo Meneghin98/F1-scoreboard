@@ -31,24 +31,28 @@ func (s *Server) getLiveTrack(w http.ResponseWriter, r *http.Request) error {
 }
 
 // setLiveLineup sceglie chi guida le auto dei giocatori nella gara in corso.
-// Body: { "players": [{ "carIndex": 3, "playerId": 1 }], "confirm": true }
+// Body: { "sessionId": 12, "players": [{ "carIndex": 3, "playerId": 1 }], "confirm": true }
+// Risponde con il torneo in cui è salvata la sessione (null se non lo è ancora):
+// { "tournament": { "id": 1, "name": "Campionato", "free": false } }
 func (s *Server) setLiveLineup(w http.ResponseWriter, r *http.Request) error {
 	var body struct {
-		Players []live.LineupChoice `json:"players"`
-		Confirm bool                `json:"confirm"`
+		SessionID int64               `json:"sessionId"`
+		Players   []live.LineupChoice `json:"players"`
+		Confirm   bool                `json:"confirm"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		return err
 	}
-	err := s.live.SetLineup(body.Players, body.Confirm)
+	t, err := s.live.SetLineup(body.SessionID, body.Players, body.Confirm)
 	if errors.Is(err, live.ErrNoLineup) {
-		return errorf(http.StatusConflict, "Nessuna gara in corso")
+		return errorf(http.StatusConflict, "La sessione è terminata")
 	}
 	if err := sessionError(err); err != nil {
 		return err
 	}
-	w.WriteHeader(http.StatusNoContent)
-	return nil
+	return writeJSON(w, http.StatusOK, struct {
+		Tournament *live.LineupTournament `json:"tournament"`
+	}{t})
 }
 
 // streamLive invia lo stato della sessione con Server-Sent Events: un messaggio
