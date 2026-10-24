@@ -378,7 +378,7 @@ function CompactStandings({ session, drivers }: { session: LiveSession; drivers:
                   <span className="flex min-w-0 flex-col leading-tight">
                     <span className="truncate" title={d.team}>{d.name}</span>
                     <span className="flex h-4 items-center gap-2 overflow-hidden">
-                      {d.controller > 0 && <PlayerTag driver={d} />}
+                      {d.controller > 0 && <PlayerTag driver={d} shrink />}
                       <DriverBadges driver={d} fastestLap={!!d.bestLapMs && d.bestLapMs === fastest} className="text-xs" />
                     </span>
                   </span>
@@ -491,15 +491,18 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
 }
 
 // Etichetta del giocatore: il controller (P1, P2) e, se scelto in "Chi guida?", il pilota.
-function PlayerTag({ driver, className }: { driver: LiveDriver; className?: string }) {
+// Con shrink, se manca spazio si accorcia il nome del giocatore: P1/P2 restano interi.
+function PlayerTag({ driver, shrink, className }: { driver: LiveDriver; shrink?: boolean; className?: string }) {
   return (
-    <span className={cx('inline-flex shrink-0 items-center gap-1 text-xs font-bold text-accent-text uppercase', className)}>
-      {controllerLabel(driver.controller)}
+    <span className={cx('inline-flex items-center gap-1 text-xs font-bold text-accent-text uppercase', shrink ? 'min-w-0' : 'shrink-0', className)}>
+      <span className="shrink-0">{controllerLabel(driver.controller)}</span>
       {driver.playerName && (
         <>
-          {' · '}
+          <span className="shrink-0">·</span>
           <ColorDot color={driver.playerColor} className="size-2" />
-          <span style={{ color: driver.playerColor || undefined }}>{driver.playerName}</span>
+          <span className="truncate" style={{ color: driver.playerColor || undefined }} title={driver.playerName}>
+            {driver.playerName}
+          </span>
         </>
       )}
     </span>
