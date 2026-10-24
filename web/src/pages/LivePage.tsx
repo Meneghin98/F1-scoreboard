@@ -163,12 +163,11 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
     localStorage.setItem('bigTrackMap', bigMap ? '0' : '1');
     setBigMap(!bigMap);
   }
-  // Classifica estesa con il duello: direzione gara gli sta accanto, alta uguale.
-  const besideDuel = expanded && players.length === 2;
-  // Con la mappa standard (e la classifica ridotta) mappa, duello e schede delle auto sono
-  // celle di una griglia a colonne uguali: stessa larghezza, e alte uguali quelle sulla stessa
-  // riga. Con la mappa grande la mappa prende tutta la larghezza e il duello va dopo le auto.
-  const smallMap = !bigMap && !expanded;
+  // Con la mappa standard mappa, duello e schede delle auto sono celle di una griglia a
+  // colonne uguali: stessa larghezza, e alte uguali quelle sulla stessa riga. Con la mappa
+  // grande la mappa prende tutta la larghezza e il duello va dopo le auto.
+  // Con la classifica estesa tutto questo va sotto di lei, a tutta larghezza.
+  const smallMap = !bigMap;
   const duel = players.length === 2 && <DuelCard session={session} drivers={drivers} className="mb-0" />;
 
   return (
@@ -198,12 +197,11 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
           'min-w-0 gap-4',
           smallMap
             ? 'grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]'
-            : cx('flex flex-wrap', besideDuel ? 'items-stretch' : 'items-start'),
+            : 'flex flex-wrap items-start',
         )}
       >
-        {/* Nascosta e non smontata, così la mappa già scaricata resta pronta per quando si riduce. */}
         <TrackMapCard
-          className={cx('mb-0 aspect-square w-full', expanded && 'hidden')}
+          className="mb-0 aspect-square w-full"
           expanded={bigMap}
           onToggle={toggleMap}
           title={bigMap ? 'Clicca per rimpicciolire la mappa' : 'Clicca per ingrandire la mappa'}
@@ -218,7 +216,6 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
         {players.length > 0 && (
           // Le schede ridotte affiancate sono alte uguali. Se una è dettagliata (aria-expanded)
           // ognuna prende una riga intera, con la sua altezza.
-          // Nascoste e non smontate, come la mappa: restano aperte o chiuse come le si era lasciate.
           <div
             className={cx(
               smallMap
@@ -230,7 +227,6 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
                   // alla mappa, ma se è dettagliata va sotto su una riga intera.
                   players.length > 1 ? 'w-full' : 'min-w-72 flex-1 has-[[aria-expanded=true]]:basis-full',
                 ),
-              expanded && 'hidden',
             )}
           >
             {cars.map((car) => (
@@ -246,12 +242,10 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
           </div>
         )}
         {!smallMap && duel}
-        {/* Con la classifica estesa restano solo lei e il duello, sulla stessa riga e alti uguali. */}
         <RaceControlCard
           events={events}
           drivers={drivers}
-          fill={besideDuel}
-          className={cx('mb-0', expanded ? 'min-w-72 flex-1' : 'col-span-full w-full')}
+          className="mb-0 col-span-full w-full"
         />
       </div>
     </div>
