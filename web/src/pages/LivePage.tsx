@@ -15,7 +15,9 @@ import { PlayerCarCard } from '../components/PlayerCarCard';
 import { PositionsGained } from '../components/PositionsGained';
 import { RaceControlCard } from '../components/RaceControlCard';
 import { TrackMapCard } from '../components/TrackMapCard';
-import { Button, buttonClass, Card, ColorDot, cx, Empty, rankClass, Table, Td, Th, Tr } from '../components/ui';
+import {
+  buttonClass, Card, ColorDot, cx, Empty, ExpandHint, expandableClass, expandableProps, rankClass, Table, Td, Th, Tr,
+} from '../components/ui';
 
 // Classifica della sessione in corso, aggiornata in tempo reale dalla telemetria.
 export function LivePage() {
@@ -172,12 +174,13 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
     <div className={cx('mb-4 grid items-start gap-4', !expanded && 'md:grid-cols-[20rem_1fr]')}>
       {/* min-w-0: senza, la colonna della griglia si allarga quanto la tabella estesa
           e la fa uscire dalla pagina invece di farla scorrere. */}
-      <Card className="mb-0 min-w-0 p-0">
+      <Card
+        {...expandableProps(expanded, () => setExpanded(!expanded))}
+        className={cx('mb-0 min-w-0 p-0', expandableClass)}
+      >
         <div className="flex items-center justify-between border-b border-line px-4 py-2">
           <h2 className="font-bold">Classifica</h2>
-          <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)}>
-            {expanded ? 'Riduci' : 'Espandi'}
-          </Button>
+          <ExpandHint expanded={expanded} />
         </div>
         {expanded ? (
           <DriversTable session={session} drivers={drivers} />
@@ -198,7 +201,8 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
         {/* Nascosta e non smontata, così la mappa già scaricata resta pronta per quando si riduce. */}
         <TrackMapCard
           className={cx('mb-0 aspect-square w-full', expanded && 'hidden')}
-          onClick={toggleMap}
+          expanded={bigMap}
+          onToggle={toggleMap}
           title={bigMap ? 'Clicca per rimpicciolire la mappa' : 'Clicca per ingrandire la mappa'}
           uid={session.uid}
           mapPoints={mapPoints ?? session.mapPoints}
