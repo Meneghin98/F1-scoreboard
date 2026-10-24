@@ -15,7 +15,10 @@ import { PlayerCarCard } from '../components/PlayerCarCard';
 import { PositionsGained } from '../components/PositionsGained';
 import { RaceControlCard } from '../components/RaceControlCard';
 import { TrackMapCard } from '../components/TrackMapCard';
-import { Button, buttonClass, Card, ColorDot, cx, Empty, rankClass, Table, Td, Th, Tr } from '../components/ui';
+import {
+  buttonClass, Card, ColorDot, cx, Empty, ExpandHint, expandableClass, expandableProps, rankClass, Table, Td, Th, Tr,
+  useScrollOnExpand,
+} from '../components/ui';
 
 // Classifica della sessione in corso, aggiornata in tempo reale dalla telemetria.
 export function LivePage() {
@@ -153,18 +156,18 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
   // Il gioco calcola il rientro dai box solo per il giocatore 1: con sameData non si mostra se c'è anche il 2.
   const showPitRejoin = session.isRace && !finished && !(sameData && cars.some((car) => car.restricted));
   const [expanded, setExpanded] = useState(false);
+  const standingsRef = useScrollOnExpand(expanded);
   // Mappa standard o grande quanto tutto lo spazio a disposizione: si cambia cliccandola, e la scelta si ricorda.
   const [bigMap, setBigMap] = useState(() => localStorage.getItem('bigTrackMap') === '1');
   function toggleMap() {
     localStorage.setItem('bigTrackMap', bigMap ? '0' : '1');
     setBigMap(!bigMap);
   }
-  // Classifica estesa con il duello: direzione gara gli sta accanto, alta uguale.
-  const besideDuel = expanded && players.length === 2;
-  // Con la mappa standard (e la classifica ridotta) mappa, duello e schede delle auto sono
-  // celle di una griglia a colonne uguali: stessa larghezza, e alte uguali quelle sulla stessa
-  // riga. Con la mappa grande la mappa prende tutta la larghezza e il duello va dopo le auto.
-  const smallMap = !bigMap && !expanded;
+  // Con la mappa standard mappa, duello e schede delle auto sono celle di una griglia a
+  // colonne uguali: stessa larghezza, e alte uguali quelle sulla stessa riga. Con la mappa
+  // grande la mappa prende tutta la larghezza e il duello va dopo le auto.
+  // Con la classifica estesa tutto questo va sotto di lei, a tutta larghezza.
+  const smallMap = !bigMap;
   const duel = players.length === 2 && <DuelCard session={session} drivers={drivers} className="mb-0" />;
 
   return (
@@ -172,12 +175,14 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
     <div className={cx('mb-4 grid items-start gap-4', !expanded && 'md:grid-cols-[20rem_1fr]')}>
       {/* min-w-0: senza, la colonna della griglia si allarga quanto la tabella estesa
           e la fa uscire dalla pagina invece di farla scorrere. */}
-      <Card className="mb-0 min-w-0 p-0">
+      <Card
+        ref={standingsRef}
+        {...expandableProps(expanded, () => setExpanded(!expanded))}
+        className={cx('mb-0 min-w-0 p-0', expandableClass)}
+      >
         <div className="flex items-center justify-between border-b border-line px-4 py-2">
           <h2 className="font-bold">Classifica</h2>
-          <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)}>
-            {expanded ? 'Riduci' : 'Espandi'}
-          </Button>
+          <ExpandHint expanded={expanded} />
         </div>
         {expanded ? (
           <DriversTable session={session} drivers={drivers} />
@@ -192,13 +197,13 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
           'min-w-0 gap-4',
           smallMap
             ? 'grid grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]'
-            : cx('flex flex-wrap', besideDuel ? 'items-stretch' : 'items-start'),
+            : 'flex flex-wrap items-start',
         )}
       >
-        {/* Nascosta e non smontata, così la mappa già scaricata resta pronta per quando si riduce. */}
         <TrackMapCard
-          className={cx('mb-0 aspect-square w-full', expanded && 'hidden')}
-          onClick={toggleMap}
+          className="mb-0 aspect-square w-full"
+          expanded={bigMap}
+          onToggle={toggleMap}
           title={bigMap ? 'Clicca per rimpicciolire la mappa' : 'Clicca per ingrandire la mappa'}
           uid={session.uid}
           mapPoints={mapPoints ?? session.mapPoints}
@@ -211,7 +216,6 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
         {players.length > 0 && (
           // Le schede ridotte affiancate sono alte uguali. Se una è dettagliata (aria-expanded)
           // ognuna prende una riga intera, con la sua altezza.
-          // Nascoste e non smontate, come la mappa: restano aperte o chiuse come le si era lasciate.
           <div
             className={cx(
               smallMap
@@ -223,7 +227,6 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
                   // alla mappa, ma se è dettagliata va sotto su una riga intera.
                   players.length > 1 ? 'w-full' : 'min-w-72 flex-1 has-[[aria-expanded=true]]:basis-full',
                 ),
-              expanded && 'hidden',
             )}
           >
             {cars.map((car) => (
@@ -239,12 +242,10 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
           </div>
         )}
         {!smallMap && duel}
-        {/* Con la classifica estesa restano solo lei e il duello, sulla stessa riga e alti uguali. */}
         <RaceControlCard
           events={events}
           drivers={drivers}
-          fill={besideDuel}
-          className={cx('mb-0', expanded ? 'min-w-72 flex-1' : 'col-span-full w-full')}
+          className="mb-0 col-span-full w-full"
         />
       </div>
     </div>
@@ -352,7 +353,8 @@ function driverGap(session: LiveSession, d: LiveDriver, ahead: LiveDriver | unde
   ];
 }
 
-// Versione ridotta della classifica: posizione, pilota e distacco dal primo.
+// Versione ridotta della classifica: posizione, pilota e distacchi dal primo e
+// dall'auto davanti.
 function CompactStandings({ session, drivers }: { session: LiveSession; drivers: LiveDriver[] }) {
   const fastest = fastestLap(drivers);
   const compact = 'px-2 py-1.5';
@@ -377,14 +379,23 @@ function CompactStandings({ session, drivers }: { session: LiveSession; drivers:
                   <span className="flex min-w-0 flex-col leading-tight">
                     <span className="truncate" title={d.team}>{d.name}</span>
                     <span className="flex h-4 items-center gap-2 overflow-hidden">
-                      {d.controller > 0 && <PlayerTag driver={d} />}
+                      {d.controller > 0 && <PlayerTag driver={d} shrink />}
                       <DriverBadges driver={d} fastestLap={!!d.bestLapMs && d.bestLapMs === fastest} className="text-xs" />
                     </span>
                   </span>
                 </span>
               </Td>
-              <Td num className={cx(compact, 'pr-4 text-sm')} title={toAhead && `Intervallo ${toAhead}`}>
-                {d.position === 1 ? <span className="text-muted">{leaderInfo}</span> : toLeader}
+              {/* Distacco dal primo sopra, dall'auto davanti sotto: come il nome, due
+                  righe nella stessa altezza, così la colonna non si allarga. */}
+              <Td num className={cx(compact, 'pr-4 text-sm')}>
+                {d.position === 1 ? (
+                  <span className="text-muted">{leaderInfo}</span>
+                ) : (
+                  <span className="flex flex-col leading-tight">
+                    <span title="Distacco dal primo">{toLeader}</span>
+                    <span className="h-4 text-xs text-muted" title="Distacco dall'auto davanti">{toAhead}</span>
+                  </span>
+                )}
               </Td>
             </Tr>
           );
@@ -481,15 +492,18 @@ function DriversTable({ session, drivers }: { session: LiveSession; drivers: Liv
 }
 
 // Etichetta del giocatore: il controller (P1, P2) e, se scelto in "Chi guida?", il pilota.
-function PlayerTag({ driver, className }: { driver: LiveDriver; className?: string }) {
+// Con shrink, se manca spazio si accorcia il nome del giocatore: P1/P2 restano interi.
+function PlayerTag({ driver, shrink, className }: { driver: LiveDriver; shrink?: boolean; className?: string }) {
   return (
-    <span className={cx('inline-flex shrink-0 items-center gap-1 text-xs font-bold text-accent-text uppercase', className)}>
-      {controllerLabel(driver.controller)}
+    <span className={cx('inline-flex items-center gap-1 text-xs font-bold text-accent-text uppercase', shrink ? 'min-w-0' : 'shrink-0', className)}>
+      <span className="shrink-0">{controllerLabel(driver.controller)}</span>
       {driver.playerName && (
         <>
-          {' · '}
+          <span className="shrink-0">·</span>
           <ColorDot color={driver.playerColor} className="size-2" />
-          <span style={{ color: driver.playerColor || undefined }}>{driver.playerName}</span>
+          <span className="truncate" style={{ color: driver.playerColor || undefined }} title={driver.playerName}>
+            {driver.playerName}
+          </span>
         </>
       )}
     </span>

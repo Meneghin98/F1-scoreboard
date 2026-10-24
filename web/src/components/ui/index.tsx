@@ -1,6 +1,6 @@
 // Elementi grafici condivisi: tengono in un solo posto le classi Tailwind che si ripetono.
 import { clsx, type ClassValue } from 'clsx';
-import type { ButtonHTMLAttributes, ComponentProps, ReactNode } from 'react';
+import { useEffect, useRef, type ButtonHTMLAttributes, type ComponentProps, type KeyboardEvent, type ReactNode } from 'react';
 import { twMerge } from 'tailwind-merge';
 
 // Unisce le classi ignorando i valori falsi: cx('a', cond && 'b').
@@ -40,6 +40,45 @@ export function Button({ variant, size, className, ...props }: ButtonProps) {
 
 export function Card({ className, ...props }: ComponentProps<'div'>) {
   return <div className={cx('mb-4 rounded-lg border border-line bg-surface p-4', className)} {...props} />;
+}
+
+// Card che si espande e si riduce con un clic, anche da tastiera (Invio o spazio):
+// expandableProps vanno sulla Card, expandableClass nelle sue classi.
+export function expandableProps(expanded: boolean, onToggle: () => void) {
+  return {
+    role: 'button' as const,
+    tabIndex: 0,
+    'aria-expanded': expanded,
+    onClick: onToggle,
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onToggle();
+      }
+    },
+  };
+}
+export const expandableClass = cx(
+  'scroll-mt-4 cursor-pointer hover:border-muted', // scroll-mt: un po' di margine sopra quando ci si scorre
+  'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+);
+
+// Espansa, una card cambia posto o dimensione: la pagina scorre fino a lei. Solo
+// quando si espande, non se è già espansa all'apertura della pagina (la mappa
+// grande si ricorda). Il ref va sulla Card.
+export function useScrollOnExpand(expanded: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  const wasExpanded = useRef(expanded);
+  useEffect(() => {
+    if (expanded && !wasExpanded.current) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    wasExpanded.current = expanded;
+  }, [expanded]);
+  return ref;
+}
+
+// Scritta che dice cosa fa il clic su una card espandibile.
+export function ExpandHint({ expanded, className }: { expanded: boolean; className?: string }) {
+  return <span className={cx('text-xs text-muted', className)}>{expanded ? 'Riduci ▴' : 'Espandi ▾'}</span>;
 }
 
 export function Empty({ children }: { children: ReactNode }) {

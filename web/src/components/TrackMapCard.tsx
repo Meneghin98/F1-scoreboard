@@ -1,8 +1,7 @@
-import type { KeyboardEvent } from 'react';
 import { controllerLabel, teamColor } from '../lib/live';
 import type { LiveDriver, MarshalZone, TrackMap } from '../lib/types';
 import { useTrackMap } from '../lib/useTrackMap';
-import { Card, cx, Empty } from './ui';
+import { Card, cx, Empty, ExpandHint, expandableClass, expandableProps, useScrollOnExpand } from './ui';
 
 // Oltre questa distanza (metri) due punti consecutivi non si collegano: in
 // mezzo c'è un tratto non ancora visto.
@@ -10,8 +9,8 @@ const MAX_GAP = 40;
 
 // Pianta del circuito con la posizione delle auto in tempo reale.
 // La mappa riempie la card: le dimensioni le decide chi la usa tramite className.
-// Con onClick la card si comporta da pulsante (anche da tastiera), per esempio
-// per cambiarne la dimensione; title spiega cosa fa il clic.
+// Con onToggle la card si espande e si riduce con un clic, come le altre card
+// espandibili; expanded dice se è espansa e title spiega cosa fa il clic.
 // loadMap scarica la pianta: di default quella della sessione live.
 export function TrackMapCard({
   uid,
@@ -20,7 +19,8 @@ export function TrackMapCard({
   marshalZones = [],
   sectors,
   className,
-  onClick,
+  expanded = false,
+  onToggle,
   title,
   loadMap,
 }: {
@@ -30,36 +30,22 @@ export function TrackMapCard({
   marshalZones?: MarshalZone[]; // settori dei commissari: quelli con bandiera gialla si colorano
   sectors?: [number, number]; // metri a cui iniziano il settore 2 e il 3, 0 se non noti
   className?: string;
-  onClick?: () => void;
+  expanded?: boolean;
+  onToggle?: () => void;
   title?: string;
   loadMap?: () => Promise<TrackMap>;
 }) {
   const map = useTrackMap(uid, mapPoints, loadMap);
-  const button = onClick && {
-    role: 'button',
-    tabIndex: 0,
-    title,
-    onClick,
-    onKeyDown: (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        onClick();
-      }
-    },
-  };
+  const ref = useScrollOnExpand(expanded);
 
   return (
     <Card
-      {...button}
-      className={cx(
-        'flex items-center justify-center p-2',
-        onClick && cx(
-          'cursor-pointer hover:border-muted',
-          'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
-        ),
-        className,
-      )}
+      ref={ref}
+      {...(onToggle && expandableProps(expanded, onToggle))}
+      title={title}
+      className={cx('relative flex items-center justify-center p-2', onToggle && expandableClass, className)}
     >
+      {onToggle && <ExpandHint expanded={expanded} className="absolute top-2 right-3" />}
       {map && map.points.length > 1 ? (
         <TrackMapSvg map={map} drivers={drivers} marshalZones={marshalZones} sectors={sectors} />
       ) : (

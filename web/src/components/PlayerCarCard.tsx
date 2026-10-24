@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { controllerLabel, ERS_MODE, FUEL_MIX, severity, TYRE_CLASS } from '../lib/live';
 import type { CarSetup, PlayerCar, TyreSet } from '../lib/types';
 import type { PedalSample } from '../lib/useLive';
 import { CarDiagram } from './CarDiagram';
 import { PedalChart } from './PedalChart';
-import { Card, cx } from './ui';
+import { Card, cx, ExpandHint, expandableClass, expandableProps, useScrollOnExpand } from './ui';
 
 // Statistiche dell'auto di un giocatore. Ridotta mostra solo i dati principali;
 // un clic la apre a tutta larghezza (sotto la mappa) con tutti i dettagli.
@@ -25,28 +25,15 @@ export function PlayerCarCard({
 }) {
   const [detailed, setDetailed] = useState(false);
   const toggle = () => setDetailed(!detailed);
-  const ref = useRef<HTMLDivElement>(null);
-  // Aperta, la scheda si sposta (a tutta larghezza, più in basso): la pagina scorre fino a lei.
-  useEffect(() => {
-    if (detailed) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [detailed]);
+  const ref = useScrollOnExpand(detailed);
 
   return (
     <Card
       ref={ref}
-      role="button"
-      tabIndex={0}
-      aria-expanded={detailed}
-      onClick={toggle}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          toggle();
-        }
-      }}
+      {...expandableProps(detailed, toggle)}
       className={cx(
-        'flex scroll-mt-4 cursor-pointer flex-col gap-4 hover:border-muted', // scroll-mt: un po' di margine sopra quando ci si scorre
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+        'flex flex-col gap-4',
+        expandableClass,
         // Ridotta sta accanto alla mappa; dettagliata occupa una riga intera (col-span-full nella griglia delle schede).
         detailed ? 'col-span-full w-full' : 'min-w-72 flex-1',
         className,
@@ -64,7 +51,7 @@ export function PlayerCarCard({
           ) : (
             car.drsAllowed && <Badge className="bg-surface-2 text-green-400">DRS disponibile</Badge>
           )}
-          <span className="text-xs text-muted">{detailed ? 'Riduci ▴' : 'Dettagli ▾'}</span>
+          <ExpandHint expanded={detailed} />
         </div>
       </div>
       {detailed ? <Details car={car} pedals={pedals} pitRejoin={pitRejoin} /> : <Summary car={car} pitRejoin={pitRejoin} />}
