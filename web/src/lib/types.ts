@@ -75,7 +75,14 @@ export interface RaceResult {
 export interface RaceWithResults extends Race {
   results: RaceResult[];
   // Registrazioni collegate, dalla più recente: quella con source dà i risultati.
-  recordings: { id: number; source: boolean }[];
+  recordings: RaceRecording[];
+}
+
+export interface RaceRecording {
+  id: number;
+  source: boolean;
+  restarts: number | null; // volte che la sessione è stata ricominciata, null se non ancora contate
+  flashbacks: number | null; // flashback usati, null se non ancora contati
 }
 
 export interface RaceScore {
@@ -104,8 +111,15 @@ export interface Standing {
 
 export interface StandingsResponse {
   tournament: Tournament;
-  races: Race[];
+  races: StandingRace[];
   standings: Standing[];
+}
+
+// Gara in classifica, con riavvii e flashback della sua registrazione
+// (null se non ne ha o non sono ancora contati).
+export interface StandingRace extends Race {
+  restarts: number | null;
+  flashbacks: number | null;
 }
 
 export interface ResultInput {

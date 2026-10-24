@@ -36,13 +36,16 @@ func plannedRace(tx dbtx, tournamentID int64, spec raceSpec) (int64, error) {
 type RaceRecording struct {
 	ID     int64 `json:"id"`
 	Source bool  `json:"source"` // i risultati della gara vengono da questa registrazione
+	// Riavvii e flashback della sessione (vedi counters.go), nil finché non sono contati.
+	Restarts   *int `json:"restarts"`
+	Flashbacks *int `json:"flashbacks"`
 }
 
 // TournamentRecordings restituisce le registrazioni collegate alle gare del
 // torneo, per gara, dalla più recente.
 func (s *Service) TournamentRecordings(tournamentID int64) (map[int64][]RaceRecording, error) {
 	rows, err := s.db.Query(`
-		SELECT r.id, s.id, COALESCE(`+sourceSQL+`, 0)
+		SELECT r.id, s.id, COALESCE(`+sourceSQL+`, 0), s.restarts, s.flashbacks
 		FROM telemetry_sessions s JOIN races r ON r.id = s.race_id
 		WHERE r.tournament_id = ? ORDER BY s.id DESC`, tournamentID)
 	if err != nil {
@@ -54,7 +57,7 @@ func (s *Service) TournamentRecordings(tournamentID int64) (map[int64][]RaceReco
 	for rows.Next() {
 		var raceID int64
 		var rec RaceRecording
-		if err := rows.Scan(&raceID, &rec.ID, &rec.Source); err != nil {
+		if err := rows.Scan(&raceID, &rec.ID, &rec.Source, &rec.Restarts, &rec.Flashbacks); err != nil {
 			return nil, err
 		}
 		if rec.Source {

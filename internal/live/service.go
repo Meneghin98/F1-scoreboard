@@ -112,6 +112,7 @@ type session struct {
 	lineup         *lineup // scelta dei piloti, solo per le gare
 	playersSaved   bool    // giocatori già salvati con i piloti scelti: alla fine non si rifà
 	ended          bool    // ricevuto l'evento SEND (fine sessione)
+	flashbacks     int     // eventi FLBK ricevuti (vedi counters.go)
 }
 
 func NewService(db *sql.DB, opts Options) *Service {
@@ -271,6 +272,7 @@ func (s *Service) Handle(at time.Time, data []byte) {
 		s.exec("UPDATE telemetry_sessions SET track_id = ?, session_type = ?, total_laps = ? WHERE id = ?",
 			int(ses.TrackID), int(ses.SessionType), int(ses.TotalLaps), cur.id)
 		log.Printf("telemetria: sessione %016x: %s – %s", cur.uid, ses.TrackID, ses.SessionType)
+		s.saveRestarts(cur.id) // servono circuito e tipo, appena salvati
 		s.loadTrackMap(cur, ses)
 		s.dataChangedLocked() // tra le registrazioni compaiono circuito e tipo di sessione
 	}
@@ -286,8 +288,11 @@ func (s *Service) Handle(at time.Time, data []byte) {
 
 	// SEND arriva alla bandiera a scacchi, prima della classifica finale: la
 	// sessione resta aperta, ma da qui i pacchetti di menù non la tengono più in vita.
-	if code, ok := telemetry.EventCode(data); ok && code == telemetry.EventSessionEnded {
+	switch code, _ := telemetry.EventCode(data); code {
+	case telemetry.EventSessionEnded:
 		cur.ended = true
+	case telemetry.EventFlashback:
+		cur.flashbacks++
 	}
 }
 
@@ -353,8 +358,8 @@ func (s *Service) endSession(at time.Time) {
 	if !s.lastPacket.IsZero() && s.lastPacket.Before(at) {
 		end = s.lastPacket
 	}
-	s.exec("UPDATE telemetry_sessions SET ended_at = ?, packets = ?, size_bytes = ? WHERE id = ?",
-		dbTime(end), cur.packets, s.fileSize(cur), cur.id)
+	s.exec("UPDATE telemetry_sessions SET ended_at = ?, packets = ?, size_bytes = ?, flashbacks = ? WHERE id = ?",
+		dbTime(end), cur.packets, s.fileSize(cur), cur.flashbacks, cur.id)
 	// Il tracker ha ancora i dati di questa sessione: la successiva non è ancora iniziata.
 	// Se i risultati aspettavano ancora la conferma, si salvano con i piloti scelti finora.
 	// Se non riesce, la sessione resta segnata come da salvare: ci riprova recoverPending.

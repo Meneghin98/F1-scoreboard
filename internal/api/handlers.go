@@ -953,12 +953,36 @@ func (s *Server) getStandings(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
+	recordings, err := s.live.TournamentRecordings(tournamentID)
+	if err != nil {
+		return err
+	}
+	out := make([]StandingRace, len(races))
+	for i, race := range races {
+		out[i] = StandingRace{Race: race}
+		// Come nella pagina Gare: la registrazione dei risultati, o la più recente.
+		if recs := recordings[race.ID]; len(recs) > 0 {
+			rec := recs[0]
+			if j := slices.IndexFunc(recs, func(r live.RaceRecording) bool { return r.Source }); j >= 0 {
+				rec = recs[j]
+			}
+			out[i].Restarts, out[i].Flashbacks = rec.Restarts, rec.Flashbacks
+		}
+	}
 
 	return writeJSON(w, http.StatusOK, map[string]any{
 		"tournament": tournament,
-		"races":      races,
+		"races":      out,
 		"standings":  scoring.Standings(results, tournament.Rules),
 	})
+}
+
+// StandingRace è una gara in classifica, con riavvii e flashback della sua
+// registrazione (nil se non ne ha o non sono ancora contati).
+type StandingRace struct {
+	Race
+	Restarts   *int `json:"restarts"`
+	Flashbacks *int `json:"flashbacks"`
 }
 
 // rulesOf restituisce le regole di punteggio di un torneo.
