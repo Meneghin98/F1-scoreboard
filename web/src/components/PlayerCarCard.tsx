@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { controllerLabel, ERS_MODE, FUEL_MIX, severity, TYRE_CLASS } from '../lib/live';
 import type { CarSetup, PlayerCar, TyreSet } from '../lib/types';
 import type { PedalSample } from '../lib/useLive';
 import { CarDiagram } from './CarDiagram';
 import { PedalChart } from './PedalChart';
-import { Card, cx, ExpandHint, expandableClass, expandableProps } from './ui';
+import { Card, cx, ExpandHint, expandableClass, expandableProps, useScrollOnExpand } from './ui';
 
 // Statistiche dell'auto di un giocatore. Ridotta mostra solo i dati principali;
 // un clic la apre a tutta larghezza (sotto la mappa) con tutti i dettagli.
@@ -25,18 +25,14 @@ export function PlayerCarCard({
 }) {
   const [detailed, setDetailed] = useState(false);
   const toggle = () => setDetailed(!detailed);
-  const ref = useRef<HTMLDivElement>(null);
-  // Aperta, la scheda si sposta (a tutta larghezza, più in basso): la pagina scorre fino a lei.
-  useEffect(() => {
-    if (detailed) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [detailed]);
+  const ref = useScrollOnExpand(detailed);
 
   return (
     <Card
       ref={ref}
       {...expandableProps(detailed, toggle)}
       className={cx(
-        'flex scroll-mt-4 flex-col gap-4', // scroll-mt: un po' di margine sopra quando ci si scorre
+        'flex flex-col gap-4',
         expandableClass,
         // Ridotta sta accanto alla mappa; dettagliata occupa una riga intera (col-span-full nella griglia delle schede).
         detailed ? 'col-span-full w-full' : 'min-w-72 flex-1',

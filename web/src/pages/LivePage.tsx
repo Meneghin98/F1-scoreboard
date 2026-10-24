@@ -17,6 +17,7 @@ import { RaceControlCard } from '../components/RaceControlCard';
 import { TrackMapCard } from '../components/TrackMapCard';
 import {
   buttonClass, Card, ColorDot, cx, Empty, ExpandHint, expandableClass, expandableProps, rankClass, Table, Td, Th, Tr,
+  useScrollOnExpand,
 } from '../components/ui';
 
 // Classifica della sessione in corso, aggiornata in tempo reale dalla telemetria.
@@ -155,6 +156,7 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
   // Il gioco calcola il rientro dai box solo per il giocatore 1: con sameData non si mostra se c'è anche il 2.
   const showPitRejoin = session.isRace && !finished && !(sameData && cars.some((car) => car.restricted));
   const [expanded, setExpanded] = useState(false);
+  const standingsRef = useScrollOnExpand(expanded);
   // Mappa standard o grande quanto tutto lo spazio a disposizione: si cambia cliccandola, e la scelta si ricorda.
   const [bigMap, setBigMap] = useState(() => localStorage.getItem('bigTrackMap') === '1');
   function toggleMap() {
@@ -175,6 +177,7 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
       {/* min-w-0: senza, la colonna della griglia si allarga quanto la tabella estesa
           e la fa uscire dalla pagina invece di farla scorrere. */}
       <Card
+        ref={standingsRef}
         {...expandableProps(expanded, () => setExpanded(!expanded))}
         className={cx('mb-0 min-w-0 p-0', expandableClass)}
       >

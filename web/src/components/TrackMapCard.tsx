@@ -1,7 +1,7 @@
 import { controllerLabel, teamColor } from '../lib/live';
 import type { LiveDriver, MarshalZone, TrackMap } from '../lib/types';
 import { useTrackMap } from '../lib/useTrackMap';
-import { Card, cx, Empty, ExpandHint, expandableClass, expandableProps } from './ui';
+import { Card, cx, Empty, ExpandHint, expandableClass, expandableProps, useScrollOnExpand } from './ui';
 
 // Oltre questa distanza (metri) due punti consecutivi non si collegano: in
 // mezzo c'è un tratto non ancora visto.
@@ -36,9 +36,11 @@ export function TrackMapCard({
   loadMap?: () => Promise<TrackMap>;
 }) {
   const map = useTrackMap(uid, mapPoints, loadMap);
+  const ref = useScrollOnExpand(expanded);
 
   return (
     <Card
+      ref={ref}
       {...(onToggle && expandableProps(expanded, onToggle))}
       title={title}
       className={cx('relative flex items-center justify-center p-2', onToggle && expandableClass, className)}

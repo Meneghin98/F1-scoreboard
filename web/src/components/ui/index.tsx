@@ -1,6 +1,6 @@
 // Elementi grafici condivisi: tengono in un solo posto le classi Tailwind che si ripetono.
 import { clsx, type ClassValue } from 'clsx';
-import type { ButtonHTMLAttributes, ComponentProps, KeyboardEvent, ReactNode } from 'react';
+import { useEffect, useRef, type ButtonHTMLAttributes, type ComponentProps, type KeyboardEvent, type ReactNode } from 'react';
 import { twMerge } from 'tailwind-merge';
 
 // Unisce le classi ignorando i valori falsi: cx('a', cond && 'b').
@@ -59,9 +59,22 @@ export function expandableProps(expanded: boolean, onToggle: () => void) {
   };
 }
 export const expandableClass = cx(
-  'cursor-pointer hover:border-muted',
+  'scroll-mt-4 cursor-pointer hover:border-muted', // scroll-mt: un po' di margine sopra quando ci si scorre
   'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
 );
+
+// Espansa, una card cambia posto o dimensione: la pagina scorre fino a lei. Solo
+// quando si espande, non se è già espansa all'apertura della pagina (la mappa
+// grande si ricorda). Il ref va sulla Card.
+export function useScrollOnExpand(expanded: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  const wasExpanded = useRef(expanded);
+  useEffect(() => {
+    if (expanded && !wasExpanded.current) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    wasExpanded.current = expanded;
+  }, [expanded]);
+  return ref;
+}
 
 // Scritta che dice cosa fa il clic su una card espandibile.
 export function ExpandHint({ expanded, className }: { expanded: boolean; className?: string }) {
