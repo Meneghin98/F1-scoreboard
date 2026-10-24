@@ -352,7 +352,8 @@ function driverGap(session: LiveSession, d: LiveDriver, ahead: LiveDriver | unde
   ];
 }
 
-// Versione ridotta della classifica: posizione, pilota e distacco dal primo.
+// Versione ridotta della classifica: posizione, pilota e distacchi dal primo e
+// dall'auto davanti.
 function CompactStandings({ session, drivers }: { session: LiveSession; drivers: LiveDriver[] }) {
   const fastest = fastestLap(drivers);
   const compact = 'px-2 py-1.5';
@@ -383,8 +384,17 @@ function CompactStandings({ session, drivers }: { session: LiveSession; drivers:
                   </span>
                 </span>
               </Td>
-              <Td num className={cx(compact, 'pr-4 text-sm')} title={toAhead && `Intervallo ${toAhead}`}>
-                {d.position === 1 ? <span className="text-muted">{leaderInfo}</span> : toLeader}
+              {/* Distacco dal primo sopra, dall'auto davanti sotto: come il nome, due
+                  righe nella stessa altezza, così la colonna non si allarga. */}
+              <Td num className={cx(compact, 'pr-4 text-sm')}>
+                {d.position === 1 ? (
+                  <span className="text-muted">{leaderInfo}</span>
+                ) : (
+                  <span className="flex flex-col leading-tight">
+                    <span title="Distacco dal primo">{toLeader}</span>
+                    <span className="h-4 text-xs text-muted" title="Distacco dall'auto davanti">{toAhead}</span>
+                  </span>
+                )}
               </Td>
             </Tr>
           );
