@@ -204,11 +204,10 @@ type RaceResult struct {
 	BestLapMS  *int64 `json:"best_lap_ms"` // miglior giro, solo dalle registrazioni
 
 	// Come conta il risultato con le regole del torneo (vedi scoring.ScoreRace).
-	Points           int  `json:"points"`             // compresi i bonus
-	ScoredPosition   *int `json:"scored_position"`    // posizione che dà i punti: tra i soli piloti in modalità "players"
-	ScoredFastestLap bool `json:"scored_fastest_lap"` // giro più veloce: tra i soli piloti in modalità "players"
-	Bonus            int  `json:"bonus"`              // punti per la pole o il giro veloce, già compresi in Points
-	WinBonus         int  `json:"win_bonus"`          // punti per la vittoria davanti alla IA, già compresi in Points
+	Points         int  `json:"points"`          // compresi i bonus
+	ScoredPosition *int `json:"scored_position"` // posizione che dà i punti: tra i soli piloti in modalità "players"
+	Bonus          int  `json:"bonus"`           // punti per la pole o il giro veloce, già compresi in Points
+	WinBonus       int  `json:"win_bonus"`       // punti per la vittoria davanti alla IA, già compresi in Points
 }
 
 type RaceWithResults struct {
@@ -665,11 +664,11 @@ func (s *Server) listRaces(w http.ResponseWriter, r *http.Request) error {
 		// I punti di ognuno dipendono anche dagli altri risultati della gara.
 		input := make([]scoring.Result, len(results))
 		for i, res := range results {
-			input[i] = scoring.Result{RaceType: race.Type, Position: res.Position, DNF: res.DNF, FastestLap: res.FastestLap, BestLapMS: res.BestLapMS}
+			input[i] = scoring.Result{RaceType: race.Type, Position: res.Position, DNF: res.DNF, FastestLap: res.FastestLap}
 		}
 		for i, sc := range scoring.ScoreRace(input, rules) {
 			res := &results[i]
-			res.Points, res.ScoredPosition, res.ScoredFastestLap, res.Bonus, res.WinBonus = sc.Points, sc.Position, sc.FastestLap, sc.Bonus, sc.WinBonus
+			res.Points, res.ScoredPosition, res.Bonus, res.WinBonus = sc.Points, sc.Position, sc.Bonus, sc.WinBonus
 		}
 		// Ordine di arrivo, con i non classificati in fondo.
 		slices.SortStableFunc(results, func(a, b RaceResult) int {
@@ -998,7 +997,7 @@ func (s *Server) rulesOf(tournamentID int64) (scoring.Rules, error) {
 // resultsOf restituisce tutti i risultati di un torneo, con i dati dei piloti.
 func (s *Server) resultsOf(tournamentID int64) ([]scoring.Result, error) {
 	rows, err := s.db.Query(`
-		SELECT r.race_id, ra.type, r.player_id, p.name, p.team, COALESCE(p.color, ''), r.position, r.dnf, r.fastest_lap, r.best_lap_ms
+		SELECT r.race_id, ra.type, r.player_id, p.name, p.team, COALESCE(p.color, ''), r.position, r.dnf, r.fastest_lap
 		FROM results r
 		JOIN races ra ON ra.id = r.race_id
 		JOIN players p ON p.id = r.player_id
@@ -1012,7 +1011,7 @@ func (s *Server) resultsOf(tournamentID int64) ([]scoring.Result, error) {
 	for rows.Next() {
 		var res scoring.Result
 		err := rows.Scan(&res.RaceID, &res.RaceType, &res.PlayerID, &res.Name, &res.Team, &res.Color, &res.Position, &res.DNF,
-			&res.FastestLap, &res.BestLapMS)
+			&res.FastestLap)
 		if err != nil {
 			return nil, err
 		}

@@ -121,8 +121,6 @@ func TestPolesAndFastestLaps(t *testing.T) {
 	}
 }
 
-func lap(ms int64) *int64 { return &ms }
-
 // In modalità "players" le posizioni si ricalcolano tra i soli piloti: le auto
 // della IA davanti non tolgono punti. Vittorie, podi e countback usano le stesse posizioni.
 func TestPlayersMode(t *testing.T) {
@@ -161,32 +159,32 @@ func TestPlayersMode(t *testing.T) {
 	}
 }
 
-// I punti per la pole vanno al primo della qualifica, che entra in classifica;
-// in modalità "players" al primo dei piloti.
+// I punti per la pole vanno a chi parte primo in qualifica, IA compresa, anche
+// in modalità "players": il primo dei piloti dietro alla IA non li prende.
 func TestPolePoints(t *testing.T) {
 	results := []Result{
-		{RaceID: 1, RaceType: "qualifying", PlayerID: 1, Name: "A", Position: pos(4)},
-		{RaceID: 1, RaceType: "qualifying", PlayerID: 2, Name: "B", Position: pos(6)},
-		{RaceID: 2, RaceType: "race", PlayerID: 1, Name: "A", Position: pos(2)},
-		{RaceID: 2, RaceType: "race", PlayerID: 2, Name: "B", Position: pos(1)},
+		{RaceID: 1, RaceType: "qualifying", PlayerID: 1, Name: "A", Position: pos(1)},
+		{RaceID: 1, RaceType: "qualifying", PlayerID: 2, Name: "B", Position: pos(3)},
+		{RaceID: 2, RaceType: "qualifying", PlayerID: 1, Name: "A", Position: pos(4)},
+		{RaceID: 2, RaceType: "qualifying", PlayerID: 2, Name: "B", Position: pos(6)},
+		{RaceID: 3, RaceType: "race", PlayerID: 1, Name: "A", Position: pos(2)},
+		{RaceID: 3, RaceType: "race", PlayerID: 2, Name: "B", Position: pos(1)},
 	}
-	st := Standings(results, Rules{Mode: ModePlayers, PolePoints: 3})
-	a := st[1]
-	if a.Name != "A" || a.Points != 18+3 || a.Poles != 1 || a.PerRace[1].Points != 3 || a.PerRace[1].Bonus != 3 || a.Races != 1 {
-		t.Fatalf("A %+v", a)
-	}
-	if b := st[0]; b.Points != 25 || b.Poles != 0 || b.PerRace[1].Points != 0 {
-		t.Fatalf("B %+v", b)
-	}
-
-	// In modalità assoluta nessuno dei due è partito primo: niente pole né punti.
-	for _, s := range Standings(results, Rules{PolePoints: 3}) {
-		if s.Poles != 0 || s.PerRace[1].Points != 0 {
-			t.Errorf("%s %+v", s.Name, s)
+	for _, mode := range []string{ModeAbsolute, ModePlayers} {
+		st := Standings(results, Rules{Mode: mode, PolePoints: 3})
+		a := st[1]
+		if a.Name != "A" || a.Points != 3+18 || a.Poles != 1 || a.PerRace[1].Points != 3 || a.PerRace[1].Bonus != 3 || a.Races != 1 {
+			t.Fatalf("%s: A %+v", mode, a)
+		}
+		if a.PerRace[2].Points != 0 || a.PerRace[2].Bonus != 0 {
+			t.Errorf("%s: pole della IA, A %+v", mode, a.PerRace[2])
+		}
+		if b := st[0]; b.Points != 25 || b.Poles != 0 || b.PerRace[1].Points != 0 || b.PerRace[2].Points != 0 {
+			t.Fatalf("%s: B %+v", mode, b)
 		}
 	}
-	// Senza punti per la pole la qualifica non entra in classifica, ma la pole si conta.
-	st = Standings(results, Rules{Mode: ModePlayers})
+	// Senza punti per la pole le qualifiche non entrano in classifica, ma la pole si conta.
+	st := Standings(results, Rules{Mode: ModePlayers})
 	if a := st[1]; a.Poles != 1 || len(a.PerRace) != 1 || a.Points != 18 {
 		t.Fatalf("senza punti per la pole: %+v", a)
 	}
@@ -212,39 +210,40 @@ func TestFastestLapPoints(t *testing.T) {
 	}
 }
 
-// In modalità "players" il giro veloce è il miglior tempo dei piloti, anche se
-// la IA ha fatto meglio; senza tempi vale quello segnato a mano.
-func TestFastestLapAmongPlayers(t *testing.T) {
+// Anche in modalità "players" il giro veloce è quello della gara, IA compresa:
+// se l'ha fatto la IA il punto non va a nessuno.
+func TestFastestLapPlayersMode(t *testing.T) {
 	rules := Rules{Mode: ModePlayers, FastestLapPoints: 2}
 	scores := ScoreRace([]Result{
-		{RaceType: "race", Position: pos(5), BestLapMS: lap(81_500)},
-		{RaceType: "race", Position: pos(7), BestLapMS: lap(81_200)},
-		{RaceType: "race", Position: pos(9)}, // nessun giro valido
+		{RaceType: "race", Position: pos(5)},
+		{RaceType: "race", Position: pos(7)},
 	}, rules)
-	if scores[0].Points != 25 || scores[1].Points != 18+2 || !scores[1].FastestLap || scores[0].FastestLap || scores[2].Points != 15 {
-		t.Errorf("con i tempi: %+v", scores)
+	if scores[0].Points != 25 || scores[1].Points != 18 || scores[0].FastestLap || scores[1].FastestLap {
+		t.Errorf("giro veloce della IA: %+v", scores)
 	}
 	scores = ScoreRace([]Result{
-		{RaceType: "race", Position: pos(1)},
-		{RaceType: "race", Position: pos(2), FastestLap: true},
+		{RaceType: "race", Position: pos(5)},
+		{RaceType: "race", Position: pos(7), FastestLap: true},
 	}, rules)
-	if scores[1].Points != 18+2 || scores[0].Points != 25 {
-		t.Errorf("senza tempi: %+v", scores)
+	if scores[0].Points != 25 || scores[1].Points != 18+2 || !scores[1].FastestLap || scores[1].Bonus != 2 {
+		t.Errorf("giro veloce di un pilota: %+v", scores)
 	}
 	// Il più veloce si è ritirato: il punto non va a nessuno.
 	scores = ScoreRace([]Result{
-		{RaceType: "race", Position: pos(1), BestLapMS: lap(81_500)},
-		{RaceType: "race", DNF: true, BestLapMS: lap(81_000)},
+		{RaceType: "race", Position: pos(1)},
+		{RaceType: "race", DNF: true, FastestLap: true},
 	}, rules)
 	if scores[0].Points != 25 || scores[1].Points != 0 || !scores[1].FastestLap {
 		t.Errorf("più veloce ritirato: %+v", scores)
 	}
-	// In classifica il giro veloce conta per chi l'ha fatto, anche senza punti.
+	// In classifica si contano solo i giri veloci veri, anche se non danno punti.
 	st := Standings([]Result{
-		{RaceID: 1, RaceType: "race", PlayerID: 1, Name: "A", Position: pos(3), BestLapMS: lap(80_000)},
-		{RaceID: 1, RaceType: "race", PlayerID: 2, Name: "B", Position: pos(8), BestLapMS: lap(79_000)},
+		{RaceID: 1, RaceType: "race", PlayerID: 1, Name: "A", Position: pos(3)},
+		{RaceID: 1, RaceType: "race", PlayerID: 2, Name: "B", Position: pos(8)},
+		{RaceID: 2, RaceType: "race", PlayerID: 1, Name: "A", Position: pos(4)},
+		{RaceID: 2, RaceType: "race", PlayerID: 2, Name: "B", DNF: true, FastestLap: true},
 	}, Rules{Mode: ModePlayers})
-	if st[0].Name != "A" || st[0].Fastest != 0 || st[1].Fastest != 1 || st[1].PerRace[1].Bonus != 0 {
+	if st[0].Name != "A" || st[0].Fastest != 0 || st[1].Fastest != 1 || st[1].PerRace[2].Bonus != 0 {
 		t.Errorf("classifica %+v", st)
 	}
 }
