@@ -183,6 +183,20 @@ func TestPolePoints(t *testing.T) {
 			t.Fatalf("%s: B %+v", mode, b)
 		}
 	}
+	// Con qualsiasi tabella le qualifiche danno solo i punti della pole: né
+	// quelli per la posizione tra i piloti né quelli della vittoria.
+	for preset := range Presets {
+		for _, mode := range []string{ModeAbsolute, ModePlayers} {
+			scores := ScoreRace([]Result{
+				{RaceType: "qualifying", Position: pos(1)},
+				{RaceType: "qualifying", Position: pos(3)},
+				{RaceType: "qualifying", DNF: true},
+			}, Rules{Mode: mode, Preset: preset, PolePoints: 1})
+			if scores[0].Points != 1 || scores[0].WinBonus != 0 || scores[1].Points != 0 || scores[2].Points != 0 {
+				t.Errorf("%s %s: qualifica %+v", mode, preset, scores)
+			}
+		}
+	}
 	// Senza punti per la pole le qualifiche non entrano in classifica, ma la pole si conta.
 	st := Standings(results, Rules{Mode: ModePlayers})
 	if a := st[1]; a.Poles != 1 || len(a.PerRace) != 1 || a.Points != 18 {
