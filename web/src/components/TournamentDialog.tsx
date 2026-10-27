@@ -111,11 +111,11 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
       </fieldset>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <BonusField name="pole_points" label="Punti per la pole" hint="Al primo della qualifica" value={current.pole_points} />
+        <BonusField name="pole_points" label="Punti per la pole" hint="A chi parte primo, IA compresa" value={current.pole_points} />
         <BonusField
           name="fastest_lap_points"
           label="Punti per il giro veloce"
-          hint="Nei Gran Premi, solo a chi arriva"
+          hint="Nei Gran Premi, IA compresa, solo a chi arriva"
           value={current.fastest_lap_points}
         />
       </div>

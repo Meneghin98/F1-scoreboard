@@ -67,7 +67,6 @@ export interface RaceResult {
   // Come conta il risultato con le regole del torneo.
   points: number; // compresi i bonus
   scored_position: number | null; // posizione che dà i punti: tra i soli piloti in modalità "players"
-  scored_fastest_lap: boolean; // giro più veloce: tra i soli piloti in modalità "players"
   bonus: number; // punti per la pole o il giro veloce, già compresi in points
   win_bonus: number; // punti per la vittoria davanti alla IA (Ultimate Champion), già compresi in points
 }

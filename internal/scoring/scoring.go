@@ -33,8 +33,8 @@ const (
 // regolamento F1 2025: posizioni d'arrivo e nessun bonus.
 type Rules struct {
 	Mode             string `json:"points_mode"`        // ModeAbsolute ("" vale lo stesso) o ModePlayers
-	PolePoints       int    `json:"pole_points"`        // al primo della qualifica
-	FastestLapPoints int    `json:"fastest_lap_points"` // al giro più veloce di un Gran Premio, se non si ritira
+	PolePoints       int    `json:"pole_points"`        // a chi parte primo in qualifica, IA compresa
+	FastestLapPoints int    `json:"fastest_lap_points"` // al giro più veloce di un Gran Premio, IA compresa, se non si ritira
 	// Preset è la tabella dei punti per posizione, solo in modalità ModePlayers:
 	// tra pochi piloti la tabella F1 può non andare bene. Una chiave di Presets,
 	// o PresetCustom per i punti di RacePoints e SprintPoints. "" vale PresetF1.
@@ -179,8 +179,7 @@ type Result struct {
 	Color      string
 	Position   *int
 	DNF        bool
-	FastestLap bool   // giro più veloce della gara, IA compresa (dalla registrazione o segnato a mano)
-	BestLapMS  *int64 // miglior giro, solo dalle registrazioni
+	FastestLap bool // giro più veloce della gara, IA compresa (dalla registrazione o segnato a mano)
 }
 
 // Score è come conta un risultato con le regole del torneo.
@@ -189,8 +188,9 @@ type Score struct {
 	// ModePlayers, quella tra i soli piloti. nil se il pilota non è classificato.
 	Position *int
 	Points   int // compresi i bonus
-	// FastestLap dice se è il giro più veloce della gara. In modalità
-	// ModePlayers è il migliore dei piloti, anche se la IA è andata più forte.
+	// Pole e FastestLap dicono se il pilota ha fatto la pole o il giro più
+	// veloce della gara, IA compresa, anche in modalità ModePlayers.
+	Pole       bool
 	FastestLap bool
 	Bonus      int // punti per la pole o per il giro veloce, già compresi in Points
 	WinBonus   int // punti per la vittoria davanti alla IA (vedi Table.WinBonus), già compresi in Points
@@ -198,8 +198,8 @@ type Score struct {
 
 // ScoreRace calcola i punti dei risultati di una gara con le regole del torneo.
 // I risultati sono tutti della stessa gara: servono insieme perché le posizioni
-// tra i piloti e il giro più veloce dipendono anche dagli altri. Il punteggio
-// i-esimo è quello del risultato i-esimo.
+// tra i piloti dipendono anche dagli altri. Il punteggio i-esimo è quello del
+// risultato i-esimo.
 func ScoreRace(results []Result, rules Rules) []Score {
 	scores := make([]Score, len(results))
 	if len(results) == 0 {
@@ -224,48 +224,27 @@ func ScoreRace(results []Result, rules Rules) []Score {
 		scores[i].Position = &position
 	}
 
-	fastest := fastestLaps(results, rules.Mode)
 	table := rules.TableFor(raceType, len(results))
 	for i, r := range results {
 		sc := &scores[i]
-		sc.FastestLap = fastest[i]
-		if raceType == "qualifying" && sc.Position != nil && *sc.Position == 1 {
+		// Vittoria, pole e giro veloce si guardano sulla gara vera, IA compresa,
+		// non sulle posizioni tra i piloti.
+		first := !r.DNF && r.Position != nil && *r.Position == 1
+		sc.Pole = raceType == "qualifying" && first
+		sc.FastestLap = r.FastestLap
+		if sc.Pole {
 			sc.Bonus += rules.PolePoints
 		}
 		// Il giro veloce vale punti solo nei Gran Premi, e solo a chi arriva.
 		if raceType == "race" && sc.FastestLap && sc.Position != nil {
 			sc.Bonus += rules.FastestLapPoints
 		}
-		// La vittoria davanti alla IA si guarda sulla posizione d'arrivo, non su quella tra i piloti.
-		if !r.DNF && r.Position != nil && *r.Position == 1 {
+		if first {
 			sc.WinBonus = table.WinBonus
 		}
 		sc.Points = rules.PointsFor(raceType, len(results), sc.Position, r.DNF) + sc.Bonus + sc.WinBonus
 	}
 	return scores
-}
-
-// fastestLaps dice chi ha fatto il giro più veloce della gara. In modalità
-// ModePlayers è il miglior tempo tra i risultati; senza tempi (come nelle gare
-// inserite a mano) vale il giro veloce segnato, come in modalità ModeAbsolute.
-func fastestLaps(results []Result, mode string) []bool {
-	var best int64
-	if mode == ModePlayers {
-		for _, r := range results {
-			if r.BestLapMS != nil && *r.BestLapMS > 0 && (best == 0 || *r.BestLapMS < best) {
-				best = *r.BestLapMS
-			}
-		}
-	}
-	out := make([]bool, len(results))
-	for i, r := range results {
-		if best > 0 {
-			out[i] = r.BestLapMS != nil && *r.BestLapMS == best
-		} else {
-			out[i] = r.FastestLap
-		}
-	}
-	return out
 }
 
 // RaceScore è il risultato di un pilota in una gara, come appare in classifica.
@@ -297,10 +276,10 @@ type Standing struct {
 }
 
 // Standings calcola la classifica di un torneo a partire da tutti i suoi
-// risultati, con le sue regole: posizioni, vittorie, podi e giri veloci sono
-// quelli che danno i punti (tra i soli piloti in modalità ModePlayers). Le gare
-// che non danno punti (vedi Rules.Counts) restano fuori, ma le qualifiche
-// vinte contano sempre come pole position.
+// risultati, con le sue regole: posizioni, vittorie e podi sono quelli che
+// danno i punti (tra i soli piloti in modalità ModePlayers), pole e giri veloci
+// sono quelli veri, IA compresa. Le gare che non danno punti (vedi Rules.Counts)
+// restano fuori, ma le qualifiche vinte contano sempre come pole position.
 func Standings(results []Result, rules Rules) []Standing {
 	// I punti di un risultato dipendono dagli altri della stessa gara: prima si raggruppano.
 	var raceIDs []int64
@@ -318,8 +297,7 @@ func Standings(results []Result, rules Rules) []Standing {
 		for i, sc := range ScoreRace(race, rules) {
 			r := race[i]
 			counts := rules.Counts(r.RaceType)
-			pole := r.RaceType == "qualifying" && sc.Position != nil && *sc.Position == 1
-			if !counts && !pole {
+			if !counts && !sc.Pole {
 				continue
 			}
 			s, ok := byPlayer[r.PlayerID]
@@ -327,7 +305,7 @@ func Standings(results []Result, rules Rules) []Standing {
 				s = &Standing{PlayerID: r.PlayerID, Name: r.Name, Team: r.Team, Color: r.Color, PerRace: map[int64]RaceScore{}}
 				byPlayer[r.PlayerID] = s
 			}
-			if pole {
+			if sc.Pole {
 				s.Poles++
 			}
 			if !counts {

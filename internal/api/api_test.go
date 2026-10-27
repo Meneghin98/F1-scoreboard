@@ -551,12 +551,13 @@ func TestTournamentRules(t *testing.T) {
 	}
 	var st standings
 	call(t, srv, "GET", fmt.Sprintf("/tournaments/%d/standings", cup.ID), nil, &st)
-	// Tra i piloti: Luca vince la gara (25), Simone fa la pole (+3) e il giro veloce (18 + 1).
+	// Tra i piloti: Luca vince la gara (25), Simone fa il giro veloce (18 + 1). La pole
+	// è della IA: Simone, primo dei piloti in qualifica, non prende i suoi punti.
 	if len(st.Races) != 2 || st.Races[0].Type != "qualifying" {
 		t.Fatalf("con i punti per la pole la qualifica entra in classifica: %+v", st.Races)
 	}
 	luca, simone := st.Standings[0], st.Standings[1]
-	if luca.Name != "Luca" || luca.Points != 25 || luca.Wins != 1 || simone.Points != 3+18+1 || simone.Poles != 1 {
+	if luca.Name != "Luca" || luca.Points != 25 || luca.Wins != 1 || simone.Points != 18+1 || simone.Poles != 0 {
 		t.Fatalf("classifica %+v", st.Standings)
 	}
 	if r := simone.PerRace[fmt.Sprint(race.ID)]; r.Points != 19 || *r.Position != 2 || r.Bonus != 1 {
@@ -570,23 +571,23 @@ func TestTournamentRules(t *testing.T) {
 		} `json:"career"`
 	}
 	call(t, srv, "GET", "/stats", nil, &stats)
-	if len(stats.Career) != 2 || stats.Career[0].Name != "Luca" || stats.Career[0].Points != 25 || stats.Career[1].Points != 22 {
+	if len(stats.Career) != 2 || stats.Career[0].Name != "Luca" || stats.Career[0].Points != 25 || stats.Career[1].Points != 19 {
 		t.Errorf("carriera %+v", stats.Career)
 	}
 
 	var races []struct {
 		ID      int `json:"id"`
 		Results []struct {
-			PlayerID         int  `json:"player_id"`
-			Position         *int `json:"position"`
-			Points           int  `json:"points"`
-			ScoredPosition   *int `json:"scored_position"`
-			ScoredFastestLap bool `json:"scored_fastest_lap"`
-			Bonus            int  `json:"bonus"`
+			PlayerID       int  `json:"player_id"`
+			Position       *int `json:"position"`
+			Points         int  `json:"points"`
+			ScoredPosition *int `json:"scored_position"`
+			FastestLap     bool `json:"fastest_lap"`
+			Bonus          int  `json:"bonus"`
 		} `json:"results"`
 	}
 	call(t, srv, "GET", fmt.Sprintf("/tournaments/%d/races", cup.ID), nil, &races)
-	if r := races[1].Results[1]; r.PlayerID != 1 || *r.Position != 12 || *r.ScoredPosition != 2 || r.Points != 19 || !r.ScoredFastestLap || r.Bonus != 1 {
+	if r := races[1].Results[1]; r.PlayerID != 1 || *r.Position != 12 || *r.ScoredPosition != 2 || r.Points != 19 || !r.FastestLap || r.Bonus != 1 {
 		t.Errorf("risultato di Simone %+v", r)
 	}
 
@@ -612,7 +613,7 @@ func TestTournamentRules(t *testing.T) {
 		}
 	}
 
-	// Tra i piloti con i punti scelti: Luca primo prende 10, Simone secondo 5, più pole e giro veloce.
+	// Tra i piloti con i punti scelti: Luca primo prende 10, Simone secondo 5, più il giro veloce.
 	// Gli zeri in fondo si tolgono e la tabella F1 resta il default.
 	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", cup.ID), map[string]any{
 		"points_mode": "players", "points_preset": "custom", "race_points": []int{10, 5, 0}, "sprint_points": []int{8, 7, 6, 5, 4, 3, 2, 1},
@@ -621,7 +622,7 @@ func TestTournamentRules(t *testing.T) {
 		t.Fatalf("tabelle dei punti %v %v", cup.RacePoints, cup.SprintPoints)
 	}
 	call(t, srv, "GET", fmt.Sprintf("/tournaments/%d/standings", cup.ID), nil, &st)
-	if luca, simone := st.Standings[0], st.Standings[1]; luca.Points != 10 || simone.Points != 3+5+1 {
+	if luca, simone := st.Standings[0], st.Standings[1]; luca.Points != 10 || simone.Points != 5+1 {
 		t.Fatalf("classifica con i punti scelti %+v", st.Standings)
 	}
 	// Cambiando altro, le tabelle restano.

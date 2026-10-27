@@ -382,14 +382,14 @@ Ogni torneo ha le sue **regole di punteggio**: si scelgono quando lo si crea e s
   piloti**: in ogni gara le posizioni si ricalcolano tra i soli piloti del segnapunti (i ritirati
   restano ritirati), poi si applica la tabella. Vittorie, podi e countback del torneo seguono le
   stesse posizioni; nella pagina Gare compaiono accanto a quelle d'arrivo.
-- **Punti per la pole** (0 = nessuno): al primo della qualifica, o al primo dei piloti nell'altra
-  modalità. Con i punti per la pole le qualifiche entrano nelle colonne della classifica.
+- **Punti per la pole** (0 = nessuno): a chi parte primo in qualifica, IA compresa, in tutte e due
+  le modalità: se la pole è della IA non li prende nessuno. Con i punti per la pole le qualifiche
+  entrano nelle colonne della classifica.
 - **Punti per il giro veloce** (0 = nessuno): solo nei Gran Premi e solo a chi arriva al traguardo.
-  Con le posizioni d'arrivo vanno a chi ha fatto il giro più veloce della gara; tra i piloti, al
-  miglior tempo dei piloti (nelle gare inserite a mano, senza tempi, a chi è segnato).
+  Vanno a chi ha fatto il giro più veloce della gara, IA compresa, in tutte e due le modalità.
 
 La classifica mostra anche le **pole** (qualifiche vinte) e i **giri veloci** nei Gran Premi, con
-un segno sui punti bonus. Il giro veloce arriva dalla registrazione (chi ha fatto il miglior giro
+un segno sui punti bonus: anche questi contano solo se sono davvero della gara, IA compresa. Il giro veloce arriva dalla registrazione (chi ha fatto il miglior giro
 della gara, IA compresa) o si segna a mano nell'editor dei risultati.
 
 ## Statistiche

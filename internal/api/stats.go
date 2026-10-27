@@ -69,7 +69,6 @@ type statResult struct {
 	date                           *string
 	position                       *int
 	dnf, fastest                   bool
-	bestLap                        *int64
 	free, ended, active            bool // gara di "Nessun torneo"; torneo terminato; torneo in corso
 	tournamentName                 string
 	rules                          scoring.Rules // regole di punteggio del torneo
@@ -100,7 +99,7 @@ func (s *Server) loadStats() (*statsData, error) {
 	rows.Close()
 
 	rows, err = s.db.Query(`
-		SELECT r.race_id, ra.tournament_id, r.player_id, ra.type, ra.track, ra.date, r.position, r.dnf, r.fastest_lap, r.best_lap_ms,
+		SELECT r.race_id, ra.tournament_id, r.player_id, ra.type, ra.track, ra.date, r.position, r.dnf, r.fastest_lap,
 		       t.free, t.ended_at IS NOT NULL, t.started_at IS NOT NULL AND t.ended_at IS NULL, t.name,
 		       t.points_mode, t.pole_points, t.fastest_lap_points, t.points_preset, t.race_points, t.sprint_points
 		FROM results r JOIN races ra ON ra.id = r.race_id JOIN tournaments t ON t.id = ra.tournament_id
@@ -112,7 +111,7 @@ func (s *Server) loadStats() (*statsData, error) {
 	for rows.Next() {
 		var r statResult
 		err := rows.Scan(&r.raceID, &r.tournamentID, &r.playerID, &r.raceType, &r.track, &r.date, &r.position, &r.dnf,
-			&r.fastest, &r.bestLap, &r.free, &r.ended, &r.active, &r.tournamentName,
+			&r.fastest, &r.free, &r.ended, &r.active, &r.tournamentName,
 			&r.rules.Mode, &r.rules.PolePoints, &r.rules.FastestLapPoints, &r.rules.Preset, &r.rules.RacePoints, &r.rules.SprintPoints)
 		if err != nil {
 			return nil, err
@@ -134,7 +133,7 @@ func (d *statsData) standings(withFree bool) map[int64][]scoring.Standing {
 		p := d.players[r.playerID]
 		byTournament[r.tournamentID] = append(byTournament[r.tournamentID], scoring.Result{
 			RaceID: r.raceID, RaceType: r.raceType, PlayerID: r.playerID, Name: p.Name, Team: p.Team, Color: p.Color,
-			Position: r.position, DNF: r.dnf, FastestLap: r.fastest, BestLapMS: r.bestLap,
+			Position: r.position, DNF: r.dnf, FastestLap: r.fastest,
 		})
 		rules[r.tournamentID] = r.rules
 	}

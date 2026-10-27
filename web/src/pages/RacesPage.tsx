@@ -273,16 +273,16 @@ function ResultsTable({ race, rules, playerName }: { race: RaceWithResults; rule
             {points && playersMode && <Td num className={rankClass(r.scored_position)}>{r.scored_position ?? '–'}</Td>}
             <Td>
               {playerName(r.player_id)}
-              {r.scored_fastest_lap && (
+              {r.fastest_lap && (
                 <span
                   className="ml-2 rounded bg-purple-950 px-1.5 py-0.5 text-xs font-bold text-purple-400"
-                  title={playersMode ? 'Giro più veloce tra i piloti' : 'Giro più veloce della gara'}
+                  title="Giro più veloce della gara"
                 >
                   GV
                 </span>
               )}
             </Td>
-            {laps && <Td num className={cx(r.scored_fastest_lap && 'font-bold text-purple-400')}>{formatLapTime(r.best_lap_ms ?? 0)}</Td>}
+            {laps && <Td num className={cx(r.fastest_lap && 'font-bold text-purple-400')}>{formatLapTime(r.best_lap_ms ?? 0)}</Td>}
             {points && (
               <Td num>
                 {r.points}
