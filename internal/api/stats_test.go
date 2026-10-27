@@ -50,12 +50,20 @@ func TestStats(t *testing.T) {
 		t.Fatalf("classifica %+v", standings.Standings)
 	}
 
-	// Un giro registrato dalla telemetria: diventa il record di Monza.
-	var session int64
-	db.QueryRow(`INSERT INTO telemetry_sessions (session_uid, packet_format, started_at, file, track_id, session_type, race_id)
-		VALUES ('1', 2025, '2026-10-18 20:00:00', 'x.f1rec.gz', 11, 15, ?) RETURNING id`, monza).Scan(&session)
-	db.Exec(`INSERT INTO telemetry_players (session_id, car_index, name, team, race_number, player_id, best_lap_ms)
-		VALUES (?, 0, 'HAMILTON', 'Ferrari', 44, 2, 81234), (?, 1, 'LECLERC', 'Ferrari', 16, 1, 81999)`, session, session)
+	// Giri registrati dalla telemetria a Monza: in gara il record è di Luca, in qualifica
+	// di Simone; il giro più veloce, in prova, non è un record.
+	lap := func(sessionType int, raceID any, laps ...any) {
+		var session int64
+		db.QueryRow(`INSERT INTO telemetry_sessions (session_uid, packet_format, started_at, file, track_id, session_type, race_id)
+			VALUES (?, 2025, '2026-10-18 20:00:00', 'x.f1rec.gz', 11, ?, ?) RETURNING id`, sessionType, sessionType, raceID).Scan(&session)
+		for i := 0; i < len(laps); i += 2 {
+			db.Exec(`INSERT INTO telemetry_players (session_id, car_index, name, team, race_number, player_id, best_lap_ms)
+				VALUES (?, ?, 'PILOTA', 'Ferrari', 1, ?, ?)`, session, i, laps[i], laps[i+1])
+		}
+	}
+	lap(15, monza, 2, 81234, 1, 81999)
+	lap(7, quali, 1, 80100, 2, 80500)
+	lap(1, nil, 2, 79000)
 
 	var stats struct {
 		Career []struct {
@@ -70,9 +78,9 @@ func TestStats(t *testing.T) {
 			Points      int      `json:"points"`
 		} `json:"career"`
 		Records []struct {
-			Track string `json:"track"`
-			LapMS int    `json:"lapMs"`
-			Name  string `json:"name"`
+			Track      string     `json:"track"`
+			Race       *lapRecord `json:"race"`
+			Qualifying *lapRecord `json:"qualifying"`
 		} `json:"records"`
 		HeadToHead struct {
 			Players []struct {
@@ -93,9 +101,25 @@ func TestStats(t *testing.T) {
 	if luca.Points != 18+15 || luca.Podiums != 2 || *luca.AvgFinish != 2.5 {
 		t.Errorf("Luca %+v", luca)
 	}
-	if len(stats.Records) != 1 || stats.Records[0].Track != "Italia – Monza" || stats.Records[0].LapMS != 81234 || stats.Records[0].Name != "Luca" {
+	if len(stats.Records) != 1 || stats.Records[0].Track != "Italia – Monza" ||
+		*stats.Records[0].Race != (lapRecord{81234, "Luca", "Gara"}) ||
+		*stats.Records[0].Qualifying != (lapRecord{80100, "Simone", "Qualifica 3"}) {
 		t.Errorf("record %+v", stats.Records)
 	}
+	var monzaRecords struct {
+		Race       *lapRecord `json:"race"`
+		Qualifying *lapRecord `json:"qualifying"`
+	}
+	expectStatus(t, call(t, srv, "GET", "/tracks/11/records", nil, &monzaRecords), 200, "record di Monza")
+	if monzaRecords.Race == nil || monzaRecords.Race.LapMS != 81234 || monzaRecords.Qualifying == nil || monzaRecords.Qualifying.LapMS != 80100 {
+		t.Errorf("record di Monza %+v", monzaRecords)
+	}
+	monzaRecords.Race, monzaRecords.Qualifying = nil, nil
+	expectStatus(t, call(t, srv, "GET", "/tracks/13/records", nil, &monzaRecords), 200, "record di Suzuka")
+	if monzaRecords.Race != nil || monzaRecords.Qualifying != nil {
+		t.Errorf("record di Suzuka %+v", monzaRecords)
+	}
+	expectStatus(t, call(t, srv, "GET", "/tracks/x/records", nil, nil), 400, "circuito non valido")
 	// Monza: Simone davanti; Imola: Simone ritirato, Luca davanti.
 	if h := stats.HeadToHead; h.Players[0].Name != "Luca" || h.Ahead[0][1] != 1 || h.Ahead[1][0] != 1 {
 		t.Errorf("testa a testa %+v", h)
@@ -124,7 +148,7 @@ func TestStats(t *testing.T) {
 	}
 	expectStatus(t, call(t, srv, "GET", "/players/1/stats", nil, &profile), 200, "profilo")
 	if profile.Career.Wins != 1 || len(profile.Tournaments) != 1 || profile.Tournaments[0].Rank != 2 ||
-		len(profile.BestLaps) != 1 || profile.BestLaps[0].LapMS != 81999 || profile.BestLaps[0].Record ||
+		len(profile.BestLaps) != 1 || profile.BestLaps[0].LapMS != 80100 || !profile.BestLaps[0].Record ||
 		len(profile.Recent) != 3 || len(profile.Rivals) != 1 || profile.Rivals[0].Ahead != 1 || profile.Rivals[0].Behind != 1 {
 		t.Errorf("profilo %+v", profile)
 	}
@@ -158,4 +182,10 @@ func TestStats(t *testing.T) {
 	}
 	expectStatus(t, call(t, srv, "GET", "/stats?tournament=99", nil, nil), 404, "torneo inesistente")
 	expectStatus(t, call(t, srv, "GET", "/stats?tournament=abc", nil, nil), 404, "torneo non valido")
+}
+
+type lapRecord struct {
+	LapMS       int    `json:"lapMs"`
+	Name        string `json:"name"`
+	SessionType string `json:"sessionType"`
 }

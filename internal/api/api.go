@@ -32,6 +32,7 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service, backups *backup.Ma
 
 	mux.Handle("GET /api/points", s.handle(s.getPoints))
 	mux.Handle("GET /api/tracks", s.handle(s.listTracks))
+	mux.Handle("GET /api/tracks/{id}/records", s.handle(s.getTrackRecords))
 
 	mux.Handle("GET /api/tournaments", s.handle(s.listTournaments))
 	mux.Handle("POST /api/tournaments", s.handle(s.createTournament))

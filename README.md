@@ -233,6 +233,9 @@ In split-screen la pagina Live mostra anche il **Duello** tra i due giocatori (c
 quanto, confronto dei giri). La **Modalità TV** (`#/tv`, dal pulsante nella pagina Live) mostra
 classifica, mappa e direzione gara a schermo intero, con caratteri grandi da leggere dal divano.
 Ogni pilota ha un colore (si cambia nella pagina Piloti), lo stesso nei grafici e nella classifica live.
+Sotto il circuito compare il **record** dei piloti su quella pista, in tutti i tornei: in gara
+quello in gara, altrimenti quello in qualifica (in prova come riferimento). Se un pilota del
+segnapunti lo batte in gara o in qualifica, compare il nuovo record con il miglioramento.
 
 Quando non c'è una sessione, la pagina Live mostra cosa impostare nel gioco (con gli indirizzi IP
 del server) e i problemi di ricezione: porta UDP occupata o formato UDP non supportato. I
@@ -399,8 +402,9 @@ La pagina **Statistiche** raccoglie tutte le gare di tutti i tornei:
 - **Carriera**: titoli, punti (somma delle classifiche dei tornei, ognuna con le sue regole),
   vittorie, podi, pole, giri veloci, ritiri, media e miglior piazzamento di ogni pilota. Questi
   ultimi sono quelli d'arrivo, IA compresa, anche nei tornei con i punti tra i piloti;
-- **Record dei circuiti**: il giro più veloce dei piloti su ogni circuito, in qualunque sessione
-  registrata, con il link al replay;
+- **Record dei circuiti**: il giro più veloce dei piloti su ogni circuito in gara e, in secondo
+  piano, in qualifica (Sprint Shootout compresi), con il link al replay. I giri delle prove non
+  contano;
 - **Testa a testa**: quante volte ogni pilota è arrivato davanti a ciascun altro.
 
 Ogni pilota ha un **profilo** (dalla pagina Piloti o cliccando il nome) con i tornei, i migliori

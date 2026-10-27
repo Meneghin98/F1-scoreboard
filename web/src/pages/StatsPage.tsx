@@ -1,10 +1,10 @@
 import { api } from '../lib/api';
 import { formatLapTime, formatUtcDate } from '../lib/format';
 import { href } from '../lib/route';
-import type { CareerStats, StatsResponse, Tournament } from '../lib/types';
+import type { CareerStats, StatsResponse, Tournament, TrackRecord } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { ALL_TOURNAMENTS, TournamentSelect, useTournamentFilter } from '../components/TournamentFilter';
-import { buttonClass, Card, ColorDot, cx, Empty, Loading, PageToolbar, rankClass, Table, Td, Th, Tr } from '../components/ui';
+import { Card, ColorDot, cx, Empty, Loading, PageToolbar, rankClass, Table, Td, Th, Tr } from '../components/ui';
 
 // Statistiche di tutti i tornei o di uno solo: carriera dei piloti, record dei circuiti e testa a testa.
 export function StatsPage({ tournaments }: { tournaments: Tournament[] }) {
@@ -101,29 +101,21 @@ function RecordsCard({ records, single }: { records: StatsResponse['records']; s
       <h2 className="mb-1 font-bold">Record dei circuiti</h2>
       <p className="mb-3 text-sm text-muted">
         {single
-          ? 'Il giro più veloce dei piloti su ogni circuito, nelle registrazioni delle gare del torneo.'
-          : 'Il giro più veloce dei piloti su ogni circuito, in qualunque sessione registrata.'}
+          ? 'Il giro più veloce dei piloti su ogni circuito in gara e in qualifica, nelle registrazioni delle gare del torneo.'
+          : 'Il giro più veloce dei piloti su ogni circuito in gara e in qualifica, in tutte le sessioni registrate.'}
+        {' '}I giri delle prove non contano.
       </p>
       {records.length ? (
         <Table>
           <thead>
-            <tr><Th>Circuito</Th><Th num>Tempo</Th><Th>Pilota</Th><Th>Sessione</Th><Th /></tr>
+            <tr><Th>Circuito</Th><Th num>Gara</Th><Th /><Th num>Qualifica</Th><Th /></tr>
           </thead>
           <tbody>
             {records.map((r) => (
               <Tr key={r.trackId}>
                 <Td className="font-semibold">{r.track}</Td>
-                <Td num className="font-bold text-purple-400">{formatLapTime(r.lapMs)}</Td>
-                <Td>
-                  <a href={href('player', r.player_id)} className="flex items-center gap-2 hover:underline">
-                    <ColorDot color={r.color} />
-                    {r.name}
-                  </a>
-                </Td>
-                <Td className="text-sm text-muted">{r.sessionType} · {formatUtcDate(r.date)}</Td>
-                <Td className="text-right">
-                  <a href={href('replay', r.sessionId)} className={buttonClass('ghost', 'sm')}>▶ Replay</a>
-                </Td>
+                <RecordCells record={r.race} main />
+                <RecordCells record={r.qualifying} />
               </Tr>
             ))}
           </tbody>
@@ -132,6 +124,27 @@ function RecordsCard({ records, single }: { records: StatsResponse['records']; s
         <p className="text-sm text-muted">I record arrivano dalle registrazioni della telemetria, con i piloti associati ai giocatori.</p>
       )}
     </Card>
+  );
+}
+
+// Tempo e pilota di un record, con la sessione e il replay. Il record in gara è
+// quello principale; quello in qualifica resta in secondo piano.
+function RecordCells({ record: r, main }: { record: TrackRecord | null; main?: boolean }) {
+  if (!r) return <><Td num className="text-muted">–</Td><Td /></>;
+  return (
+    <>
+      <Td num className={main ? 'text-base font-bold text-purple-400' : 'text-sm text-muted'}>{formatLapTime(r.lapMs)}</Td>
+      <Td className={cx(!main && 'text-sm')}>
+        <a href={href('player', r.player_id)} className={cx('flex items-center gap-2 hover:underline', !main && 'text-muted')}>
+          <ColorDot color={r.color} />
+          {r.name}
+        </a>
+        <div className="flex items-center gap-2 text-xs text-muted">
+          {r.sessionType} · {formatUtcDate(r.date)}
+          <a href={href('replay', r.sessionId)} className="hover:text-fg hover:underline" title="Replay della sessione">▶ Replay</a>
+        </div>
+      </Td>
+    </>
   );
 }
 

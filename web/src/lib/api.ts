@@ -1,7 +1,7 @@
 import type {
   BackupInfo, LineupTournament, Player, PlayerProfile, Race, RaceType, RaceWithResults, ResultInput, ScoringRules, SessionRaceInput,
   SessionRecord, Settings, SettingsSaved, StandingsResponse, StatsResponse, SystemInfo, Tournament,
-  ReplayFrame, ReplayInfo, Track, TrackMap, UnfinishedDeleted, UpdateStatus,
+  ReplayFrame, ReplayInfo, Track, TrackMap, TrackRecords, UnfinishedDeleted, UpdateStatus,
 } from './types';
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -29,6 +29,7 @@ export interface RaceInput {
 
 export const api = {
   tracks: () => request<Track[]>('/tracks'),
+  trackRecords: (trackId: number) => request<TrackRecords>(`/tracks/${trackId}/records`),
 
   tournaments: () => request<Tournament[]>('/tournaments'),
   createTournament: (name: string, start: boolean, rules: ScoringRules) =>

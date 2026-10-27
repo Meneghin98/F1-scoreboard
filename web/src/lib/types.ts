@@ -517,6 +517,14 @@ export interface TrackRecord {
   date: string; // UTC
 }
 
+// Record di un circuito in gara e in qualifica, null se ancora nessuno. I giri delle prove non contano.
+export interface TrackRecords {
+  trackId: number;
+  track: string;
+  race: TrackRecord | null;
+  qualifying: TrackRecord | null;
+}
+
 export interface H2HPlayer {
   id: number;
   name: string;
@@ -525,7 +533,7 @@ export interface H2HPlayer {
 
 export interface StatsResponse {
   career: CareerStats[]; // dal migliore
-  records: TrackRecord[]; // nell'ordine del calendario
+  records: TrackRecords[]; // nell'ordine del calendario
   headToHead: { players: H2HPlayer[]; ahead: number[][] }; // ahead[i][j]: gare in cui i è arrivato davanti a j
 }
 

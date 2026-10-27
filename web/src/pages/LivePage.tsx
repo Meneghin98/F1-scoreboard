@@ -1,9 +1,11 @@
 import { Fragment, useRef, useState, type ReactNode } from 'react';
-import { formatClock, formatGap, formatLapTime } from '../lib/format';
+import { api } from '../lib/api';
+import { formatClock, formatGap, formatLapTime, formatUtcDate } from '../lib/format';
 import {
   controllerLabel, isLive, isLoading, isPaused, SAFETY_CAR, teamColor, telemetryProblem, TYRE_CLASS, WEATHER,
 } from '../lib/live';
 import type { LiveDriver, LiveSession, LiveSnapshot, PlayerCar, RaceEvent, TelemetryStatus, TrackMap } from '../lib/types';
+import { useLoad } from '../lib/useLoad';
 import { useLive, usePedalHistory, type PedalSample } from '../lib/useLive';
 import { usePositionAnimation } from '../lib/usePositionAnimation';
 import { href } from '../lib/route';
@@ -55,6 +57,7 @@ export function LivePage() {
         live={live}
         session={live.session}
         className={cx(live.lineup && lineupNeedsAttention(live.lineup) && 'border-accent')}
+        record={<TrackRecordInfo session={live.session} drivers={live.drivers} />}
         summary={live.lineup && summary && <LineupSummary lineup={live.lineup} onEdit={() => setEditing(true)} />}
         footer={live.lineup && !summary && <LineupSection lineup={live.lineup} onDone={() => setEditing(false)} />}
         actions={
@@ -255,10 +258,11 @@ export function LiveBoard({ session, drivers, players, events, finished, pedals,
 // indicator sostituisce il pallino verde della diretta (il replay mostra il suo);
 // actions sono pulsanti da mostrare in fondo a destra; summary va a sinistra nella
 // riga delle previsioni (i piloti confermati), footer sotto a tutto (la scelta dei piloti).
-export function SessionCard({ live, session: s, indicator, actions, summary, footer, className }: {
+export function SessionCard({ live, session: s, indicator, record, actions, summary, footer, className }: {
   live: LiveSnapshot;
   session: LiveSession;
   indicator?: ReactNode;
+  record?: ReactNode; // sotto il tipo di sessione
   actions?: ReactNode;
   summary?: ReactNode;
   footer?: ReactNode;
@@ -286,6 +290,7 @@ export function SessionCard({ live, session: s, indicator, actions, summary, foo
         <div>
           <div className="text-xl font-bold">{s.track || 'Circuito sconosciuto'}</div>
           <div className="text-sm text-muted">{s.type}</div>
+          {record}
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
@@ -333,6 +338,39 @@ export function SessionCard({ live, session: s, indicator, actions, summary, foo
       )}
       {footer}
     </Card>
+  );
+}
+
+// Record del circuito adatto alla sessione, in tutti i tornei: in gara quello in
+// gara, altrimenti quello in qualifica (anche in prova, come riferimento). Se un
+// pilota del segnapunti lo batte in una sessione che conta, compare il nuovo record.
+function TrackRecordInfo({ session: s, drivers }: { session: LiveSession; drivers: LiveDriver[] }) {
+  const { data } = useLoad(async () => (s.trackId >= 0 ? api.trackRecords(s.trackId) : null), [s.trackId]);
+  if (!data) return null;
+  const record = s.isRace ? data.race : data.qualifying;
+  const label = s.isRace ? 'Record in gara' : 'Record in qualifica';
+  const counts = s.isRace || (s.sessionType >= 5 && s.sessionType <= 14); // gare, qualifiche e Sprint Shootout
+
+  const best = counts
+    ? drivers.filter((d) => d.playerName && d.bestLapMs).sort((a, b) => a.bestLapMs - b.bestLapMs)[0]
+    : undefined;
+  if (best && (!record || best.bestLapMs < record.lapMs)) {
+    return (
+      <div className="text-sm" title={record ? `Record precedente: ${record.name}, ${formatLapTime(record.lapMs)}` : undefined}>
+        <span className="font-semibold text-purple-400">Nuovo {label.toLowerCase()}</span>{' '}
+        <span className="font-bold text-purple-400 tabular-nums">{formatLapTime(best.bestLapMs)}</span>{' '}
+        <span className="inline-flex items-center gap-1.5"><ColorDot color={best.playerColor} />{best.playerName}</span>
+        {record && <span className="text-muted tabular-nums"> (−{formatLapTime(record.lapMs - best.bestLapMs)})</span>}
+      </div>
+    );
+  }
+  if (!record) return <div className="text-sm text-muted">{label}: ancora nessuno</div>;
+  return (
+    <div className="text-sm" title={`${record.sessionType} · ${formatUtcDate(record.date)}`}>
+      <span className="text-muted">{label}</span>{' '}
+      <span className="font-bold text-purple-400 tabular-nums">{formatLapTime(record.lapMs)}</span>{' '}
+      <span className="inline-flex items-center gap-1.5"><ColorDot color={record.color} />{record.name}</span>
+    </div>
   );
 }
 
