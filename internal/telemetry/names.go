@@ -46,6 +46,11 @@ func (s SessionType) IsRace() bool {
 	return s == SessionRace || s == SessionRace2 || s == SessionRace3
 }
 
+// IsQualifying dice se la sessione è una qualifica (compresi gli Sprint Shootout).
+func (s SessionType) IsQualifying() bool {
+	return s >= SessionQualifying1 && s <= SessionOneShotSprintShootout
+}
+
 // TrackID identifica il circuito; -1 = sconosciuto.
 type TrackID int8
 

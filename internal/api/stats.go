@@ -36,7 +36,7 @@ type CareerStats struct {
 	Titles      int      `json:"titles"` // tornei terminati da primo in classifica
 }
 
-// TrackRecord è il giro più veloce dei piloti del segnapunti su un circuito.
+// TrackRecord è un giro più veloce dei piloti del segnapunti su un circuito.
 type TrackRecord struct {
 	TrackID     int    `json:"trackId"`
 	Track       string `json:"track"`
@@ -47,6 +47,15 @@ type TrackRecord struct {
 	SessionID   int64  `json:"sessionId"`   // registrazione del giro, per il replay
 	SessionType string `json:"sessionType"` // "Gara", "Qualifica 1"…
 	Date        string `json:"date"`        // UTC, inizio della sessione
+}
+
+// TrackRecords sono i record di un circuito: il giro più veloce in gara e quello
+// in qualifica, nil se ancora nessuno. I giri delle prove non contano.
+type TrackRecords struct {
+	TrackID    int          `json:"trackId"`
+	Track      string       `json:"track"`
+	Race       *TrackRecord `json:"race"`
+	Qualifying *TrackRecord `json:"qualifying"`
 }
 
 // HeadToHead conta, per ogni coppia di piloti, le gare (GP e sprint) in cui
@@ -264,10 +273,10 @@ func aheadOf(a, b statResult) bool {
 	return !bFinished || *a.position < *b.position
 }
 
-// lapRecords restituisce il giro più veloce dei piloti su ogni circuito,
-// nell'ordine del calendario, e i migliori giri di ogni pilota per circuito.
+// lapRecords restituisce i record in gara e in qualifica dei piloti su ogni circuito,
+// nell'ordine del calendario, e i migliori giri di ogni pilota per circuito, in qualunque sessione.
 // Con tournamentID diverso da 0 contano solo le registrazioni delle gare di quel torneo.
-func (s *Server) lapRecords(tournamentID int64) (records []TrackRecord, bestLaps map[int64][]TrackRecord, err error) {
+func (s *Server) lapRecords(tournamentID int64) (records []TrackRecords, bestLaps map[int64][]TrackRecord, err error) {
 	rows, err := s.db.Query(`
 		SELECT s.track_id, tp.best_lap_ms, tp.player_id, p.name, COALESCE(p.color, ''), s.id, s.session_type, s.started_at
 		FROM telemetry_players tp
@@ -281,7 +290,7 @@ func (s *Server) lapRecords(tournamentID int64) (records []TrackRecord, bestLaps
 	}
 	defer rows.Close()
 	bestLaps = map[int64][]TrackRecord{}
-	seenTrack := map[int]bool{}
+	trackIndex := map[int]int{} // circuito, posizione in records
 	seenPlayer := map[[2]int64]bool{} // circuito, pilota
 	for rows.Next() {
 		var r TrackRecord
@@ -290,13 +299,27 @@ func (s *Server) lapRecords(tournamentID int64) (records []TrackRecord, bestLaps
 			return nil, nil, err
 		}
 		r.Track = live.RaceTrackName(telemetry.TrackID(r.TrackID))
+		var record **TrackRecord
 		if sessionType != nil {
-			r.SessionType = telemetry.SessionType(*sessionType).String()
+			st := telemetry.SessionType(*sessionType)
+			r.SessionType = st.String()
+			if st.IsRace() || st.IsQualifying() {
+				i, ok := trackIndex[r.TrackID]
+				if !ok {
+					i = len(records)
+					trackIndex[r.TrackID] = i
+					records = append(records, TrackRecords{TrackID: r.TrackID, Track: r.Track})
+				}
+				record = &records[i].Qualifying
+				if st.IsRace() {
+					record = &records[i].Race
+				}
+			}
 		}
-		// Le righe sono in ordine di tempo: la prima per circuito è il record, la prima per pilota il suo migliore.
-		if !seenTrack[r.TrackID] {
-			seenTrack[r.TrackID] = true
-			records = append(records, r)
+		// Le righe sono in ordine di tempo: la prima per circuito e tipo di sessione è il record,
+		// la prima per pilota il suo migliore.
+		if record != nil && *record == nil {
+			*record = &r
 		}
 		if key := [2]int64{int64(r.TrackID), r.PlayerID}; !seenPlayer[key] {
 			seenPlayer[key] = true
@@ -310,23 +333,23 @@ func (s *Server) lapRecords(tournamentID int64) (records []TrackRecord, bestLaps
 	for i, t := range live.Tracks {
 		order[t.ID] = i
 	}
-	byCalendar := func(a, b TrackRecord) int {
-		ia, okA := order[a.TrackID]
-		ib, okB := order[b.TrackID]
+	byCalendar := func(a, b int) int {
+		ia, okA := order[a]
+		ib, okB := order[b]
 		if !okA {
-			ia = len(order) + a.TrackID
+			ia = len(order) + a
 		}
 		if !okB {
-			ib = len(order) + b.TrackID
+			ib = len(order) + b
 		}
 		return cmp.Compare(ia, ib)
 	}
-	slices.SortFunc(records, byCalendar)
+	slices.SortFunc(records, func(a, b TrackRecords) int { return byCalendar(a.TrackID, b.TrackID) })
 	for id := range bestLaps {
-		slices.SortFunc(bestLaps[id], byCalendar)
+		slices.SortFunc(bestLaps[id], func(a, b TrackRecord) int { return byCalendar(a.TrackID, b.TrackID) })
 	}
 	if records == nil {
-		records = []TrackRecord{}
+		records = []TrackRecords{}
 	}
 	return records, bestLaps, nil
 }
@@ -365,6 +388,23 @@ func (s *Server) getStats(w http.ResponseWriter, r *http.Request) error {
 		"records":    records,
 		"headToHead": d.headToHead(career),
 	})
+}
+
+// getTrackRecords restituisce i record di un circuito (id del gioco), in tutti i tornei.
+func (s *Server) getTrackRecords(w http.ResponseWriter, r *http.Request) error {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		return errorf(http.StatusBadRequest, "circuito non valido")
+	}
+	records, _, err := s.lapRecords(0)
+	if err != nil {
+		return err
+	}
+	result := TrackRecords{TrackID: id, Track: live.RaceTrackName(telemetry.TrackID(id))}
+	if i := slices.IndexFunc(records, func(t TrackRecords) bool { return t.TrackID == id }); i >= 0 {
+		result = records[i]
+	}
+	return writeJSON(w, http.StatusOK, result)
 }
 
 // --- Profilo di un pilota ----------------------------------------------------
@@ -453,15 +493,19 @@ func (s *Server) getPlayerStats(w http.ResponseWriter, r *http.Request) error {
 	}
 	slices.SortFunc(profile.Tournaments, func(a, b PlayerTournament) int { return cmp.Compare(b.ID, a.ID) })
 
-	// Migliori giri per circuito, segnando i record.
-	recordOf := map[int]int64{}
+	// Migliori giri per circuito, segnando quelli che sono record in gara o in qualifica.
+	isRecord := map[int64]bool{} // sessione di registrazione, per i giri del pilota
 	for _, rec := range records {
-		recordOf[rec.TrackID] = rec.LapMS
+		for _, r := range []*TrackRecord{rec.Race, rec.Qualifying} {
+			if r != nil && r.PlayerID == id {
+				isRecord[r.SessionID] = true
+			}
+		}
 	}
 	for _, lap := range bestLaps[id] {
 		profile.BestLaps = append(profile.BestLaps, map[string]any{
 			"trackId": lap.TrackID, "track": lap.Track, "lapMs": lap.LapMS, "sessionId": lap.SessionID,
-			"sessionType": lap.SessionType, "date": lap.Date, "record": recordOf[lap.TrackID] == lap.LapMS,
+			"sessionType": lap.SessionType, "date": lap.Date, "record": isRecord[lap.SessionID],
 		})
 	}
 
