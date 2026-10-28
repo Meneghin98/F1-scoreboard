@@ -88,7 +88,7 @@ function PlanCard({ rotation, tracks, maps, players, onChanged }: {
               <span className={cx('w-16 shrink-0 font-bold', i === 0 ? 'text-accent' : 'text-muted')}>
                 {i === 0 ? 'Prossimo' : `GP ${i + 1}`}
               </span>
-              <Thumb map={maps[race.track]} className="size-10 text-muted" />
+              <Thumb map={maps[race.track]} className="size-16 text-fg" />
               <span className="min-w-48 flex-1 font-semibold">{trackName(race.track)}</span>
               {race.pair && (
                 <span className="flex flex-wrap items-center gap-x-3">
@@ -153,12 +153,18 @@ function TracksCard({ tracks, maps, onToggle }: {
         Circuiti <span className="font-normal text-muted">· {available} di {tracks.length} da giocare</span>
       </h2>
       <p className="mb-3 text-sm text-muted">Spegni le piste che non volete giocare: il programma non le propone più.</p>
-      {/* In colonna, così si leggono nell'ordine del calendario. */}
-      <ul className="gap-x-6 sm:columns-2">
+      {/* Una scheda per circuito con il disegno grande, nell'ordine del calendario. */}
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {tracks.map((t) => (
-          <li key={t.id} className="flex break-inside-avoid items-center justify-between gap-3 border-b border-line py-1.5">
-            <Switch checked={!t.excluded} onChange={() => onToggle(t)} label={t.name} />
-            <Thumb map={maps[t.id]} className={cx('size-8', t.excluded ? 'text-line' : 'text-muted')} />
+          <li key={t.id} className={cx('flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-3', t.excluded && 'opacity-50')}>
+            <div className="flex h-28 items-center justify-center">
+              {maps[t.id] ? (
+                <TrackOutline map={maps[t.id]} className="size-full text-fg" />
+              ) : (
+                <span className="text-xs text-muted" title="Il disegno arriva con la prima gara su questa pista">Mai corsa</span>
+              )}
+            </div>
+            <Switch checked={!t.excluded} onChange={() => onToggle(t)} label={t.name} className="text-left" />
           </li>
         ))}
       </ul>
@@ -166,7 +172,7 @@ function TracksCard({ tracks, maps, onToggle }: {
   );
 }
 
-// Miniatura del circuito; senza pianta salvata lascia lo spazio vuoto, così le righe restano allineate.
+// Disegno del circuito nel programma; senza pianta salvata lascia lo spazio vuoto, così le righe restano allineate.
 function Thumb({ map, className }: { map?: TrackMap; className: string }) {
   return map ? <TrackOutline map={map} className={cx('shrink-0', className)} /> : <span className={cx('shrink-0', className)} />;
 }
