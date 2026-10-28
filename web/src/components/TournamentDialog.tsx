@@ -139,8 +139,10 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
         <label className={cx('mt-4 flex items-start gap-2 text-sm', !canStart && 'text-muted')}>
           <input type="checkbox" name="start" defaultChecked={canStart} disabled={!canStart} className="mt-0.5 size-4 accent-accent" />
           <span>
-            Inizia subito: le prossime gare verranno salvate in questo torneo
-            {!canStart && ' (c\'è già un torneo in corso)'}
+            Inizia subito
+            <span className="block text-muted">
+              {canStart ? 'Le prossime gare verranno salvate in questo torneo' : 'C\'è già un torneo in corso'}
+            </span>
           </span>
         </label>
       )}
