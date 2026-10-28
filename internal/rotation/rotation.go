@@ -58,8 +58,10 @@ func Next(present []int64, history []Pair, order []int64, n int) []Pair {
 		}
 		return len(order)
 	}
-	slices.SortStableFunc(ids, func(a, b int64) int { return rank(a) - rank(b) }) // a parità di rank restano per id
-	history = slices.Clone(history)                                               // le coppie simulate non devono finire nello storico di chi chiama
+	// A parità di rank (chi non è nel sorteggio) restano in ordine di id.
+	slices.SortStableFunc(ids, func(a, b int64) int { return rank(a) - rank(b) })
+	// Le coppie simulate non devono finire nello storico di chi chiama.
+	history = slices.Clone(history)
 	pairs := make([]Pair, 0, n)
 	for range n {
 		p := next(ids, history)

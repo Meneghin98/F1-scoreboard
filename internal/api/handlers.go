@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"f1-scoreboard/internal/live"
+	"f1-scoreboard/internal/rotation"
 	"f1-scoreboard/internal/scoring"
 )
 
@@ -310,6 +311,11 @@ func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error 
 	if err != nil {
 		return err
 	}
+	if t.Active {
+		if err := rotation.EnsureDrawn(tx, t.ID); err != nil {
+			return err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -410,6 +416,9 @@ func (s *Server) startTournament(w http.ResponseWriter, r *http.Request) error {
 			UPDATE tournaments SET started_at = COALESCE(started_at, datetime('now')), ended_at = NULL WHERE id = ?
 			RETURNING `+tournamentColumns, id), &t)
 		if err != nil {
+			return err
+		}
+		if err := rotation.EnsureDrawn(tx, id); err != nil {
 			return err
 		}
 	}
