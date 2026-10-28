@@ -6,6 +6,7 @@ import (
 	"math"
 	"slices"
 
+	"f1-scoreboard/internal/rotation"
 	"f1-scoreboard/internal/telemetry"
 )
 
@@ -20,7 +21,10 @@ type Snapshot struct {
 	// LastSaved è il riepilogo dell'ultima sessione salvata nel torneo, anche se
 	// è già finita; nil se non c'è o se è partita la successiva. Solo nello stato live.
 	LastSaved *SavedLineup `json:"lastSaved"`
-	Events    []RaceEvent  `json:"events"` // ultimi messaggi della direzione gara, dal più vecchio
+	// Rotation è la turnazione dei controller nel torneo in corso (vedi il
+	// pacchetto rotation). Solo nello stato live, non nei replay.
+	Rotation *rotation.State `json:"rotation,omitempty"`
+	Events   []RaceEvent     `json:"events"` // ultimi messaggi della direzione gara, dal più vecchio
 	// Telemetry dice se il server riceve la telemetria (porta, errori, indirizzi
 	// da impostare nel gioco). Solo nello stato live, non nei replay.
 	Telemetry *TelemetryStatus `json:"telemetry,omitempty"`
