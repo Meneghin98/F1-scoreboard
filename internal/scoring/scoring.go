@@ -91,8 +91,12 @@ var Presets = map[string]func(raceType string, drivers int) Table{
 }
 
 // TableFor restituisce i punti per posizione di un tipo di gara con queste
-// regole; drivers è il numero dei piloti della gara.
+// regole; drivers è il numero dei piloti della gara. Solo Gran Premi e sprint
+// hanno una tabella: le qualifiche danno al massimo i punti della pole.
 func (r Rules) TableFor(raceType string, drivers int) Table {
+	if _, ok := Points[raceType]; !ok {
+		return Table{}
+	}
 	if r.Mode != ModePlayers {
 		return Table{Points: Points[raceType]}
 	}
