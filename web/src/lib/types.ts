@@ -313,6 +313,7 @@ export interface LiveSnapshot {
   finished: boolean;
   lineup: Lineup | null;
   lastSaved?: SavedLineup | null; // ultima sessione salvata nel torneo, anche se già finita (solo nello stato live)
+  rotation?: RotationState; // turnazione dei controller nel torneo in corso (solo nello stato live)
   events: RaceEvent[]; // ultimi messaggi della direzione gara, dal più vecchio
   telemetry?: TelemetryStatus; // solo nello stato live, non nei replay
   dataVersion?: number; // cambia a ogni modifica dei dati salvati: le pagine si ricaricano (solo nello stato live)
@@ -618,4 +619,17 @@ export interface SettingsSaved extends Settings {
 export interface UnfinishedDeleted {
   deletedSessions: number;
   freedBytes: number;
+}
+
+// Turnazione dei controller nel torneo in corso (vedi internal/rotation).
+export interface RotationPair {
+  p1: number; // pilota al controller 1
+  p2: number; // pilota al controller 2
+}
+
+export interface RotationState {
+  tournament: { id: number; name: string } | null; // senza torneo in corso la turnazione non c'è
+  present: number[]; // piloti presenti, scelti nella pagina Piloti
+  canDraw: boolean; // il torneo non ha ancora Gran Premi: il sorteggio si può rifare
+  next: RotationPair[]; // prossime coppie dal prossimo Gran Premio; vuoto con meno di due presenti
 }

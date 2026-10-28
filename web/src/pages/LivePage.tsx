@@ -13,6 +13,7 @@ import { DriverBadges } from '../components/DriverBadges';
 import { DuelCard } from '../components/DuelCard';
 import { LiveDot } from '../components/LiveBadge';
 import { LineupSection, LineupSummary, lineupNeedsAttention, SavedLineupCard, useLineupSummary } from '../components/LineupSection';
+import { NextPair } from '../components/NextPair';
 import { PlayerCarCard } from '../components/PlayerCarCard';
 import { PositionsGained } from '../components/PositionsGained';
 import { RaceControlCard } from '../components/RaceControlCard';
@@ -33,12 +34,15 @@ export function LivePage() {
   const saved = live.lastSaved && live.lastSaved.sessionId !== live.lineup?.sessionId
     ? <SavedLineupCard saved={live.lastSaved} />
     : null;
-  if (!isLive(live)) return <>{saved}<WaitingCard telemetry={live.telemetry} /></>;
+  // Tra una sessione e l'altra: chi prende i controller al prossimo Gran Premio.
+  const nextPair = <NextPair rotation={live.rotation} />;
+  if (!isLive(live)) return <>{saved}{nextPair}<WaitingCard telemetry={live.telemetry} /></>;
 
   if (isLoading(live.session)) {
     return (
       <>
         {saved}
+        {nextPair}
         <Card className="flex items-center gap-3">
           <LiveDot active />
           <div>
@@ -53,6 +57,7 @@ export function LivePage() {
   return (
     <>
       {saved}
+      {live.finished && live.lineup?.stage === 'saved' && nextPair}
       <SessionCard
         live={live}
         session={live.session}
