@@ -152,18 +152,34 @@ function TracksCard({ tracks, maps, onToggle }: {
       <h2 className="font-bold">
         Circuiti <span className="font-normal text-muted">· {available} di {tracks.length} da giocare</span>
       </h2>
-      <p className="mb-3 text-sm text-muted">Spegni le piste che non volete giocare: il programma non le propone più.</p>
+      <p className="mb-3 text-sm text-muted">
+        Spegni le piste che non volete giocare, anche cliccando sul disegno: il programma non le propone più.
+      </p>
       {/* Una scheda per circuito con il disegno grande, nell'ordine del calendario. */}
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {tracks.map((t) => (
-          <li key={t.id} className={cx('flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-3', t.excluded && 'opacity-50')}>
-            <div className="flex h-28 items-center justify-center">
+          <li
+            key={t.id}
+            className={cx(
+              'flex flex-col gap-2 rounded-lg border border-line bg-surface-2 p-3 transition-colors hover:border-muted',
+              t.excluded && 'opacity-50',
+            )}
+          >
+            {/* Il disegno accende e spegne la pista come l'interruttore; da tastiera basta l'interruttore. */}
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-hidden="true"
+              onClick={() => onToggle(t)}
+              title={t.excluded ? 'Clicca per giocarla di nuovo' : 'Clicca per non giocarla'}
+              className="flex h-28 cursor-pointer items-center justify-center"
+            >
               {maps[t.id] ? (
                 <TrackOutline map={maps[t.id]} className="size-full text-fg" />
               ) : (
-                <span className="text-xs text-muted" title="Il disegno arriva con la prima gara su questa pista">Mai corsa</span>
+                <span className="text-xs text-muted">Mai corsa</span>
               )}
-            </div>
+            </button>
             <Switch checked={!t.excluded} onChange={() => onToggle(t)} label={t.name} className="text-left" />
           </li>
         ))}
