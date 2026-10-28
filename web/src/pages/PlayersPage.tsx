@@ -5,7 +5,7 @@ import { href } from '../lib/route';
 import type { Player, RotationPair, RotationState } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
-import { Button, Card, ColorDot, cx, Empty, fieldClass, Loading, TeamTag } from '../components/ui';
+import { Button, Card, ColorDot, cx, Empty, fieldClass, Loading, Switch, TeamTag } from '../components/ui';
 
 export function PlayersPage() {
   const { run } = useToast();
@@ -101,15 +101,13 @@ export function PlayersPage() {
               </a>
               <div className="flex items-center gap-2">
                 {rotation && (
-                  <label className="mr-2 flex cursor-pointer items-center gap-2 text-sm" title="Chi è presente entra nella turnazione dei controller">
-                    <input
-                      type="checkbox"
-                      checked={rotation.present.includes(p.id)}
-                      onChange={() => togglePresent(p)}
-                      className="size-4 accent-accent"
-                    />
-                    Presente
-                  </label>
+                  <Switch
+                    checked={rotation.present.includes(p.id)}
+                    onChange={() => togglePresent(p)}
+                    label="Presente"
+                    title="Chi è presente entra nella turnazione dei controller"
+                    className="mr-2"
+                  />
                 )}
                 <Button variant="ghost" size="sm" onClick={() => setEditingId(p.id)}>Modifica</Button>
                 <Button variant="ghost" size="sm" onClick={() => handleDelete(p)}>Elimina</Button>

@@ -23,8 +23,18 @@ func TestRotation(t *testing.T) {
 		expectStatus(t, call(t, srv, "POST", "/players", map[string]string{"name": name}, nil), 201, "crea pilota")
 	}
 
-	// Senza torneo in corso i presenti si scelgono lo stesso, ma non ci sono coppie.
+	// Di default sono tutti presenti.
 	var st rotationState
+	expectStatus(t, call(t, srv, "GET", "/rotation", nil, &st), 200, "turnazione iniziale")
+	if fmt.Sprint(st.Present) != "[1 2 3 4]" {
+		t.Fatalf("presenti di default: %v", st.Present)
+	}
+
+	// Senza torneo in corso i presenti si scelgono lo stesso, ma non ci sono coppie.
+	expectStatus(t, call(t, srv, "PUT", "/rotation/present", map[string]any{"players": []int64{2, 3}}, &st), 200, "presenti")
+	if fmt.Sprint(st.Present) != "[2 3]" {
+		t.Fatalf("presenti scelti: %v", st.Present)
+	}
 	expectStatus(t, call(t, srv, "PUT", "/rotation/present", map[string]any{"players": []int64{4, 2, 1, 3, 2}}, &st), 200, "presenti")
 	if st.Tournament != nil || len(st.Next) != 0 || fmt.Sprint(st.Present) != "[1 2 3 4]" {
 		t.Fatalf("turnazione senza torneo: %+v", st)
@@ -79,9 +89,12 @@ func TestRotation(t *testing.T) {
 		t.Errorf("dopo la qualifica la coppia è cambiata: %v, prima %v", st.Next[0], before)
 	}
 
-	// Un pilota eliminato sparisce dai presenti.
+	// Un pilota nuovo è presente da subito; eliminato, sparisce dai presenti.
 	expectStatus(t, call(t, srv, "POST", "/players", map[string]string{"name": "E"}, nil), 201, "crea pilota")
-	expectStatus(t, call(t, srv, "PUT", "/rotation/present", map[string]any{"players": []int64{1, 2, 3, 4, 5}}, nil), 200, "presenti con E")
+	expectStatus(t, call(t, srv, "GET", "/rotation", nil, &st), 200, "turnazione con E")
+	if fmt.Sprint(st.Present) != "[1 2 3 4 5]" {
+		t.Errorf("presenti con il pilota nuovo: %v", st.Present)
+	}
 	expectStatus(t, call(t, srv, "DELETE", "/players/5", nil, nil), 204, "elimina pilota")
 	expectStatus(t, call(t, srv, "GET", "/rotation", nil, &st), 200, "turnazione dopo l'eliminazione")
 	if fmt.Sprint(st.Present) != "[1 2 3 4]" {

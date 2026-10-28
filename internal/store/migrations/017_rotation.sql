@@ -4,5 +4,6 @@
 -- la prima coppia e le parità successive. Vuoto se non è mai stato sorteggiato.
 ALTER TABLE tournaments ADD COLUMN rotation_order TEXT NOT NULL DEFAULT '';
 
--- Piloti presenti, scelti nella pagina Piloti, come "1,4,5".
-INSERT INTO settings (key, value) VALUES ('present_players', '');
+-- Piloti assenti, scelti nella pagina Piloti, come "1,4,5": gli altri sono
+-- presenti, così di default lo sono tutti, anche quelli aggiunti dopo.
+INSERT INTO settings (key, value) VALUES ('absent_players', '');

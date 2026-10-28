@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"math/rand/v2"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -23,7 +24,7 @@ type State struct {
 	// Tournament è il torneo in corso, nil se non ce n'è uno: in "Nessun
 	// torneo" la turnazione non c'è.
 	Tournament *Tournament `json:"tournament"`
-	Present    []int64     `json:"present"` // piloti presenti, scelti nella pagina Piloti
+	Present    []int64     `json:"present"` // piloti presenti, scelti nella pagina Piloti: di default tutti
 	// CanDraw dice se il sorteggio si può rifare: il torneo non ha ancora Gran Premi.
 	CanDraw bool `json:"canDraw"`
 	// Next sono le prossime coppie, a partire dal prossimo Gran Premio; vuoto
@@ -68,64 +69,67 @@ func Load(db DB) (State, error) {
 	return st, nil
 }
 
-// loadPresent legge i piloti presenti, senza quelli eliminati nel frattempo.
+// Si salvano gli assenti e non i presenti: così di default sono tutti presenti,
+// anche i piloti aggiunti dopo.
+
+// loadPresent legge i piloti presenti: tutti quelli del segnapunti tranne gli assenti.
 func loadPresent(db DB) ([]int64, error) {
 	var value string
-	err := db.QueryRow("SELECT value FROM settings WHERE key = 'present_players'").Scan(&value)
+	err := db.QueryRow("SELECT value FROM settings WHERE key = 'absent_players'").Scan(&value)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	rows, err := db.Query("SELECT id FROM players")
+	ids, err := allPlayers(db)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	exists := map[int64]bool{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		exists[id] = true
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
+	absent := parseIDs(value)
 	present := []int64{}
-	for _, id := range parseIDs(value) {
-		if exists[id] {
+	for _, id := range ids {
+		if !slices.Contains(absent, id) {
 			present = append(present, id)
 		}
 	}
 	return present, nil
 }
 
-// SetPresent salva i piloti presenti. Restano finché non si cambiano, anche
-// dopo un riavvio del server.
-func SetPresent(db DB, ids []int64) error {
-	_, err := db.Exec(`
-		INSERT INTO settings (key, value) VALUES ('present_players', ?)
-		ON CONFLICT (key) DO UPDATE SET value = excluded.value`, formatIDs(ids))
+// SetPresent salva i piloti presenti: gli altri diventano assenti. Restano
+// così finché non si cambiano, anche dopo un riavvio del server.
+func SetPresent(db DB, present []int64) error {
+	ids, err := allPlayers(db)
+	if err != nil {
+		return err
+	}
+	absent := slices.DeleteFunc(ids, func(id int64) bool { return slices.Contains(present, id) })
+	_, err = db.Exec(`
+		INSERT INTO settings (key, value) VALUES ('absent_players', ?)
+		ON CONFLICT (key) DO UPDATE SET value = excluded.value`, formatIDs(absent))
 	return err
 }
 
-// Draw sorteggia l'ordine di tutti i piloti per gli spareggi della turnazione
-// del torneo (vedi Next); i piloti aggiunti dopo vengono in fondo.
-func Draw(db DB, tournamentID int64) error {
+// allPlayers restituisce gli id di tutti i piloti, in ordine.
+func allPlayers(db DB) ([]int64, error) {
 	rows, err := db.Query("SELECT id FROM players ORDER BY id")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer rows.Close()
 	var ids []int64
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			return err
+			return nil, err
 		}
 		ids = append(ids, id)
 	}
-	if err := rows.Err(); err != nil {
+	return ids, rows.Err()
+}
+
+// Draw sorteggia l'ordine di tutti i piloti per gli spareggi della turnazione
+// del torneo (vedi Next); i piloti aggiunti dopo vengono in fondo.
+func Draw(db DB, tournamentID int64) error {
+	ids, err := allPlayers(db)
+	if err != nil {
 		return err
 	}
 	rand.Shuffle(len(ids), func(i, j int) { ids[i], ids[j] = ids[j], ids[i] })
