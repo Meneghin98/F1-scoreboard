@@ -152,7 +152,9 @@ function RotationCard({ rotation, players, onDraw }: {
 }) {
   const name = (id: number) => players.find((p) => p.id === id)?.name ?? '?';
   const pair = (p: RotationPair) => `${name(p.p1)} e ${name(p.p2)}`;
-  const [next, ...later] = rotation.next;
+  // Le coppie sono una per pista del programma: qui bastano le due dopo la prossima, le altre sono in Piste.
+  const [next, ...rest] = rotation.next;
+  const later = rest.slice(0, 2);
 
   let body: ReactNode;
   if (!rotation.tournament) {
@@ -171,7 +173,12 @@ function RotationCard({ rotation, players, onDraw }: {
           <span className="font-semibold">{name(next.p2)}</span> <span className="text-muted">(controller 2)</span>
           {resting.length > 0 && <span className="text-muted"> · {resting.length === 1 ? 'riposa' : 'riposano'} {resting.map(name).join(', ')}</span>}
         </p>
-        {later.length > 0 && <p className="text-muted">Poi: {later.map(pair).join(' · ')}</p>}
+        {later.length > 0 && (
+          <p className="text-muted">
+            Poi: {later.map(pair).join(' · ')}
+            {rest.length > later.length && <> · <a href={href('tracks')} className="underline">tutto il programma</a></>}
+          </p>
+        )}
       </div>
     );
   }

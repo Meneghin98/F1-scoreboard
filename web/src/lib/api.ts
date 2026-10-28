@@ -30,6 +30,7 @@ export interface RaceInput {
 export const api = {
   tracks: () => request<Track[]>('/tracks'),
   trackRecords: (trackId: number) => request<TrackRecords>(`/tracks/${trackId}/records`),
+  setExcludedTracks: (tracks: number[]) => request<Track[]>('/tracks/excluded', 'PUT', { tracks }),
 
   tournaments: () => request<Tournament[]>('/tournaments'),
   createTournament: (name: string, start: boolean, rotation: boolean, rules: ScoringRules) =>
@@ -50,6 +51,8 @@ export const api = {
   rotation: () => request<RotationState>('/rotation'),
   setPresent: (players: number[]) => request<RotationState>('/rotation/present', 'PUT', { players }),
   drawRotation: () => request<RotationState>('/rotation/draw', 'POST'),
+  generatePlan: (races: number) => request<RotationState>('/rotation/plan', 'POST', { races }),
+  clearPlan: () => request<RotationState>('/rotation/plan', 'DELETE'),
 
   races: (tournamentId: number) => request<RaceWithResults[]>(`/tournaments/${tournamentId}/races`),
   createRace: (tournamentId: number, race: RaceInput) => request<Race>(`/tournaments/${tournamentId}/races`, 'POST', race),

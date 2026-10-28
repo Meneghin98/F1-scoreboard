@@ -19,6 +19,7 @@ import { StandingsPage } from './pages/StandingsPage';
 import { StatsPage } from './pages/StatsPage';
 import { SystemPage } from './pages/SystemPage';
 import { TournamentsPage } from './pages/TournamentsPage';
+import { TracksPage } from './pages/TracksPage';
 import { TvPage } from './pages/TvPage';
 
 // Torneo in cui vengono salvate le gare finite: nell'header, uguale in tutte le pagine.
@@ -144,6 +145,7 @@ function MainApp({ view }: { view: View }) {
             {view === 'races' && <RacesPage tournaments={tournaments} />}
             {view === 'stats' && <StatsPage tournaments={tournaments} />}
             {view === 'players' && <PlayersPage />}
+            {view === 'tracks' && <TracksPage />}
             {view === 'player' && (
               viewParam ? <PlayerPage key={viewParam} playerId={viewParam} /> : <Empty>Pilota non trovato.</Empty>
             )}

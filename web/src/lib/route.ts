@@ -6,8 +6,8 @@ import { useSyncExternalStore } from 'react';
 // (#/races?torneo=5): un filtro che manca ha il valore di default della pagina.
 
 export type View =
-  | 'dashboard' | 'standings' | 'races' | 'stats' | 'players' | 'player' | 'tournaments' | 'live' | 'recordings' | 'replay'
-  | 'system' | 'tv' | 'overlay';
+  | 'dashboard' | 'standings' | 'races' | 'stats' | 'players' | 'player' | 'tracks' | 'tournaments' | 'live' | 'recordings'
+  | 'replay' | 'system' | 'tv' | 'overlay';
 
 export const VIEW_LABELS: Record<View, string> = {
   dashboard: 'Dashboard',
@@ -16,6 +16,7 @@ export const VIEW_LABELS: Record<View, string> = {
   stats: 'Statistiche',
   players: 'Piloti',
   player: 'Profilo',
+  tracks: 'Piste',
   tournaments: 'Tornei',
   live: 'Live',
   recordings: 'Registrazioni',
@@ -28,7 +29,7 @@ export const VIEW_LABELS: Record<View, string> = {
 // Pagine nella barra di navigazione, nello stesso ordine delle card della dashboard.
 // Sistema non c'è: si apre con l'ingranaggio nell'header.
 export const NAV_VIEWS: View[] = [
-  'dashboard', 'live', 'standings', 'races', 'players', 'recordings', 'tournaments', 'stats',
+  'dashboard', 'live', 'standings', 'races', 'players', 'tracks', 'recordings', 'tournaments', 'stats',
 ];
 
 // Pagina della barra a cui appartiene una pagina che non c'è (il replay sta sotto le registrazioni).

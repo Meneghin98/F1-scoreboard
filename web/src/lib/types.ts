@@ -36,10 +36,11 @@ export interface Tournament extends ScoringRules {
   leader?: { name: string; color: string; points: number }; // primo in classifica (solo nell'elenco dei tornei)
 }
 
-// Circuito proposto per le gare (GET /api/tracks), nell'ordine del calendario.
+// Circuito proposto per le gare (GET /api/tracks), nell'ordine del calendario seguito dalle varianti.
 export interface Track {
   id: number;
   name: string;
+  excluded: boolean; // da non suggerire nel programma, scelto nella pagina Piste
 }
 
 export interface Player {
@@ -633,5 +634,14 @@ export interface RotationState {
   present: number[]; // piloti presenti, scelti nella pagina Piloti
   enabled: boolean; // turnazione attiva nel torneo in corso: si spegne nelle impostazioni del torneo
   canDraw: boolean; // turnazione attiva e torneo senza Gran Premi: il sorteggio si può rifare
-  next: RotationPair[]; // prossime coppie dal prossimo Gran Premio; vuoto con la turnazione spenta o meno di due presenti
+  // Prossime coppie dal prossimo Gran Premio, almeno 3 e una per pista del programma;
+  // vuoto con la turnazione spenta o meno di due presenti.
+  next: RotationPair[];
+  plan: PlannedRace[]; // piste del programma ancora da correre, dal prossimo Gran Premio
+}
+
+// Gran Premio del programma: pista suggerita e chi corre secondo la turnazione.
+export interface PlannedRace {
+  track: number; // id del circuito (vedi Track)
+  pair: RotationPair | null; // null con la turnazione spenta o meno di due presenti
 }

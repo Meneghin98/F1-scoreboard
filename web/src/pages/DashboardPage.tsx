@@ -23,6 +23,7 @@ export function DashboardPage({ tournaments }: { tournaments: Tournament[] }) {
   );
   const { data: players } = useLoad(() => api.players(), []);
   const { data: stats } = useLoad(api.stats, []);
+  const { data: tracks } = useLoad(api.tracks, []);
   // Come nella pagina delle registrazioni, le sessioni non terminate non si contano.
   const { data: sessions } = useLoad(
     async () => (await api.sessions()).filter((s) => s.hasClassification || s.recording),
@@ -38,11 +39,13 @@ export function DashboardPage({ tournaments }: { tournaments: Tournament[] }) {
   const realTournaments = tournaments.filter((t) => !t.free);
   const ended = realTournaments.filter((t) => t.ended_at && !t.active).length;
   const activeTournament = realTournaments.find((t) => t.active);
+  const plan = live?.rotation?.plan ?? [];
+  const playable = tracks?.filter((t) => !t.excluded).length ?? 0;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {/* Live su tutta la larghezza; sotto, la classifica a sinistra e gare e piloti impilati a destra,
-          poi le registrazioni su tutta la larghezza e sotto tornei e statistiche affiancati. */}
+          poi piste e registrazioni affiancate e sotto tornei e statistiche. */}
       <DashboardCard view="live" highlight={active} className="sm:col-span-2">
         <div className="flex items-center gap-2 text-lg font-bold">
           <LiveDot active={live?.status === 'live'} />
@@ -100,7 +103,22 @@ export function DashboardPage({ tournaments }: { tournaments: Tournament[] }) {
         )}
       </DashboardCard>
 
-      <DashboardCard view="recordings" className="sm:col-span-2">
+      <DashboardCard view="tracks">
+        {tracks && (
+          <>
+            <BigNumber value={plan.length} label={plan.length === 1 ? 'pista in programma' : 'piste in programma'}>
+              {`${playable} di ${tracks.length} da giocare`}
+            </BigNumber>
+            <p className="truncate text-sm text-muted">
+              {plan.length
+                ? `Prossimo GP: ${tracks.find((t) => t.id === plan[0].track)?.name}`
+                : 'Genera le piste dei prossimi Gran Premi.'}
+            </p>
+          </>
+        )}
+      </DashboardCard>
+
+      <DashboardCard view="recordings">
         {sessions && (
           <>
             <BigNumber value={sessions.length} label={sessions.length === 1 ? 'registrazione' : 'registrazioni'}>
