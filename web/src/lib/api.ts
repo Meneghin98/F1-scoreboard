@@ -30,6 +30,7 @@ export interface RaceInput {
 export const api = {
   tracks: () => request<Track[]>('/tracks'),
   trackRecords: (trackId: number) => request<TrackRecords>(`/tracks/${trackId}/records`),
+  trackMaps: () => request<Record<number, TrackMap>>('/tracks/maps'), // piante salvate, per id del circuito
   setExcludedTracks: (tracks: number[]) => request<Track[]>('/tracks/excluded', 'PUT', { tracks }),
 
   tournaments: () => request<Tournament[]>('/tournaments'),

@@ -245,6 +245,16 @@ func (s *Server) listTracks(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, http.StatusOK, tracks)
 }
 
+// getTrackMaps restituisce le piante salvate dei circuiti, per id del
+// circuito: solo quelli su cui si è già corso, ricostruite dalla telemetria.
+func (s *Server) getTrackMaps(w http.ResponseWriter, r *http.Request) error {
+	maps, err := live.SavedTrackMaps(s.db)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, maps)
+}
+
 // setExcludedTracks sceglie le piste da non suggerire nel programma e
 // restituisce i circuiti aggiornati. Body: { "tracks": [31, 42] }
 func (s *Server) setExcludedTracks(w http.ResponseWriter, r *http.Request) error {

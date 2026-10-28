@@ -1,8 +1,9 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { PlayerName } from '../components/NextPair';
+import { TrackOutline } from '../components/TrackMapCard';
 import { api } from '../lib/api';
 import { href } from '../lib/route';
-import type { Player, RotationState, Track } from '../lib/types';
+import type { Player, RotationState, Track, TrackMap } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
 import { Button, Card, cx, fieldSmClass, Loading, Switch } from '../components/ui';
@@ -17,6 +18,8 @@ export function TracksPage() {
   const { data: tracks, reload: reloadTracks } = useLoad(api.tracks, []);
   const { data: rotation, reload: reloadRotation } = useLoad(api.rotation, []);
   const { data: players } = useLoad(api.players, []);
+  // Piante dei circuiti già corsi: le altre piste restano senza disegno.
+  const { data: maps } = useLoad(api.trackMaps, []);
 
   function toggleExcluded(track: Track) {
     if (!tracks) return;
@@ -30,16 +33,17 @@ export function TracksPage() {
   if (!tracks || !rotation || !players) return <Loading />;
   return (
     <>
-      <PlanCard rotation={rotation} tracks={tracks} players={players} onChanged={reloadRotation} />
-      <TracksCard tracks={tracks} onToggle={toggleExcluded} />
+      <PlanCard rotation={rotation} tracks={tracks} maps={maps ?? {}} players={players} onChanged={reloadRotation} />
+      <TracksCard tracks={tracks} maps={maps ?? {}} onToggle={toggleExcluded} />
     </>
   );
 }
 
 // Programma del torneo in corso: si genera scegliendo quante gare correre.
-function PlanCard({ rotation, tracks, players, onChanged }: {
+function PlanCard({ rotation, tracks, maps, players, onChanged }: {
   rotation: RotationState;
   tracks: Track[];
+  maps: Record<number, TrackMap>;
   players: Player[];
   onChanged: () => Promise<void>;
 }) {
@@ -84,6 +88,7 @@ function PlanCard({ rotation, tracks, players, onChanged }: {
               <span className={cx('w-16 shrink-0 font-bold', i === 0 ? 'text-accent' : 'text-muted')}>
                 {i === 0 ? 'Prossimo' : `GP ${i + 1}`}
               </span>
+              <Thumb map={maps[race.track]} className="size-10 text-muted" />
               <span className="min-w-48 flex-1 font-semibold">{trackName(race.track)}</span>
               {race.pair && (
                 <span className="flex flex-wrap items-center gap-x-3">
@@ -136,7 +141,11 @@ function PlanCard({ rotation, tracks, players, onChanged }: {
 }
 
 // Circuiti di F1 25: quelli spenti non vengono mai suggeriti, in nessun torneo.
-function TracksCard({ tracks, onToggle }: { tracks: Track[]; onToggle: (track: Track) => void }) {
+function TracksCard({ tracks, maps, onToggle }: {
+  tracks: Track[];
+  maps: Record<number, TrackMap>;
+  onToggle: (track: Track) => void;
+}) {
   const available = tracks.filter((t) => !t.excluded).length;
   return (
     <Card>
@@ -147,11 +156,17 @@ function TracksCard({ tracks, onToggle }: { tracks: Track[]; onToggle: (track: T
       {/* In colonna, così si leggono nell'ordine del calendario. */}
       <ul className="gap-x-6 sm:columns-2">
         {tracks.map((t) => (
-          <li key={t.id} className="break-inside-avoid border-b border-line py-1.5">
+          <li key={t.id} className="flex break-inside-avoid items-center justify-between gap-3 border-b border-line py-1.5">
             <Switch checked={!t.excluded} onChange={() => onToggle(t)} label={t.name} />
+            <Thumb map={maps[t.id]} className={cx('size-8', t.excluded ? 'text-line' : 'text-muted')} />
           </li>
         ))}
       </ul>
     </Card>
   );
+}
+
+// Miniatura del circuito; senza pianta salvata lascia lo spazio vuoto, così le righe restano allineate.
+function Thumb({ map, className }: { map?: TrackMap; className: string }) {
+  return map ? <TrackOutline map={map} className={cx('shrink-0', className)} /> : <span className={cx('shrink-0', className)} />;
 }

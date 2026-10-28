@@ -145,6 +145,35 @@ function TrackMapSvg({ map, drivers, marshalZones, sectors = [0, 0] }: {
   );
 }
 
+// Solo il disegno del tracciato, senza auto né settori, per le miniature: il
+// colore è quello del testo e lo spessore della linea non dipende dalla
+// lunghezza del circuito. Le dimensioni le decide chi la usa tramite className.
+export function TrackOutline({ map, className }: { map: TrackMap; className?: string }) {
+  if (map.points.length < 2) return null;
+  const xs = map.points.map((p) => p.x);
+  const zs = map.points.map((p) => p.z);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  const pad = Math.max(maxX - minX, maxZ - minZ) * 0.05;
+  return (
+    <svg
+      viewBox={`${minX - pad} ${minZ - pad} ${maxX - minX + 2 * pad} ${maxZ - minZ + 2 * pad}`}
+      className={cx('block', className)}
+      aria-hidden="true"
+    >
+      <path
+        d={outlinePath(map)}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        vectorEffect="non-scaling-stroke"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 // Oltre questa distanza (metri) dal punto cercato la pianta non ha il tratto:
 // linea del traguardo e settori non si disegnano.
 const SPOT_MAX_D = 20;

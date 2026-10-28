@@ -140,7 +140,16 @@ func loadOutline(db *sql.DB, track telemetry.TrackID, length int) (*outline, err
 	if err != nil {
 		return nil, err
 	}
-	if savedLength != length || step != outlineStep {
+	if savedLength != length {
+		return nil, nil
+	}
+	return parseOutline(length, step, data, sectors)
+}
+
+// parseOutline ricostruisce una pianta salvata; nil se non corrisponde (passo
+// diverso, o numero di punti che non torna con la lunghezza del giro).
+func parseOutline(length, step int, data []byte, sectors [2]float32) (*outline, error) {
+	if step != outlineStep {
 		return nil, nil
 	}
 	var points []*Point
@@ -160,6 +169,32 @@ func loadOutline(db *sql.DB, track telemetry.TrackID, length int) (*outline, err
 		}
 	}
 	return o, nil
+}
+
+// SavedTrackMaps restituisce le piante salvate dei circuiti, per id del
+// circuito: quelli su cui si è già corso almeno una volta.
+func SavedTrackMaps(db *sql.DB) (map[int]TrackMap, error) {
+	rows, err := db.Query("SELECT track_id, track_length, step, points FROM track_maps")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	maps := map[int]TrackMap{}
+	for rows.Next() {
+		var track, length, step int
+		var data []byte
+		if err := rows.Scan(&track, &length, &step, &data); err != nil {
+			return nil, err
+		}
+		o, err := parseOutline(length, step, data, [2]float32{})
+		if err != nil {
+			return nil, err
+		}
+		if o != nil {
+			maps[track] = o.trackMap()
+		}
+	}
+	return maps, rows.Err()
 }
 
 // saveOutline salva la pianta di un circuito, sostituendo quella precedente.

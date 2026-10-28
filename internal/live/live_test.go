@@ -548,6 +548,15 @@ func TestTrackMapIsSaved(t *testing.T) {
 	}
 	full := s.TrackMap()
 
+	// Le piante salvate si leggono tutte insieme per la pagina Piste.
+	maps, err := SavedTrackMaps(s.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := maps[11]; len(maps) != 1 || len(got.Points) != len(full.Points) || got.Points[100] != full.Points[100] {
+		t.Fatalf("piante salvate: %d, Monza con %d punti, attesi %d", len(maps), len(got.Points), len(full.Points))
+	}
+
 	// Una nuova sessione sullo stesso database: si ferma al primo pacchetto Session.
 	s2 := NewService(s.db, Options{Record: false})
 	for _, p := range packets {
