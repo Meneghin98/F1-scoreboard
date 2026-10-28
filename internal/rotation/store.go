@@ -31,9 +31,13 @@ type State struct {
 	// CanDraw dice se il sorteggio si può rifare: la turnazione è attiva e il
 	// torneo non ha ancora Gran Premi.
 	CanDraw bool `json:"canDraw"`
-	// Next sono le prossime coppie, a partire dal prossimo Gran Premio; vuoto
-	// senza torneo, con la turnazione spenta o con meno di due presenti.
+	// Next sono le prossime coppie, a partire dal prossimo Gran Premio: almeno
+	// Preview, e una per ogni pista del programma. Vuoto senza torneo, con la
+	// turnazione spenta o con meno di due presenti.
 	Next []Pair `json:"next"`
+	// Plan sono le piste del programma ancora da correre, a partire dal
+	// prossimo Gran Premio, con le coppie di Next; vuoto senza torneo o senza programma.
+	Plan []Planned `json:"plan"`
 }
 
 type Tournament struct {
@@ -43,7 +47,7 @@ type Tournament struct {
 
 // Load calcola la turnazione del torneo in corso.
 func Load(db DB) (State, error) {
-	st := State{Present: []int64{}, Next: []Pair{}}
+	st := State{Present: []int64{}, Next: []Pair{}, Plan: []Planned{}}
 	present, err := loadPresent(db)
 	if err != nil {
 		return st, err
@@ -62,16 +66,26 @@ func Load(db DB) (State, error) {
 		return st, err
 	}
 	st.Tournament = &t
-	if !st.Enabled {
-		return st, nil
-	}
-	history, err := loadHistory(db, t.ID)
+	plan, err := loadPlan(db, t.ID)
 	if err != nil {
 		return st, err
 	}
-	st.CanDraw = len(history) == 0
-	if next := Next(present, history, parseIDs(order), Preview); next != nil {
-		st.Next = next
+	if st.Enabled {
+		history, err := loadHistory(db, t.ID)
+		if err != nil {
+			return st, err
+		}
+		st.CanDraw = len(history) == 0
+		if next := Next(present, history, parseIDs(order), max(Preview, len(plan))); next != nil {
+			st.Next = next
+		}
+	}
+	for i, track := range plan {
+		p := Planned{Track: track}
+		if i < len(st.Next) {
+			p.Pair = &st.Next[i]
+		}
+		st.Plan = append(st.Plan, p)
 	}
 	return st, nil
 }

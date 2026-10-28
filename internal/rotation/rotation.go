@@ -6,6 +6,9 @@
 // La turnazione si può spegnere per un torneo (vedi State.Enabled): allora la
 // pagina Live propone ai controller i piloti come senza torneo.
 //
+// Il programma (vedi plan.go) suggerisce su quali piste correre i prossimi
+// Gran Premi, ognuna con la sua coppia se la turnazione è attiva.
+//
 // La turnazione non si salva: la prossima coppia si calcola ogni volta dai
 // Gran Premi già corsi, così un pilota che arriva o va via, o una gara corsa
 // fuori turno, non rompono nulla.

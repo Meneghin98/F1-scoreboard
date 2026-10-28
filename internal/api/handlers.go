@@ -226,9 +226,43 @@ func (s *Server) getPoints(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, http.StatusOK, scoring.Points)
 }
 
+// Track è un circuito con l'indicazione se suggerirlo nel programma.
+type Track struct {
+	live.Track
+	Excluded bool `json:"excluded"` // da non suggerire (vedi rotation.SetExcluded)
+}
+
 // listTracks restituisce i circuiti da proporre per le gare, nell'ordine del calendario.
 func (s *Server) listTracks(w http.ResponseWriter, r *http.Request) error {
-	return writeJSON(w, http.StatusOK, live.Tracks)
+	excluded, err := rotation.LoadExcluded(s.db)
+	if err != nil {
+		return err
+	}
+	tracks := make([]Track, len(live.Tracks))
+	for i, t := range live.Tracks {
+		tracks[i] = Track{t, slices.Contains(excluded, t.ID)}
+	}
+	return writeJSON(w, http.StatusOK, tracks)
+}
+
+// setExcludedTracks sceglie le piste da non suggerire nel programma e
+// restituisce i circuiti aggiornati. Body: { "tracks": [31, 42] }
+func (s *Server) setExcludedTracks(w http.ResponseWriter, r *http.Request) error {
+	var body struct {
+		Tracks []int `json:"tracks"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		return err
+	}
+	for _, id := range body.Tracks {
+		if !slices.ContainsFunc(live.Tracks, func(t live.Track) bool { return t.ID == id }) {
+			return errorf(http.StatusBadRequest, "Circuito %d non trovato", id)
+		}
+	}
+	if err := rotation.SetExcluded(s.db, body.Tracks); err != nil {
+		return err
+	}
+	return s.listTracks(w, r)
 }
 
 // --- Tornei ---------------------------------------------------------------
