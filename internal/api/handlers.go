@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"f1-scoreboard/internal/live"
+	"f1-scoreboard/internal/rotation"
 	"f1-scoreboard/internal/scoring"
 )
 
@@ -24,6 +25,7 @@ type Tournament struct {
 	Active     bool    `json:"active"`     // in corso: le gare finite vengono salvate qui
 	Races      int     `json:"races"`      // gare del torneo
 	Recordings int     `json:"recordings"` // registrazioni collegate alle sue gare
+	Rotation   bool    `json:"rotation"`   // turnazione dei controller attiva (vedi rotation)
 	// Regole di punteggio: nel JSON diventano points_mode, pole_points, fastest_lap_points,
 	// points_preset, race_points e sprint_points.
 	scoring.Rules
@@ -43,11 +45,11 @@ type TournamentLeader struct {
 const tournamentColumns = "id, name, created_at, free, started_at, ended_at, started_at IS NOT NULL AND ended_at IS NULL, " +
 	"(SELECT COUNT(*) FROM races WHERE races.tournament_id = tournaments.id), " +
 	"(SELECT COUNT(*) FROM telemetry_sessions s JOIN races r ON r.id = s.race_id WHERE r.tournament_id = tournaments.id), " +
-	"points_mode, pole_points, fastest_lap_points, points_preset, race_points, sprint_points"
+	"rotation, points_mode, pole_points, fastest_lap_points, points_preset, race_points, sprint_points"
 
 // scanTournament legge una riga selezionata con tournamentColumns.
 func scanTournament(row interface{ Scan(...any) error }, t *Tournament) error {
-	return row.Scan(&t.ID, &t.Name, &t.CreatedAt, &t.Free, &t.StartedAt, &t.EndedAt, &t.Active, &t.Races, &t.Recordings,
+	return row.Scan(&t.ID, &t.Name, &t.CreatedAt, &t.Free, &t.StartedAt, &t.EndedAt, &t.Active, &t.Races, &t.Recordings, &t.Rotation,
 		&t.Mode, &t.PolePoints, &t.FastestLapPoints, &t.Preset, &t.RacePoints, &t.SprintPoints)
 }
 
@@ -224,9 +226,53 @@ func (s *Server) getPoints(w http.ResponseWriter, r *http.Request) error {
 	return writeJSON(w, http.StatusOK, scoring.Points)
 }
 
+// Track è un circuito con l'indicazione se suggerirlo nel programma.
+type Track struct {
+	live.Track
+	Excluded bool `json:"excluded"` // da non suggerire (vedi rotation.SetExcluded)
+}
+
 // listTracks restituisce i circuiti da proporre per le gare, nell'ordine del calendario.
 func (s *Server) listTracks(w http.ResponseWriter, r *http.Request) error {
-	return writeJSON(w, http.StatusOK, live.Tracks)
+	excluded, err := rotation.LoadExcluded(s.db)
+	if err != nil {
+		return err
+	}
+	tracks := make([]Track, len(live.Tracks))
+	for i, t := range live.Tracks {
+		tracks[i] = Track{t, slices.Contains(excluded, t.ID)}
+	}
+	return writeJSON(w, http.StatusOK, tracks)
+}
+
+// getTrackMaps restituisce le piante salvate dei circuiti, per id del
+// circuito: solo quelli su cui si è già corso, ricostruite dalla telemetria.
+func (s *Server) getTrackMaps(w http.ResponseWriter, r *http.Request) error {
+	maps, err := live.SavedTrackMaps(s.db)
+	if err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, maps)
+}
+
+// setExcludedTracks sceglie le piste da non suggerire nel programma e
+// restituisce i circuiti aggiornati. Body: { "tracks": [31, 42] }
+func (s *Server) setExcludedTracks(w http.ResponseWriter, r *http.Request) error {
+	var body struct {
+		Tracks []int `json:"tracks"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		return err
+	}
+	for _, id := range body.Tracks {
+		if !slices.ContainsFunc(live.Tracks, func(t live.Track) bool { return t.ID == id }) {
+			return errorf(http.StatusBadRequest, "Circuito %d non trovato", id)
+		}
+	}
+	if err := rotation.SetExcluded(s.db, body.Tracks); err != nil {
+		return err
+	}
+	return s.listTracks(w, r)
 }
 
 // --- Tornei ---------------------------------------------------------------
@@ -271,12 +317,14 @@ func (s *Server) listTournaments(w http.ResponseWriter, r *http.Request) error {
 }
 
 // createTournament crea un torneo, con "start" per iniziarlo subito. Le regole
-// di punteggio sono facoltative: senza, vale il regolamento F1 2025.
-// Body: { "name": "...", "start": true, "points_mode": "players", "pole_points": 3, "fastest_lap_points": 1 }
+// di punteggio sono facoltative: senza, vale il regolamento F1 2025. Anche
+// "rotation" (la turnazione dei controller) è facoltativo: senza, è attiva.
+// Body: { "name": "...", "start": true, "rotation": true, "points_mode": "players", "pole_points": 3, "fastest_lap_points": 1 }
 func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error {
 	var body struct {
-		Name  string `json:"name"`
-		Start bool   `json:"start"`
+		Name     string `json:"name"`
+		Start    bool   `json:"start"`
+		Rotation *bool  `json:"rotation"`
 		rulesInput
 	}
 	if err := readJSON(r, &body); err != nil {
@@ -301,14 +349,20 @@ func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error 
 			return err
 		}
 	}
+	rotationOn := body.Rotation == nil || *body.Rotation
 	var t Tournament
 	err = scanTournament(tx.QueryRow(`
-		INSERT INTO tournaments (name, started_at, points_mode, pole_points, fastest_lap_points, points_preset, race_points, sprint_points)
-		VALUES (?, CASE WHEN ? THEN datetime('now') END, ?, ?, ?, ?, ?, ?)
-		RETURNING `+tournamentColumns, name, body.Start, rules.Mode, rules.PolePoints, rules.FastestLapPoints,
+		INSERT INTO tournaments (name, started_at, rotation, points_mode, pole_points, fastest_lap_points, points_preset, race_points, sprint_points)
+		VALUES (?, CASE WHEN ? THEN datetime('now') END, ?, ?, ?, ?, ?, ?, ?)
+		RETURNING `+tournamentColumns, name, body.Start, rotationOn, rules.Mode, rules.PolePoints, rules.FastestLapPoints,
 		rules.Preset, rules.RacePoints, rules.SprintPoints), &t)
 	if err != nil {
 		return err
+	}
+	if t.Active {
+		if err := rotation.EnsureDrawn(tx, t.ID); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return err
@@ -316,16 +370,17 @@ func (s *Server) createTournament(w http.ResponseWriter, r *http.Request) error 
 	return writeJSON(w, http.StatusCreated, t)
 }
 
-// updateTournament cambia nome e regole di punteggio di un torneo: i campi
-// assenti restano come sono. La classifica si ricalcola con le nuove regole.
-// Body come per createTournament, senza "start".
+// updateTournament cambia nome, turnazione e regole di punteggio di un torneo:
+// i campi assenti restano come sono. La classifica si ricalcola con le nuove
+// regole. Body come per createTournament, senza "start".
 func (s *Server) updateTournament(w http.ResponseWriter, r *http.Request) error {
 	id, err := s.pathID(r, "tournaments", "Torneo")
 	if err != nil {
 		return err
 	}
 	var body struct {
-		Name *string `json:"name"`
+		Name     *string `json:"name"`
+		Rotation *bool   `json:"rotation"`
 		rulesInput
 	}
 	if err := readJSON(r, &body); err != nil {
@@ -350,15 +405,19 @@ func (s *Server) updateTournament(w http.ResponseWriter, r *http.Request) error 
 			return err
 		}
 	}
+	rotationOn := t.Rotation
+	if body.Rotation != nil {
+		rotationOn = *body.Rotation
+	}
 	rules, err := body.apply(t.Rules)
 	if err != nil {
 		return err
 	}
 	err = scanTournament(tx.QueryRow(`
 		UPDATE tournaments
-		SET name = ?, points_mode = ?, pole_points = ?, fastest_lap_points = ?, points_preset = ?, race_points = ?, sprint_points = ?
+		SET name = ?, rotation = ?, points_mode = ?, pole_points = ?, fastest_lap_points = ?, points_preset = ?, race_points = ?, sprint_points = ?
 		WHERE id = ?
-		RETURNING `+tournamentColumns, name, rules.Mode, rules.PolePoints, rules.FastestLapPoints,
+		RETURNING `+tournamentColumns, name, rotationOn, rules.Mode, rules.PolePoints, rules.FastestLapPoints,
 		rules.Preset, rules.RacePoints, rules.SprintPoints, id), &t)
 	if err != nil {
 		return err
@@ -410,6 +469,9 @@ func (s *Server) startTournament(w http.ResponseWriter, r *http.Request) error {
 			UPDATE tournaments SET started_at = COALESCE(started_at, datetime('now')), ended_at = NULL WHERE id = ?
 			RETURNING `+tournamentColumns, id), &t)
 		if err != nil {
+			return err
+		}
+		if err := rotation.EnsureDrawn(tx, id); err != nil {
 			return err
 		}
 	}

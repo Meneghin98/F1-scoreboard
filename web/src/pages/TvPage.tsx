@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { DriverBadges } from '../components/DriverBadges';
 import { DuelCard } from '../components/DuelCard';
 import { LiveDot } from '../components/LiveBadge';
+import { NextPair } from '../components/NextPair';
 import { PositionsGained } from '../components/PositionsGained';
 import { EVENT_KIND, EventText } from '../components/RaceControlCard';
 import { TrackMapCard } from '../components/TrackMapCard';
@@ -46,11 +47,18 @@ export function TvPage() {
       {!live ? (
         <p className="m-auto text-2xl text-muted">Connessione al server in corso…</p>
       ) : !isLive(live) ? (
-        <div className="m-auto w-full max-w-3xl"><WaitingCard telemetry={live.telemetry} /></div>
+        <div className="m-auto w-full max-w-3xl">
+          <NextPair rotation={live.rotation} large />
+          <WaitingCard telemetry={live.telemetry} />
+        </div>
       ) : isLoading(live.session) ? (
-        <p className="m-auto flex items-center gap-3 text-3xl font-bold"><LiveDot active /> Sessione in caricamento…</p>
+        <div className="m-auto flex flex-col items-center">
+          <p className="flex items-center gap-3 text-3xl font-bold"><LiveDot active /> Sessione in caricamento…</p>
+          <NextPair rotation={live.rotation} large className="mt-6 mb-0" />
+        </div>
       ) : (
         <>
+          {live.finished && live.lineup?.stage === 'saved' && <NextPair rotation={live.rotation} large className="mb-0 flex-none" />}
           <TvHeader live={live} session={live.session} />
           <div className="grid min-h-0 flex-1 grid-cols-[minmax(30rem,2fr)_3fr] gap-4">
             <div className="flex min-h-0 flex-col gap-4">

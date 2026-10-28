@@ -38,6 +38,38 @@ export function Button({ variant, size, className, ...props }: ButtonProps) {
   return <button className={cx(buttonClass(variant, size), className)} {...props} />;
 }
 
+// Interruttore acceso/spento, con l'etichetta a destra.
+export function Switch({ checked, onChange, label, title, className }: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: ReactNode;
+  title?: string;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      title={title}
+      onClick={() => onChange(!checked)}
+      className={cx(
+        'group inline-flex cursor-pointer items-center gap-2 rounded-md text-sm',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+        className,
+      )}
+    >
+      <span className={cx('relative h-5 w-9 shrink-0 rounded-full transition-colors', checked ? 'bg-accent' : 'bg-line')}>
+        <span className={cx(
+          'absolute top-0.5 left-0.5 size-4 rounded-full bg-white shadow transition-transform',
+          checked && 'translate-x-4',
+        )} />
+      </span>
+      <span className={checked ? 'text-fg' : 'text-muted'}>{label}</span>
+    </button>
+  );
+}
+
 export function Card({ className, ...props }: ComponentProps<'div'>) {
   return <div className={cx('mb-4 rounded-lg border border-line bg-surface p-4', className)} {...props} />;
 }

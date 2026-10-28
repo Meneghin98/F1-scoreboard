@@ -1,7 +1,7 @@
 import type {
   BackupInfo, LineupTournament, Player, PlayerProfile, Race, RaceType, RaceWithResults, ResultInput, ScoringRules, SessionRaceInput,
   SessionRecord, Settings, SettingsSaved, StandingsResponse, StatsResponse, SystemInfo, Tournament,
-  ReplayFrame, ReplayInfo, Track, TrackMap, TrackRecords, UnfinishedDeleted, UpdateStatus,
+  ReplayFrame, ReplayInfo, RotationState, Track, TrackMap, TrackRecords, UnfinishedDeleted, UpdateStatus,
 } from './types';
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -30,12 +30,14 @@ export interface RaceInput {
 export const api = {
   tracks: () => request<Track[]>('/tracks'),
   trackRecords: (trackId: number) => request<TrackRecords>(`/tracks/${trackId}/records`),
+  trackMaps: () => request<Record<number, TrackMap>>('/tracks/maps'), // piante salvate, per id del circuito
+  setExcludedTracks: (tracks: number[]) => request<Track[]>('/tracks/excluded', 'PUT', { tracks }),
 
   tournaments: () => request<Tournament[]>('/tournaments'),
-  createTournament: (name: string, start: boolean, rules: ScoringRules) =>
-    request<Tournament>('/tournaments', 'POST', { name, start, ...rules }),
-  updateTournament: (id: number, name: string, rules: ScoringRules) =>
-    request<Tournament>(`/tournaments/${id}`, 'PUT', { name, ...rules }),
+  createTournament: (name: string, start: boolean, rotation: boolean, rules: ScoringRules) =>
+    request<Tournament>('/tournaments', 'POST', { name, start, rotation, ...rules }),
+  updateTournament: (id: number, name: string, rotation: boolean, rules: ScoringRules) =>
+    request<Tournament>(`/tournaments/${id}`, 'PUT', { name, rotation, ...rules }),
   deleteTournament: (id: number) => request<Deleted>(`/tournaments/${id}`, 'DELETE'),
   startTournament: (id: number) => request<Tournament>(`/tournaments/${id}/start`, 'POST'),
   endTournament: (id: number) => request<Tournament>(`/tournaments/${id}/end`, 'POST'),
@@ -45,6 +47,13 @@ export const api = {
   updatePlayer: (id: number, name: string, team: string, color: string) =>
     request<Player>(`/players/${id}`, 'PUT', { name, team, color }),
   deletePlayer: (id: number) => request<void>(`/players/${id}`, 'DELETE'),
+
+  // Turnazione dei controller: piloti presenti e prossime coppie del torneo in corso.
+  rotation: () => request<RotationState>('/rotation'),
+  setPresent: (players: number[]) => request<RotationState>('/rotation/present', 'PUT', { players }),
+  drawRotation: () => request<RotationState>('/rotation/draw', 'POST'),
+  generatePlan: (races: number) => request<RotationState>('/rotation/plan', 'POST', { races }),
+  clearPlan: () => request<RotationState>('/rotation/plan', 'DELETE'),
 
   races: (tournamentId: number) => request<RaceWithResults[]>(`/tournaments/${tournamentId}/races`),
   createRace: (tournamentId: number, race: RaceInput) => request<Race>(`/tournaments/${tournamentId}/races`, 'POST', race),

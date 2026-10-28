@@ -45,9 +45,10 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
     };
     setSaving(true);
     run(async () => {
+      const rotation = form.has('rotation');
       const saved = tournament
-        ? await api.updateTournament(tournament.id, name, rules)
-        : await api.createTournament(name, form.has('start'), rules);
+        ? await api.updateTournament(tournament.id, name, rotation, rules)
+        : await api.createTournament(name, form.has('start'), rotation, rules);
       onClose();
       await onSaved(saved);
     }).finally(() => setSaving(false));
@@ -120,6 +121,16 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
         />
       </div>
 
+      <label className="mt-4 flex items-start gap-2 text-sm">
+        <input type="checkbox" name="rotation" defaultChecked={tournament?.rotation ?? true} className="mt-0.5 size-4 accent-accent" />
+        <span>
+          Turnazione dei controller
+          <span className="block text-muted">
+            Propone chi corre ogni Gran Premio tra i presenti, così tutti corrono lo stesso numero di gare e incontrano tutti
+          </span>
+        </span>
+      </label>
+
       {tournament ? (
         tournament.races > 0 && (
           <p className="mt-4 text-sm text-muted">La classifica si ricalcola con le nuove regole, anche per le gare già corse.</p>
@@ -128,8 +139,10 @@ function TournamentForm({ tournament, defaultName = '', canStart = false, onClos
         <label className={cx('mt-4 flex items-start gap-2 text-sm', !canStart && 'text-muted')}>
           <input type="checkbox" name="start" defaultChecked={canStart} disabled={!canStart} className="mt-0.5 size-4 accent-accent" />
           <span>
-            Inizia subito: le prossime gare verranno salvate in questo torneo
-            {!canStart && ' (c\'è già un torneo in corso)'}
+            Inizia subito
+            <span className="block text-muted">
+              {canStart ? 'Le prossime gare verranno salvate in questo torneo' : 'C\'è già un torneo in corso'}
+            </span>
           </span>
         </label>
       )}

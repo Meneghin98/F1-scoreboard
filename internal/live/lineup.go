@@ -151,6 +151,11 @@ func (s *Service) startLineup(cur *session, at time.Time) {
 	l := &lineup{stage: StageDrivers, deadline: at.Add(lineupTimeout)}
 	h := s.tracker.header
 	taken := map[int64]bool{}
+	// Con la turnazione attiva i piloti li propone lei, prima di ogni altra ipotesi.
+	suggested := s.rotationPlayers()
+	for _, id := range suggested {
+		taken[id] = true
+	}
 	for i, idx := range []uint8{h.PlayerCarIndex, h.SecondaryPlayerCarIndex} {
 		if idx == 255 { // nessun giocatore (spettatore, o niente split-screen)
 			continue
@@ -160,7 +165,13 @@ func (s *Service) startLineup(cur *session, at time.Time) {
 		if parts != nil && int(idx) < len(parts.Cars) {
 			name = parts.Cars[idx].Name
 		}
-		id, err := guessPlayer(s.db, cur.id, car.controller, name, taken)
+		var id *int64
+		var err error
+		if p, ok := suggested[car.controller]; ok {
+			id = &p
+		} else {
+			id, err = guessPlayer(s.db, cur.id, car.controller, name, taken)
+		}
 		if err != nil {
 			log.Printf("telemetria: scelta dei piloti: %v", err)
 		}

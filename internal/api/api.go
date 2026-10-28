@@ -32,7 +32,9 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service, backups *backup.Ma
 
 	mux.Handle("GET /api/points", s.handle(s.getPoints))
 	mux.Handle("GET /api/tracks", s.handle(s.listTracks))
+	mux.Handle("GET /api/tracks/maps", s.handle(s.getTrackMaps))
 	mux.Handle("GET /api/tracks/{id}/records", s.handle(s.getTrackRecords))
+	mux.Handle("PUT /api/tracks/excluded", s.handle(s.setExcludedTracks))
 
 	mux.Handle("GET /api/tournaments", s.handle(s.listTournaments))
 	mux.Handle("POST /api/tournaments", s.handle(s.createTournament))
@@ -56,6 +58,12 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service, backups *backup.Ma
 	mux.Handle("GET /api/tournaments/{id}/standings", s.handle(s.getStandings))
 	mux.Handle("GET /api/stats", s.handle(s.getStats))
 	mux.Handle("GET /api/players/{id}/stats", s.handle(s.getPlayerStats))
+
+	mux.Handle("GET /api/rotation", s.handle(s.getRotation))
+	mux.Handle("PUT /api/rotation/present", s.handle(s.setPresent))
+	mux.Handle("POST /api/rotation/draw", s.handle(s.drawRotation))
+	mux.Handle("POST /api/rotation/plan", s.handle(s.generatePlan))
+	mux.Handle("DELETE /api/rotation/plan", s.handle(s.clearPlan))
 
 	mux.Handle("GET /api/live", s.handle(s.getLive))
 	mux.Handle("GET /api/live/stream", s.handle(s.streamLive))

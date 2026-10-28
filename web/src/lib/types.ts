@@ -32,13 +32,15 @@ export interface Tournament extends ScoringRules {
   active: boolean; // in corso: le gare finite vengono salvate qui
   races: number; // gare del torneo
   recordings: number; // registrazioni collegate alle sue gare
+  rotation: boolean; // turnazione dei controller attiva (vedi internal/rotation)
   leader?: { name: string; color: string; points: number }; // primo in classifica (solo nell'elenco dei tornei)
 }
 
-// Circuito proposto per le gare (GET /api/tracks), nell'ordine del calendario.
+// Circuito proposto per le gare (GET /api/tracks), nell'ordine del calendario seguito dalle varianti.
 export interface Track {
   id: number;
   name: string;
+  excluded: boolean; // da non suggerire nel programma, scelto nella pagina Piste
 }
 
 export interface Player {
@@ -313,6 +315,7 @@ export interface LiveSnapshot {
   finished: boolean;
   lineup: Lineup | null;
   lastSaved?: SavedLineup | null; // ultima sessione salvata nel torneo, anche se già finita (solo nello stato live)
+  rotation?: RotationState; // turnazione dei controller nel torneo in corso (solo nello stato live)
   events: RaceEvent[]; // ultimi messaggi della direzione gara, dal più vecchio
   telemetry?: TelemetryStatus; // solo nello stato live, non nei replay
   dataVersion?: number; // cambia a ogni modifica dei dati salvati: le pagine si ricaricano (solo nello stato live)
@@ -618,4 +621,27 @@ export interface SettingsSaved extends Settings {
 export interface UnfinishedDeleted {
   deletedSessions: number;
   freedBytes: number;
+}
+
+// Turnazione dei controller nel torneo in corso (vedi internal/rotation).
+export interface RotationPair {
+  p1: number; // pilota al controller 1
+  p2: number; // pilota al controller 2
+}
+
+export interface RotationState {
+  tournament: { id: number; name: string } | null; // senza torneo in corso la turnazione non c'è
+  present: number[]; // piloti presenti, scelti nella pagina Piloti
+  enabled: boolean; // turnazione attiva nel torneo in corso: si spegne nelle impostazioni del torneo
+  canDraw: boolean; // turnazione attiva e torneo senza Gran Premi: il sorteggio si può rifare
+  // Prossime coppie dal prossimo Gran Premio, almeno 3 e una per pista del programma;
+  // vuoto con la turnazione spenta o meno di due presenti.
+  next: RotationPair[];
+  plan: PlannedRace[]; // piste del programma ancora da correre, dal prossimo Gran Premio
+}
+
+// Gran Premio del programma: pista suggerita e chi corre secondo la turnazione.
+export interface PlannedRace {
+  track: number; // id del circuito (vedi Track)
+  pair: RotationPair | null; // null con la turnazione spenta o meno di due presenti
 }

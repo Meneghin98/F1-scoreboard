@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"f1-scoreboard/internal/recording"
+	"f1-scoreboard/internal/rotation"
 	"f1-scoreboard/internal/telemetry"
 )
 
@@ -71,6 +72,11 @@ type Service struct {
 	// dal database quando targetLoaded è falso.
 	target       *LineupTournament
 	targetLoaded bool
+
+	// Turnazione del torneo in corso (vedi rotationView); si rilegge dal
+	// database quando rotationLoaded è falso.
+	rotation       *rotation.State
+	rotationLoaded bool
 
 	// Ultima sessione salvata nel torneo, mostrata nella pagina Live anche
 	// dopo la sua fine (vedi SavedLineup); nil se non c'è o non serve più.
@@ -142,6 +148,7 @@ func (s *Service) DataChanged() {
 func (s *Service) dataChangedLocked() {
 	s.dataVersion++
 	s.target, s.targetLoaded = nil, false
+	s.rotationLoaded = false
 }
 
 // Done viene chiuso quando Run termina: i client in streaming lo usano per chiudersi.
@@ -462,6 +469,7 @@ func (s *Service) snapshotJSON(now time.Time) []byte {
 		snap = emptySnapshot(status)
 	}
 	snap.LastSaved = s.savedView(now)
+	snap.Rotation = s.rotationView()
 	snap.Telemetry = s.diag.status(now)
 	snap.DataVersion = s.dataVersion
 	msg, err := json.Marshal(snap)

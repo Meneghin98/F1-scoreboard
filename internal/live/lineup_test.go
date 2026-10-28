@@ -71,7 +71,8 @@ func TestLineupFlow(t *testing.T) {
 	s, _ := newTestService(t, false)
 	marco := insertID(t, s, "INSERT INTO players (name) VALUES ('Marco')")
 	luca := insertID(t, s, "INSERT INTO players (name) VALUES ('Luca')")
-	cup := insertID(t, s, "INSERT INTO tournaments (name, started_at) VALUES ('Campionato', datetime('now'))")
+	// Senza turnazione: i piloti non li propone lei (vedi TestLineupFollowsRotation).
+	cup := insertID(t, s, "INSERT INTO tournaments (name, started_at, rotation) VALUES ('Campionato', datetime('now'), 0)")
 
 	base := time.Date(2026, 10, 16, 13, 31, 38, 0, time.UTC)
 	stages := map[string]bool{}
