@@ -5,7 +5,7 @@ import { ColorDot, cx } from './ui';
 
 // Chi prende i controller al prossimo Gran Premio secondo la turnazione, in una
 // riga sola: si mostra tra una sessione e l'altra, in Live e in TV. Senza
-// torneo in corso o con meno di due presenti non mostra nulla.
+// torneo in corso, con la turnazione spenta o con meno di due presenti non mostra nulla.
 export function NextPair({ rotation, large, className }: { rotation?: RotationState; large?: boolean; className?: string }) {
   const { data: players } = useLoad(api.players, []);
   const next = rotation?.next[0];

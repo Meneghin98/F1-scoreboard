@@ -65,3 +65,20 @@ func TestLineupFollowsRotation(t *testing.T) {
 		t.Fatalf("controller 1 proposto a %d, atteso Luca (%d)", got, luca)
 	}
 }
+
+// Con la turnazione spenta nel torneo i controller non li propone lei, e tra
+// una sessione e l'altra non ci sono coppie da mostrare.
+func TestLineupWithoutRotation(t *testing.T) {
+	s, _ := newTestService(t, false)
+	insertID(t, s, "INSERT INTO players (name) VALUES ('Marco')")
+	insertID(t, s, "INSERT INTO players (name) VALUES ('Luca')")
+	cup := insertID(t, s, "INSERT INTO tournaments (name, started_at, rotation) VALUES ('Campionato', datetime('now'), 0)")
+	s.DataChanged()
+
+	if r := liveSnapshot(t, s).Rotation; r == nil || r.Tournament == nil || r.Tournament.ID != cup || r.Enabled || len(r.Next) != 0 {
+		t.Fatalf("turnazione spenta %+v", r)
+	}
+	if p := s.rotationPlayers(); p != nil {
+		t.Fatalf("piloti proposti dalla turnazione spenta: %v", p)
+	}
+}

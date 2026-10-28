@@ -32,6 +32,7 @@ export interface Tournament extends ScoringRules {
   active: boolean; // in corso: le gare finite vengono salvate qui
   races: number; // gare del torneo
   recordings: number; // registrazioni collegate alle sue gare
+  rotation: boolean; // turnazione dei controller attiva (vedi internal/rotation)
   leader?: { name: string; color: string; points: number }; // primo in classifica (solo nell'elenco dei tornei)
 }
 
@@ -630,6 +631,7 @@ export interface RotationPair {
 export interface RotationState {
   tournament: { id: number; name: string } | null; // senza torneo in corso la turnazione non c'è
   present: number[]; // piloti presenti, scelti nella pagina Piloti
-  canDraw: boolean; // il torneo non ha ancora Gran Premi: il sorteggio si può rifare
-  next: RotationPair[]; // prossime coppie dal prossimo Gran Premio; vuoto con meno di due presenti
+  enabled: boolean; // turnazione attiva nel torneo in corso: si spegne nelle impostazioni del torneo
+  canDraw: boolean; // turnazione attiva e torneo senza Gran Premi: il sorteggio si può rifare
+  next: RotationPair[]; // prossime coppie dal prossimo Gran Premio; vuoto con la turnazione spenta o meno di due presenti
 }

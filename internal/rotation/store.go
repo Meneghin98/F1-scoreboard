@@ -25,10 +25,14 @@ type State struct {
 	// torneo" la turnazione non c'è.
 	Tournament *Tournament `json:"tournament"`
 	Present    []int64     `json:"present"` // piloti presenti, scelti nella pagina Piloti: di default tutti
-	// CanDraw dice se il sorteggio si può rifare: il torneo non ha ancora Gran Premi.
+	// Enabled dice se la turnazione è attiva nel torneo in corso: si può
+	// spegnere nelle impostazioni del torneo. Falso senza torneo.
+	Enabled bool `json:"enabled"`
+	// CanDraw dice se il sorteggio si può rifare: la turnazione è attiva e il
+	// torneo non ha ancora Gran Premi.
 	CanDraw bool `json:"canDraw"`
 	// Next sono le prossime coppie, a partire dal prossimo Gran Premio; vuoto
-	// senza torneo o con meno di due presenti.
+	// senza torneo, con la turnazione spenta o con meno di due presenti.
 	Next []Pair `json:"next"`
 }
 
@@ -49,8 +53,8 @@ func Load(db DB) (State, error) {
 	var t Tournament
 	var order string
 	err = db.QueryRow(`
-		SELECT id, name, rotation_order FROM tournaments
-		WHERE started_at IS NOT NULL AND ended_at IS NULL AND free = 0`).Scan(&t.ID, &t.Name, &order)
+		SELECT id, name, rotation, rotation_order FROM tournaments
+		WHERE started_at IS NOT NULL AND ended_at IS NULL AND free = 0`).Scan(&t.ID, &t.Name, &st.Enabled, &order)
 	if errors.Is(err, sql.ErrNoRows) {
 		return st, nil
 	}
@@ -58,6 +62,9 @@ func Load(db DB) (State, error) {
 		return st, err
 	}
 	st.Tournament = &t
+	if !st.Enabled {
+		return st, nil
+	}
 	history, err := loadHistory(db, t.ID)
 	if err != nil {
 		return st, err

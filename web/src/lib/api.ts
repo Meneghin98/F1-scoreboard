@@ -32,10 +32,10 @@ export const api = {
   trackRecords: (trackId: number) => request<TrackRecords>(`/tracks/${trackId}/records`),
 
   tournaments: () => request<Tournament[]>('/tournaments'),
-  createTournament: (name: string, start: boolean, rules: ScoringRules) =>
-    request<Tournament>('/tournaments', 'POST', { name, start, ...rules }),
-  updateTournament: (id: number, name: string, rules: ScoringRules) =>
-    request<Tournament>(`/tournaments/${id}`, 'PUT', { name, ...rules }),
+  createTournament: (name: string, start: boolean, rotation: boolean, rules: ScoringRules) =>
+    request<Tournament>('/tournaments', 'POST', { name, start, rotation, ...rules }),
+  updateTournament: (id: number, name: string, rotation: boolean, rules: ScoringRules) =>
+    request<Tournament>(`/tournaments/${id}`, 'PUT', { name, rotation, ...rules }),
   deleteTournament: (id: number) => request<Deleted>(`/tournaments/${id}`, 'DELETE'),
   startTournament: (id: number) => request<Tournament>(`/tournaments/${id}/start`, 'POST'),
   endTournament: (id: number) => request<Tournament>(`/tournaments/${id}/end`, 'POST'),

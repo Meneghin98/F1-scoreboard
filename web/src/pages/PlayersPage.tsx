@@ -157,6 +157,8 @@ function RotationCard({ rotation, players, onDraw }: {
   let body: ReactNode;
   if (!rotation.tournament) {
     body = <p className="text-sm text-muted">Nessun torneo in corso: la turnazione dei controller parte con il torneo.</p>;
+  } else if (!rotation.enabled) {
+    body = <p className="text-sm text-muted">Spenta in questo torneo: si attiva nelle impostazioni del torneo, nella pagina Tornei.</p>;
   } else if (!next) {
     body = <p className="text-sm text-muted">Segna almeno due piloti presenti per sapere chi prende i controller.</p>;
   } else {

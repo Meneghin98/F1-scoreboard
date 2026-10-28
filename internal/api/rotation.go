@@ -56,6 +56,9 @@ func (s *Server) drawRotation(w http.ResponseWriter, r *http.Request) error {
 	if st.Tournament == nil {
 		return errorf(http.StatusConflict, "Nessun torneo in corso: la turnazione c'è solo nei tornei")
 	}
+	if !st.Enabled {
+		return errorf(http.StatusConflict, "La turnazione è spenta in questo torneo: si attiva nelle impostazioni del torneo")
+	}
 	if !st.CanDraw {
 		return errorf(http.StatusConflict, "Il torneo ha già dei Gran Premi: le coppie ormai si calcolano dalle gare corse")
 	}

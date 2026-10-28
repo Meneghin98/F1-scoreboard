@@ -3,6 +3,9 @@
 // che tra i presenti tutti corrano lo stesso numero di gare e incontrino tutti
 // gli altri. Classifica e punti restano quelli del torneo (vedi scoring).
 //
+// La turnazione si può spegnere per un torneo (vedi State.Enabled): allora la
+// pagina Live propone ai controller i piloti come senza torneo.
+//
 // La turnazione non si salva: la prossima coppia si calcola ogni volta dai
 // Gran Premi già corsi, così un pilota che arriva o va via, o una gara corsa
 // fuori turno, non rompono nulla.

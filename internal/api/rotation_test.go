@@ -10,6 +10,7 @@ type rotationState struct {
 		ID int64 `json:"id"`
 	} `json:"tournament"`
 	Present []int64 `json:"present"`
+	Enabled bool    `json:"enabled"`
 	CanDraw bool    `json:"canDraw"`
 	Next    []struct {
 		P1 int64 `json:"p1"`
@@ -56,7 +57,7 @@ func TestRotation(t *testing.T) {
 	}
 
 	expectStatus(t, call(t, srv, "GET", "/rotation", nil, &st), 200, "turnazione")
-	if st.Tournament == nil || st.Tournament.ID != tour.ID || !st.CanDraw || len(st.Next) != 3 {
+	if st.Tournament == nil || st.Tournament.ID != tour.ID || !st.Enabled || !st.CanDraw || len(st.Next) != 3 {
 		t.Fatalf("turnazione del torneo: %+v", st)
 	}
 	expectStatus(t, call(t, srv, "POST", "/rotation/draw", nil, &st), 200, "nuovo sorteggio")
@@ -99,5 +100,50 @@ func TestRotation(t *testing.T) {
 	expectStatus(t, call(t, srv, "GET", "/rotation", nil, &st), 200, "turnazione dopo l'eliminazione")
 	if fmt.Sprint(st.Present) != "[1 2 3 4]" {
 		t.Errorf("presenti dopo l'eliminazione: %v", st.Present)
+	}
+
+	// La turnazione si spegne nelle impostazioni del torneo: niente coppie né
+	// sorteggio, ma i presenti restano; riaccesa, riparte dallo storico.
+	var updated struct {
+		Rotation bool `json:"rotation"`
+	}
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", tour.ID), map[string]any{"rotation": false}, &updated), 200, "spegne la turnazione")
+	if updated.Rotation {
+		t.Fatal("il torneo ha ancora la turnazione attiva")
+	}
+	expectStatus(t, call(t, srv, "GET", "/rotation", nil, &st), 200, "turnazione spenta")
+	if st.Tournament == nil || st.Enabled || st.CanDraw || len(st.Next) != 0 || fmt.Sprint(st.Present) != "[1 2 3 4]" {
+		t.Fatalf("turnazione spenta: %+v", st)
+	}
+	expectStatus(t, call(t, srv, "POST", "/rotation/draw", nil, nil), 409, "sorteggio con la turnazione spenta")
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", tour.ID), map[string]any{"name": "T2"}, &updated), 200, "rinomina")
+	if updated.Rotation {
+		t.Fatal("cambiando il nome la turnazione si è riaccesa")
+	}
+	expectStatus(t, call(t, srv, "PUT", fmt.Sprintf("/tournaments/%d", tour.ID), map[string]any{"rotation": true}, nil), 200, "riaccende la turnazione")
+	expectStatus(t, call(t, srv, "GET", "/rotation", nil, &st), 200, "turnazione riaccesa")
+	if !st.Enabled || len(st.Next) != 3 {
+		t.Fatalf("turnazione riaccesa: %+v", st)
+	}
+}
+
+// Un torneo si può creare con la turnazione spenta; di default è attiva.
+func TestRotationDisabledAtCreation(t *testing.T) {
+	srv := newTestServer(t)
+	var tour struct {
+		Rotation bool `json:"rotation"`
+	}
+	expectStatus(t, call(t, srv, "POST", "/tournaments", map[string]any{"name": "A"}, &tour), 201, "crea")
+	if !tour.Rotation {
+		t.Error("di default la turnazione dovrebbe essere attiva")
+	}
+	expectStatus(t, call(t, srv, "POST", "/tournaments", map[string]any{"name": "B", "start": true, "rotation": false}, &tour), 201, "crea senza turnazione")
+	if tour.Rotation {
+		t.Error("il torneo è stato creato con la turnazione attiva")
+	}
+	var st rotationState
+	expectStatus(t, call(t, srv, "GET", "/rotation", nil, &st), 200, "turnazione")
+	if st.Tournament == nil || st.Enabled || len(st.Next) != 0 {
+		t.Fatalf("turnazione del torneo senza turnazione: %+v", st)
 	}
 }
