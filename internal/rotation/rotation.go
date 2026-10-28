@@ -27,7 +27,12 @@ func (p Pair) has(id int64) bool { return p.P1 == id || p.P2 == id }
 //  1. quella i cui piloti hanno corso meno gare in tutto;
 //  2. quella che si è incontrata meno volte;
 //  3. quella che non corre da più tempo;
-//  4. a parità di tutto, quella con gli id più bassi, così il risultato non cambia.
+//  4. a parità di tutto, quella con i piloti più avanti in order, l'ordine
+//     sorteggiato all'inizio del torneo (vedi Draw); chi non c'è, perché
+//     aggiunto dopo, viene in fondo per id. Senza sorteggio vale l'ordine degli id.
+//
+// A parità di tutto vuol dire anche la prima coppia del torneo, quando nessuno
+// ha ancora corso: la decide il sorteggio.
 //
 // Chi è rimasto indietro, perché è arrivato dopo o ha saltato delle serate,
 // recupera gradualmente: se ha appena corso salta il Gran Premio successivo,
@@ -39,15 +44,22 @@ func (p Pair) has(id int64) bool { return p.P1 == id || p.P2 == id }
 //   - nessun recupero: si contano le gare di ognuno solo da quando è arrivato,
 //     così parte alla pari ma a fine torneo ha corso meno gare degli altri.
 //
-// Il controller 1 va a chi l'ha avuto meno volte.
-func Next(present []int64, history []Pair, n int) []Pair {
+// Il controller 1 va a chi l'ha avuto meno volte, a parità al primo in order.
+func Next(present []int64, history []Pair, order []int64, n int) []Pair {
 	ids := slices.Clone(present)
 	slices.Sort(ids)
 	ids = slices.Compact(ids)
 	if len(ids) < 2 {
 		return nil
 	}
-	history = slices.Clone(history) // le coppie simulate non devono finire nello storico di chi chiama
+	rank := func(id int64) int {
+		if i := slices.Index(order, id); i >= 0 {
+			return i
+		}
+		return len(order)
+	}
+	slices.SortStableFunc(ids, func(a, b int64) int { return rank(a) - rank(b) }) // a parità di rank restano per id
+	history = slices.Clone(history)                                               // le coppie simulate non devono finire nello storico di chi chiama
 	pairs := make([]Pair, 0, n)
 	for range n {
 		p := next(ids, history)
@@ -69,7 +81,7 @@ func next(ids []int64, history []Pair) Pair {
 	for _, id := range ids {
 		st[id] = &stats{last: -1}
 	}
-	meetings := map[Pair]int{} // con P1 < P2
+	meetings := map[Pair]int{} // con P1 < P2, vedi ordered
 	for i, p := range history {
 		for _, id := range []int64{p.P1, p.P2} {
 			if s := st[id]; s != nil {
@@ -115,9 +127,9 @@ func next(ids []int64, history []Pair) Pair {
 
 	key := func(p Pair) []int {
 		a, b := st[p.P1], st[p.P2]
-		return []int{a.races + b.races, meetings[p], a.last + b.last}
+		return []int{a.races + b.races, meetings[ordered(p.P1, p.P2)], a.last + b.last}
 	}
-	best := slices.MinFunc(candidates, func(x, y Pair) int { // a parità tiene la prima, con gli id più bassi
+	best := slices.MinFunc(candidates, func(x, y Pair) int { // a parità tiene la prima, cioè la più avanti in order
 		return slices.Compare(key(x), key(y))
 	})
 	if st[best.P2].controller1 < st[best.P1].controller1 {

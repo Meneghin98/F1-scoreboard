@@ -24,7 +24,7 @@ func count(history []Pair) map[int64]int {
 }
 
 func TestNextFourPlayers(t *testing.T) {
-	got := Next([]int64{D, B, C, A}, nil, 6)
+	got := Next([]int64{D, B, C, A}, nil, nil, 6)
 	want := []Pair{{A, B}, {C, D}, {A, C}, {B, D}, {A, D}, {B, C}}
 	if len(got) != len(want) {
 		t.Fatalf("coppie: %v, attese %v", got, want)
@@ -50,8 +50,8 @@ func TestNextFourPlayers(t *testing.T) {
 }
 
 func TestNextContinuesFromHistory(t *testing.T) {
-	all := Next([]int64{A, B, C, D}, nil, 12)
-	rest := Next([]int64{A, B, C, D}, all[:5], 7)
+	all := Next([]int64{A, B, C, D}, nil, nil, 12)
+	rest := Next([]int64{A, B, C, D}, all[:5], nil, 7)
 	if !slices.Equal(all[5:], rest) {
 		t.Fatalf("partendo dallo storico: %v, attese %v", rest, all[5:])
 	}
@@ -69,7 +69,7 @@ func TestNextContinuesFromHistory(t *testing.T) {
 
 func TestNextFivePlayers(t *testing.T) {
 	ids := []int64{A, B, C, D, E}
-	got := Next(ids, nil, 10)
+	got := Next(ids, nil, nil, 10)
 	// In ogni momento nessuno ha più di una gara di vantaggio sugli altri.
 	for i := range got {
 		races := count(got[:i+1])
@@ -89,8 +89,8 @@ func TestNextFivePlayers(t *testing.T) {
 }
 
 func TestNextLateArrivalCatchesUpGradually(t *testing.T) {
-	history := Next([]int64{A, B, C, D}, nil, 6) // 3 gare a testa
-	got := Next([]int64{A, B, C, D, E}, history, 12)
+	history := Next([]int64{A, B, C, D}, nil, nil, 6) // 3 gare a testa
+	got := Next([]int64{A, B, C, D, E}, history, nil, 12)
 	// Finché è indietro E corre un Gran Premio sì e uno no, a partire dal primo.
 	for i, p := range got {
 		races := count(append(slices.Clone(history), got[:i]...))
@@ -109,8 +109,8 @@ func TestNextLateArrivalCatchesUpGradually(t *testing.T) {
 
 func TestNextLateArrivalWithFourPresent(t *testing.T) {
 	// B stasera non c'è: E arriva al posto suo e recupera anche in quattro.
-	history := Next([]int64{A, B, C, D}, nil, 6)
-	got := Next([]int64{A, C, D, E}, history, 4)
+	history := Next([]int64{A, B, C, D}, nil, nil, 6)
+	got := Next([]int64{A, C, D, E}, history, nil, 4)
 	for i, p := range got {
 		if want := i%2 == 0; p.has(E) != want {
 			t.Fatalf("gara %d: E corre = %v, atteso %v (%v)", i+1, p.has(E), want, got)
@@ -119,13 +119,13 @@ func TestNextLateArrivalWithFourPresent(t *testing.T) {
 }
 
 func TestNextFewPlayers(t *testing.T) {
-	if got := Next([]int64{A}, nil, 3); got != nil {
+	if got := Next([]int64{A}, nil, nil, 3); got != nil {
 		t.Errorf("con un pilota: %v, attese nessuna coppia", got)
 	}
-	if got := Next(nil, []Pair{{A, B}}, 3); got != nil {
+	if got := Next(nil, []Pair{{A, B}}, nil, 3); got != nil {
 		t.Errorf("senza presenti: %v, attese nessuna coppia", got)
 	}
-	for _, p := range Next([]int64{B, A}, nil, 4) {
+	for _, p := range Next([]int64{B, A}, nil, nil, 4) {
 		if ordered(p.P1, p.P2) != (Pair{A, B}) {
 			t.Fatalf("con due piloti la coppia è sempre la stessa, non %v", p)
 		}
@@ -134,7 +134,7 @@ func TestNextFewPlayers(t *testing.T) {
 
 func TestNextThreePlayers(t *testing.T) {
 	// In tre qualcuno corre per forza di fila, ma dopo 3 gare tutti ne hanno corse 2.
-	got := Next([]int64{A, B, C}, nil, 3)
+	got := Next([]int64{A, B, C}, nil, nil, 3)
 	for _, id := range []int64{A, B, C} {
 		if count(got)[id] != 2 {
 			t.Errorf("pilota %d: %d gare, attese 2 (%v)", id, count(got)[id], got)
@@ -144,7 +144,7 @@ func TestNextThreePlayers(t *testing.T) {
 
 func TestNextIgnoresAbsentInHistory(t *testing.T) {
 	// E ha corso con A, ma stasera non c'è: le gare di A contano lo stesso.
-	got := Next([]int64{A, B, C}, []Pair{{A, E}}, 1)
+	got := Next([]int64{A, B, C}, []Pair{{A, E}}, nil, 1)
 	if got[0].has(A) {
 		t.Errorf("A ha già corso: la prima coppia dovrebbe essere B-C, non %v", got[0])
 	}
@@ -153,8 +153,29 @@ func TestNextIgnoresAbsentInHistory(t *testing.T) {
 func TestNextDoesNotModifyHistory(t *testing.T) {
 	history := make([]Pair, 1, 10)
 	history[0] = Pair{A, B}
-	Next([]int64{A, B, C, D}, history, 5)
+	Next([]int64{A, B, C, D}, history, nil, 5)
 	if full := history[:cap(history)]; full[1] != (Pair{}) {
 		t.Errorf("Next ha scritto nello storico di chi chiama: %v", full)
+	}
+}
+
+func TestNextFollowsDrawOrder(t *testing.T) {
+	// Il sorteggio ha messo C e A davanti: la prima coppia è la loro, e C ha il controller 1.
+	order := []int64{C, A, D, B}
+	got := Next([]int64{A, B, C, D}, nil, order, 6)
+	if got[0] != (Pair{C, A}) {
+		t.Errorf("prima coppia %v, attesa C-A", got[0])
+	}
+	if !ordered(got[1].P1, got[1].P2).has(B) || !ordered(got[1].P1, got[1].P2).has(D) {
+		t.Errorf("seconda coppia %v, attesa B-D", got[1])
+	}
+	for _, id := range order {
+		if count(got)[id] != 3 {
+			t.Errorf("pilota %d: %d gare, attese 3 (%v)", id, count(got)[id], got)
+		}
+	}
+	// E non era nel sorteggio: a parità viene dopo tutti.
+	if got := Next([]int64{E, B}, nil, order, 1); got[0] != (Pair{B, E}) {
+		t.Errorf("coppia %v, attesa B-E", got[0])
 	}
 }
