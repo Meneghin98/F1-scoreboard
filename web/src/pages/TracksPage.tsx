@@ -2,11 +2,12 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { PlayerName } from '../components/NextPair';
 import { TrackOutline } from '../components/TrackMapCard';
 import { api } from '../lib/api';
+import { formatLapTime, formatUtcDate } from '../lib/format';
 import { href } from '../lib/route';
-import type { Player, RotationState, Track, TrackMap } from '../lib/types';
+import type { Player, RotationState, Track, TrackMap, TrackRecord, TrackRecords } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
-import { Button, Card, cx, fieldSmClass, Loading, Switch } from '../components/ui';
+import { Button, Card, ColorDot, cx, fieldSmClass, Loading, Switch } from '../components/ui';
 
 // Gare proposte di default per un programma nuovo, se le piste bastano.
 const DEFAULT_RACES = 6;
@@ -20,6 +21,8 @@ export function TracksPage() {
   const { data: players } = useLoad(api.players, []);
   // Piante dei circuiti già corsi: le altre piste restano senza disegno.
   const { data: maps } = useLoad(api.trackMaps, []);
+  // Record in gara e in qualifica, in tutti i tornei.
+  const { data: records } = useLoad(api.allTrackRecords, []);
 
   function toggleExcluded(track: Track) {
     if (!tracks) return;
@@ -34,7 +37,7 @@ export function TracksPage() {
   return (
     <>
       <PlanCard rotation={rotation} tracks={tracks} maps={maps ?? {}} players={players} onChanged={reloadRotation} />
-      <TracksCard tracks={tracks} maps={maps ?? {}} onToggle={toggleExcluded} />
+      <TracksCard tracks={tracks} maps={maps ?? {}} records={records ?? {}} onToggle={toggleExcluded} />
     </>
   );
 }
@@ -141,9 +144,10 @@ function PlanCard({ rotation, tracks, maps, players, onChanged }: {
 }
 
 // Circuiti di F1 25: quelli spenti non vengono mai suggeriti, in nessun torneo.
-function TracksCard({ tracks, maps, onToggle }: {
+function TracksCard({ tracks, maps, records, onToggle }: {
   tracks: Track[];
   maps: Record<number, TrackMap>;
+  records: Record<number, TrackRecords>;
   onToggle: (track: Track) => void;
 }) {
   const available = tracks.filter((t) => !t.excluded).length;
@@ -154,6 +158,7 @@ function TracksCard({ tracks, maps, onToggle }: {
       </h2>
       <p className="mb-3 text-sm text-muted">
         Spegni le piste che non volete giocare, anche cliccando sul disegno: il programma non le propone più.
+        Sotto ogni pista i record in gara e in qualifica di tutti i tornei.
       </p>
       {/* Una scheda per circuito con il disegno grande, nell'ordine del calendario. */}
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -181,10 +186,40 @@ function TracksCard({ tracks, maps, onToggle }: {
               )}
             </button>
             <Switch checked={!t.excluded} onChange={() => onToggle(t)} label={t.name} className="text-left" />
+            {records[t.id] && (
+              <dl className="grid grid-cols-[auto_auto_1fr] items-center gap-x-2 gap-y-0.5 text-xs">
+                <RecordRow label="Gara" record={records[t.id].race} />
+                <RecordRow label="Qualifica" record={records[t.id].qualifying} />
+              </dl>
+            )}
           </li>
         ))}
       </ul>
     </Card>
+  );
+}
+
+// Una riga dei record della pista: tempo e pilota, con sessione e data al passaggio del mouse.
+function RecordRow({ label, record: r }: { label: string; record: TrackRecord | null }) {
+  return (
+    <>
+      <dt className="text-muted">{label}</dt>
+      {r ? (
+        <>
+          <dd className="font-bold text-purple-400 tabular-nums" title={`${r.sessionType} · ${formatUtcDate(r.date)}`}>
+            {formatLapTime(r.lapMs)}
+          </dd>
+          <dd className="min-w-0">
+            <a href={href('player', r.player_id)} className="flex items-center gap-1.5 hover:underline">
+              <ColorDot color={r.color} />
+              <span className="truncate">{r.name}</span>
+            </a>
+          </dd>
+        </>
+      ) : (
+        <dd className="col-span-2 text-muted">–</dd>
+      )}
+    </>
   );
 }
 
