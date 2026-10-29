@@ -120,6 +120,15 @@ func TestStats(t *testing.T) {
 		t.Errorf("record di Suzuka %+v", monzaRecords)
 	}
 	expectStatus(t, call(t, srv, "GET", "/tracks/x/records", nil, nil), 400, "circuito non valido")
+	var allRecords map[int]struct {
+		Race       *lapRecord `json:"race"`
+		Qualifying *lapRecord `json:"qualifying"`
+	}
+	expectStatus(t, call(t, srv, "GET", "/tracks/records", nil, &allRecords), 200, "record di tutti i circuiti")
+	if len(allRecords) != 1 || allRecords[11].Race == nil || *allRecords[11].Race != (lapRecord{81234, "Luca", "Gara"}) ||
+		allRecords[11].Qualifying == nil || allRecords[11].Qualifying.LapMS != 80100 {
+		t.Errorf("record di tutti i circuiti %+v", allRecords)
+	}
 	// Monza: Simone davanti; Imola: Simone ritirato, Luca davanti.
 	if h := stats.HeadToHead; h.Players[0].Name != "Luca" || h.Ahead[0][1] != 1 || h.Ahead[1][0] != 1 {
 		t.Errorf("testa a testa %+v", h)

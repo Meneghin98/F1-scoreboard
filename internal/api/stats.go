@@ -390,6 +390,20 @@ func (s *Server) getStats(w http.ResponseWriter, r *http.Request) error {
 	})
 }
 
+// getAllTrackRecords restituisce i record di tutti i circuiti già corsi, in tutti
+// i tornei, per id del circuito. I circuiti senza record non compaiono.
+func (s *Server) getAllTrackRecords(w http.ResponseWriter, r *http.Request) error {
+	records, _, err := s.lapRecords(0)
+	if err != nil {
+		return err
+	}
+	byTrack := make(map[int]TrackRecords, len(records))
+	for _, t := range records {
+		byTrack[t.TrackID] = t
+	}
+	return writeJSON(w, http.StatusOK, byTrack)
+}
+
 // getTrackRecords restituisce i record di un circuito (id del gioco), in tutti i tornei.
 func (s *Server) getTrackRecords(w http.ResponseWriter, r *http.Request) error {
 	id, err := strconv.Atoi(r.PathValue("id"))
