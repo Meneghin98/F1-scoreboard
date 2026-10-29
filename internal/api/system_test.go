@@ -125,14 +125,14 @@ func TestSettings(t *testing.T) {
 	srv := newTestServer(t)
 	type settings struct {
 		Recordings struct {
-			Days            int  `json:"days"`
-			KeepTournaments bool `json:"keepTournaments"`
+			Days        int  `json:"days"`
+			KeepRecords bool `json:"keepRecords"`
 		} `json:"recordings"`
 		DeletedFiles *int `json:"deletedFiles"`
 	}
 	var s settings
 	expectStatus(t, call(t, srv, "GET", "/settings", nil, &s), 200, "impostazioni")
-	if s.Recordings.Days != 0 || !s.Recordings.KeepTournaments {
+	if s.Recordings.Days != 0 || !s.Recordings.KeepRecords {
 		t.Fatalf("impostazioni di default %+v", s)
 	}
 	for _, days := range []any{-1, 1.5, 4000, "30"} {
@@ -140,12 +140,12 @@ func TestSettings(t *testing.T) {
 		expectStatus(t, call(t, srv, "PUT", "/settings", body, nil), 400, "giorni non validi")
 	}
 	expectStatus(t, call(t, srv, "PUT", "/settings", map[string]any{"recordings": map[string]any{"days": 30}}, &s), 200, "salva")
-	if s.Recordings.Days != 30 || !s.Recordings.KeepTournaments || s.DeletedFiles == nil || *s.DeletedFiles != 0 {
+	if s.Recordings.Days != 30 || !s.Recordings.KeepRecords || s.DeletedFiles == nil || *s.DeletedFiles != 0 {
 		t.Fatalf("impostazioni salvate %+v", s)
 	}
-	call(t, srv, "PUT", "/settings", map[string]any{"recordings": map[string]any{"keepTournaments": false}}, nil)
+	call(t, srv, "PUT", "/settings", map[string]any{"recordings": map[string]any{"keepRecords": false}}, nil)
 	call(t, srv, "GET", "/settings", nil, &s)
-	if s.Recordings.Days != 30 || s.Recordings.KeepTournaments {
+	if s.Recordings.Days != 30 || s.Recordings.KeepRecords {
 		t.Fatalf("impostazioni rilette %+v", s)
 	}
 }

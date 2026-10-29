@@ -34,7 +34,11 @@ export function SystemPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <DiskCard system={system} onChanged={reload} />
         <TelemetryCard system={system} />
-        <RetentionCard retention={settings.recordings} onSaved={reload} />
+        <RetentionCard
+          key={`${settings.recordings.days}-${settings.recordings.keepRecords}`}
+          retention={settings.recordings}
+          onSaved={reload}
+        />
         <VersionCard version={system.version} update={system.update} onChanged={reload} />
       </div>
     </>
@@ -257,22 +261,41 @@ function TelemetryCard({ system }: { system: SystemInfo }) {
 
 // Dopo quanti giorni eliminare i file delle registrazioni. Le nuove impostazioni
 // valgono subito: se possono eliminare dei file, prima si chiede conferma.
+// Il componente va montato con una key che cambia con le impostazioni salvate
+// (anche da un altro PC), così il modulo riparte dai nuovi valori.
 function RetentionCard({ retention, onSaved }: { retention: Retention; onSaved: () => Promise<void> }) {
   const { run, toast } = useToast();
   const confirm = useConfirm();
+  const [days, setDays] = useState(String(retention.days));
+  const [keepRecords, setKeepRecords] = useState(retention.keepRecords);
+  const changed = Number(days) !== retention.days || keepRecords !== retention.keepRecords;
+
+  // Togliere la spunta dei record non deve succedere per sbaglio: si chiede di scrivere una parola.
+  async function handleKeepRecords(checked: boolean) {
+    if (!checked) {
+      const ok = await confirm({
+        title: 'Eliminare anche le registrazioni dei record?',
+        message: 'Le registrazioni dei giri record verranno eliminate come le altre e non si potranno più rivedere. ' +
+          'I tempi dei record restano.',
+        confirmLabel: 'Togli la spunta',
+        typeToConfirm: 'ELIMINA',
+      });
+      if (!ok) return;
+    }
+    setKeepRecords(checked);
+  }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const next: Retention = { days: Number(form.get('days')), keepTournaments: form.has('keepTournaments') };
+    const next: Retention = { days: Number(days), keepRecords };
     const stricter = next.days > 0 &&
-      (retention.days === 0 || next.days < retention.days || (retention.keepTournaments && !next.keepTournaments));
+      (retention.days === 0 || next.days < retention.days || (retention.keepRecords && !next.keepRecords));
     if (stricter) {
       const ok = await confirm({
         title: 'Eliminare le registrazioni vecchie?',
         message: `I file delle registrazioni finite da più di ${next.days === 1 ? 'un giorno' : `${next.days} giorni`}` +
-          `${next.keepTournaments ? ', tranne quelle delle gare dei tornei,' : ''} verranno eliminati subito, e poi ogni ora. ` +
-          'Sessioni, risultati, statistiche e record restano.',
+          `${next.keepRecords ? ', tranne quelle dei record,' : ', comprese quelle dei record,'} verranno eliminati subito, e poi ogni ora. ` +
+          'Sessioni, risultati, statistiche e tempi dei record restano.',
         confirmLabel: 'Salva ed elimina',
       });
       if (!ok) return;
@@ -293,8 +316,7 @@ function RetentionCard({ retention, onSaved }: { retention: Retention; onSaved: 
         Una registrazione occupa circa 2 MB al minuto. Dopo i giorni scelti il server ne elimina il file: sessione,
         risultati, statistiche e record restano, ma non si può più rivedere né scaricare.
       </p>
-      {/* key: se le impostazioni cambiano (anche da un altro PC) il modulo riparte dai nuovi valori. */}
-      <form key={`${retention.days}-${retention.keepTournaments}`} onSubmit={handleSubmit} className="flex flex-col gap-3">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3">
         <label className="flex flex-wrap items-center gap-2 text-sm">
           Elimina i file dopo
           <input
@@ -304,7 +326,8 @@ function RetentionCard({ retention, onSaved }: { retention: Retention; onSaved: 
             max={3650}
             step={1}
             required
-            defaultValue={retention.days}
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
             className={cx(fieldClass, 'w-24')}
           />
           giorni <span className="text-muted">(0 = mai)</span>
@@ -312,14 +335,18 @@ function RetentionCard({ retention, onSaved }: { retention: Retention; onSaved: 
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
-            name="keepTournaments"
-            defaultChecked={retention.keepTournaments}
+            name="keepRecords"
+            checked={keepRecords}
+            onChange={(e) => handleKeepRecords(e.target.checked)}
             className="mt-0.5 size-4 accent-accent"
           />
-          <span>Tieni sempre quelle delle gare dei tornei <span className="text-muted">(non di "Nessun torneo")</span></span>
+          <span>
+            Tieni sempre le registrazioni dei record{' '}
+            <span className="text-muted">(il giro più veloce di ogni circuito, in gara e in qualifica)</span>
+          </span>
         </label>
         <div>
-          <Button>Salva</Button>
+          <Button disabled={!changed}>Salva</Button>
         </div>
       </form>
     </Card>
