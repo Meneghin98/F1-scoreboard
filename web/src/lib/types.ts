@@ -604,7 +604,7 @@ export interface BackupInfo {
 // Conservazione delle registrazioni: dopo days giorni se ne eliminano i file (0 = mai).
 export interface Retention {
   days: number;
-  keepTournaments: boolean; // tieni i file delle gare dei tornei
+  keepRecords: boolean; // tieni i file delle sessioni che detengono un record
 }
 
 export interface Settings {

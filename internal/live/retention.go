@@ -9,30 +9,33 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"f1-scoreboard/internal/telemetry"
 )
 
 // Conservazione delle registrazioni. Una registrazione pesa circa 2 MB al
 // minuto e su una scheda SD lo spazio finisce in fretta: dalla pagina Sistema
 // si sceglie dopo quanti giorni eliminarne i file. Le sessioni restano, con i
-// giocatori, i risultati delle gare e le statistiche, ma senza file non si
-// possono più rivedere né scaricare.
+// giocatori, i risultati delle gare, le statistiche e i record, ma senza file
+// non si possono più rivedere né scaricare. Le registrazioni dei record si
+// tengono, salvo che lo si chieda: così il giro del record si può sempre rivedere.
 
 // Retention sono le impostazioni di conservazione, salvate nella tabella settings.
 type Retention struct {
-	Days            int  `json:"days"`            // giorni dalla fine della sessione, 0 = per sempre
-	KeepTournaments bool `json:"keepTournaments"` // non eliminare i file delle gare dei tornei
+	Days        int  `json:"days"`        // giorni dalla fine della sessione, 0 = per sempre
+	KeepRecords bool `json:"keepRecords"` // non eliminare i file delle sessioni che detengono un record
 }
 
 // Chiavi delle impostazioni di conservazione nella tabella settings.
 const (
-	settingRetentionDays   = "recordings_retention_days"
-	settingKeepTournaments = "recordings_keep_tournaments"
+	settingRetentionDays = "recordings_retention_days"
+	settingKeepRecords   = "recordings_keep_records"
 )
 
 // Retention restituisce le impostazioni di conservazione delle registrazioni.
 func (s *Service) Retention() (Retention, error) {
-	r := Retention{KeepTournaments: true}
-	rows, err := s.db.Query("SELECT key, value FROM settings WHERE key IN (?, ?)", settingRetentionDays, settingKeepTournaments)
+	r := Retention{KeepRecords: true}
+	rows, err := s.db.Query("SELECT key, value FROM settings WHERE key IN (?, ?)", settingRetentionDays, settingKeepRecords)
 	if err != nil {
 		return r, err
 	}
@@ -45,8 +48,8 @@ func (s *Service) Retention() (Retention, error) {
 		switch key {
 		case settingRetentionDays:
 			r.Days, _ = strconv.Atoi(value) // un valore non valido vale 0: si tiene tutto
-		case settingKeepTournaments:
-			r.KeepTournaments = value == "1"
+		case settingKeepRecords:
+			r.KeepRecords = value == "1"
 		}
 	}
 	return r, rows.Err()
@@ -56,12 +59,12 @@ func (s *Service) Retention() (Retention, error) {
 // che non vanno più tenuti: restituisce quanti sono e quanto spazio occupavano.
 func (s *Service) SetRetention(r Retention) (deleted int, freed int64, err error) {
 	keep := "0"
-	if r.KeepTournaments {
+	if r.KeepRecords {
 		keep = "1"
 	}
 	_, err = s.db.Exec(`INSERT INTO settings (key, value) VALUES (?, ?), (?, ?)
 		ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
-		settingRetentionDays, strconv.Itoa(r.Days), settingKeepTournaments, keep)
+		settingRetentionDays, strconv.Itoa(r.Days), settingKeepRecords, keep)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -70,8 +73,8 @@ func (s *Service) SetRetention(r Retention) (deleted int, freed int64, err error
 }
 
 // deleteOldRecordings elimina i file delle registrazioni finite da più giorni
-// di quanto dicono le impostazioni (e, se richiesto, non collegate a una gara
-// di un torneo). Le sessioni restano: senza file risultano "non disponibili".
+// di quanto dicono le impostazioni (e, se richiesto, che non detengono un
+// record). Le sessioni restano: senza file risultano "non disponibili".
 func (s *Service) deleteOldRecordings(now time.Time) (deleted int, freed int64) {
 	r, err := s.Retention()
 	if err != nil {
@@ -81,16 +84,20 @@ func (s *Service) deleteOldRecordings(now time.Time) (deleted int, freed int64) 
 	if r.Days <= 0 {
 		return 0, 0
 	}
+	records := map[int64]bool{}
+	if r.KeepRecords {
+		if records, err = s.recordSessions(); err != nil {
+			log.Printf("telemetria: sessioni dei record: %v", err)
+			return 0, 0 // senza sapere quali sono, non si elimina niente
+		}
+	}
 	// Restano anche le sessioni che il server deve ancora leggere: da
 	// analizzare, da salvare in un torneo o senza i dati delle statistiche.
 	rows, err := s.db.Query(`
-		SELECT s.id, s.file FROM telemetry_sessions s
-		LEFT JOIN races r ON r.id = s.race_id
-		LEFT JOIN tournaments t ON t.id = r.tournament_id
-		WHERE s.ended_at IS NOT NULL AND s.ended_at < ?
-		  AND s.analyzed = 1 AND s.pending_save = 0 AND NOT (s.has_classification = 1 AND s.stats_extracted = 0)
-		  AND NOT (? AND COALESCE(t.free, 1) = 0)`,
-		dbTime(now.AddDate(0, 0, -r.Days)), r.KeepTournaments)
+		SELECT id, file FROM telemetry_sessions
+		WHERE ended_at IS NOT NULL AND ended_at < ?
+		  AND analyzed = 1 AND pending_save = 0 AND NOT (has_classification = 1 AND stats_extracted = 0)`,
+		dbTime(now.AddDate(0, 0, -r.Days)))
 	if err != nil {
 		log.Printf("telemetria: %v", err)
 		return 0, 0
@@ -102,7 +109,7 @@ func (s *Service) deleteOldRecordings(now time.Time) (deleted int, freed int64) 
 	var list []old
 	for rows.Next() {
 		var o old
-		if rows.Scan(&o.id, &o.file) == nil {
+		if rows.Scan(&o.id, &o.file) == nil && !records[o.id] {
 			list = append(list, o)
 		}
 	}
@@ -127,6 +134,46 @@ func (s *Service) deleteOldRecordings(now time.Time) (deleted int, freed int64) 
 		s.DataChanged()
 	}
 	return deleted, freed
+}
+
+// recordSessions restituisce le sessioni che detengono un record di un
+// circuito, in gara o in qualifica, in tutti i tornei: gli stessi record delle
+// pagine Piste e Statistiche (vedi api.lapRecords).
+func (s *Service) recordSessions() (map[int64]bool, error) {
+	rows, err := s.db.Query(`
+		SELECT s.id, s.track_id, s.session_type
+		FROM telemetry_players tp
+		JOIN telemetry_sessions s ON s.id = tp.session_id
+		JOIN players p ON p.id = tp.player_id
+		WHERE tp.best_lap_ms IS NOT NULL AND s.track_id IS NOT NULL AND s.track_id >= 0 AND s.session_type IS NOT NULL
+		ORDER BY s.track_id, tp.best_lap_ms, s.id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	sessions := map[int64]bool{}
+	seen := map[[2]int]bool{} // circuito, 1 = gara o 0 = qualifica
+	for rows.Next() {
+		var id int64
+		var track, sessionType int
+		if err := rows.Scan(&id, &track, &sessionType); err != nil {
+			return nil, err
+		}
+		st := telemetry.SessionType(sessionType)
+		if !st.IsRace() && !st.IsQualifying() {
+			continue // i giri delle prove non sono record
+		}
+		// Le righe sono in ordine di tempo: la prima per circuito e tipo di sessione è il record.
+		key := [2]int{track, 0}
+		if st.IsRace() {
+			key[1] = 1
+		}
+		if !seen[key] {
+			seen[key] = true
+			sessions[id] = true
+		}
+	}
+	return sessions, rows.Err()
 }
 
 // RecordingsUsage restituisce quante registrazioni ci sono nella cartella e

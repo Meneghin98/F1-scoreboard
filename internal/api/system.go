@@ -276,12 +276,12 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) error {
 // saveSettings salva le impostazioni; i campi assenti restano come sono. Con la
 // nuova conservazione i file delle registrazioni troppo vecchie si eliminano
 // subito: la risposta dice quanti erano e quanto spazio occupavano.
-// Body: { "recordings": { "days": 30, "keepTournaments": true } }
+// Body: { "recordings": { "days": 30, "keepRecords": true } }
 func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) error {
 	var body struct {
 		Recordings *struct {
-			Days            *float64 `json:"days"` // float per poter rifiutare i decimali con un messaggio chiaro
-			KeepTournaments *bool    `json:"keepTournaments"`
+			Days        *float64 `json:"days"` // float per poter rifiutare i decimali con un messaggio chiaro
+			KeepRecords *bool    `json:"keepRecords"`
 		} `json:"recordings"`
 	}
 	if err := readJSON(r, &body); err != nil {
@@ -298,8 +298,8 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) error {
 			}
 			retention.Days = int(*d)
 		}
-		if in.KeepTournaments != nil {
-			retention.KeepTournaments = *in.KeepTournaments
+		if in.KeepRecords != nil {
+			retention.KeepRecords = *in.KeepRecords
 		}
 	}
 	deleted, freed, err := s.live.SetRetention(retention)

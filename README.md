@@ -424,7 +424,7 @@ della telemetria e versione del programma.
   ora. Dalla pagina Sistema si possono scaricare.
 - **Registrazioni**: non sono nei backup (pesano circa 2 MB al minuto). Per conservarle si copia la
   cartella `data/sessions/`. Nella pagina Sistema si può scegliere dopo quanti giorni eliminarne i
-  file (di default mai), tenendo eventualmente quelle delle gare dei tornei: sessioni, risultati,
+  file (di default mai), tenendo comunque quelle dei record dei circuiti: sessioni, risultati,
   statistiche e record restano, ma senza file non si possono più rivedere né scaricare.
 
 Per **ripristinare** un backup: fermare il server, sostituire `data/scoreboard.db` con il file del
@@ -437,4 +437,4 @@ sono, e riavviare.
 | `GET /api/backups`           | Backup automatici, dal più recente                              |
 | `GET /api/backups/{nome}`    | Scarica un backup automatico                                    |
 | `GET /api/system`            | Versione, spazio di database, registrazioni e backup, disco libero |
-| `GET`/`PUT /api/settings`    | Conservazione delle registrazioni (`{"recordings": {"days": 30, "keepTournaments": true}}`) |
+| `GET`/`PUT /api/settings`    | Conservazione delle registrazioni (`{"recordings": {"days": 30, "keepRecords": true}}`) |
