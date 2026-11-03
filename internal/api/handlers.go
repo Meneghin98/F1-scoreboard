@@ -277,13 +277,12 @@ func (s *Server) setExcludedTracks(w http.ResponseWriter, r *http.Request) error
 
 // TrackSetup è l'assetto consigliato di un circuito (tabella track_setups,
 // riempita a mano con le migrazioni). I nomi JSON sono quelli dell'assetto
-// della diretta (live.Setup), senza il carburante.
+// della diretta (live.Setup), senza freno motore e carburante.
 type TrackSetup struct {
 	FrontWing        int        `json:"frontWing"`
 	RearWing         int        `json:"rearWing"`
-	OnThrottle       int        `json:"onThrottle"`    // differenziale in accelerazione, %
-	OffThrottle      int        `json:"offThrottle"`   // in rilascio, %
-	EngineBraking    *int       `json:"engineBraking"` // %, nil se l'assetto non lo dice
+	OnThrottle       int        `json:"onThrottle"`  // differenziale in accelerazione, %
+	OffThrottle      int        `json:"offThrottle"` // in rilascio, %
 	FrontCamber      float64    `json:"frontCamber"`
 	RearCamber       float64    `json:"rearCamber"`
 	FrontToe         float64    `json:"frontToe"`
@@ -303,7 +302,7 @@ type TrackSetup struct {
 // getTrackSetups restituisce gli assetti consigliati, per id del circuito:
 // solo i circuiti che ne hanno uno.
 func (s *Server) getTrackSetups(w http.ResponseWriter, r *http.Request) error {
-	rows, err := s.db.Query(`SELECT track_id, front_wing, rear_wing, on_throttle, off_throttle, engine_braking,
+	rows, err := s.db.Query(`SELECT track_id, front_wing, rear_wing, on_throttle, off_throttle,
 		front_camber, rear_camber, front_toe, rear_toe,
 		front_suspension, rear_suspension, front_anti_roll_bar, rear_anti_roll_bar, front_height, rear_height,
 		brake_pressure, brake_bias,
@@ -317,7 +316,7 @@ func (s *Server) getTrackSetups(w http.ResponseWriter, r *http.Request) error {
 	for rows.Next() {
 		var id int
 		var t TrackSetup
-		if err := rows.Scan(&id, &t.FrontWing, &t.RearWing, &t.OnThrottle, &t.OffThrottle, &t.EngineBraking,
+		if err := rows.Scan(&id, &t.FrontWing, &t.RearWing, &t.OnThrottle, &t.OffThrottle,
 			&t.FrontCamber, &t.RearCamber, &t.FrontToe, &t.RearToe,
 			&t.FrontSuspension, &t.RearSuspension, &t.FrontAntiRollBar, &t.RearAntiRollBar, &t.FrontHeight, &t.RearHeight,
 			&t.BrakePressure, &t.BrakeBias,

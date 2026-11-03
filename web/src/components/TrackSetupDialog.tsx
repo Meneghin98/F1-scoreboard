@@ -15,7 +15,6 @@ function sections(s: TrackSetup): [title: string, rows: Row[]][] {
     ['Trasmissione', [
       ['Differenziale in accelerazione', pct(s.onThrottle)],
       ['Differenziale in rilascio', pct(s.offThrottle)],
-      ['Freno motore', s.engineBraking === null ? '–' : pct(s.engineBraking)],
     ]],
     ['Geometria sospensioni', [
       ['Campanatura', deg(s.frontCamber), deg(s.rearCamber)],

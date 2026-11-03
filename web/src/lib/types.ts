@@ -530,7 +530,6 @@ export interface TrackRecords {
 
 // Assetto consigliato di un circuito, inserito a mano con le migrazioni (tabella track_setups).
 export interface TrackSetup extends Omit<CarSetup, 'fuelLoad' | 'engineBraking'> {
-  engineBraking: number | null; // %, null se l'assetto non lo dice
   notes: string; // facoltative, '' se assenti
 }
 

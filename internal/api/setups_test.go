@@ -19,12 +19,12 @@ func TestTrackSetups(t *testing.T) {
 	}
 	before := len(setups)
 
-	if _, err := db.Exec(`INSERT INTO track_setups (track_id, front_wing, rear_wing, on_throttle, off_throttle, engine_braking,
+	if _, err := db.Exec(`INSERT INTO track_setups (track_id, front_wing, rear_wing, on_throttle, off_throttle,
 		front_camber, rear_camber, front_toe, rear_toe,
 		front_suspension, rear_suspension, front_anti_roll_bar, rear_anti_roll_bar, front_height, rear_height,
 		brake_pressure, brake_bias,
 		front_left_pressure, front_right_pressure, rear_left_pressure, rear_right_pressure, notes)
-		VALUES (11, 3, 5, 100, 60, 90, -3.5, -2, 0.05, 0.2, 40, 10, 18, 6, 20, 45, 100, 56, 29.5, 29.4, 26.5, 26.4, 'Monza')`); err != nil {
+		VALUES (11, 3, 5, 100, 60, -3.5, -2, 0.05, 0.2, 40, 10, 18, 6, 20, 45, 100, 56, 29.5, 29.4, 26.5, 26.4, 'Monza')`); err != nil {
 		t.Fatal(err)
 	}
 	expectStatus(t, call(t, srv, "GET", "/tracks/setups", nil, &setups), 200, "assetti")
@@ -38,10 +38,6 @@ func TestTrackSetups(t *testing.T) {
 		FrontSuspension: 40, RearSuspension: 10, FrontAntiRollBar: 18, RearAntiRollBar: 6, FrontHeight: 20, RearHeight: 45,
 		BrakePressure: 100, BrakeBias: 56, TyrePressures: [4]float64{29.5, 29.4, 26.5, 26.4}, Notes: "Monza",
 	}
-	if s.EngineBraking == nil || *s.EngineBraking != 90 {
-		t.Errorf("freno motore di Monza %v, atteso 90", s.EngineBraking)
-	}
-	s.EngineBraking = nil
 	if s != want {
 		t.Errorf("assetto di Monza %+v, atteso %+v", s, want)
 	}
