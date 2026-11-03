@@ -1,7 +1,7 @@
 import type {
   BackupInfo, LineupTournament, Player, PlayerProfile, Race, RaceType, RaceWithResults, ResultInput, ScoringRules, SessionRaceInput,
   SessionRecord, Settings, SettingsSaved, StandingsResponse, StatsResponse, SystemInfo, Tournament,
-  ReplayFrame, ReplayInfo, RotationState, Track, TrackMap, TrackRecords, UnfinishedDeleted, UpdateStatus,
+  ReplayFrame, ReplayInfo, RotationState, Track, TrackMap, TrackRecords, TrackSetup, UnfinishedDeleted, UpdateStatus,
 } from './types';
 
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
@@ -31,6 +31,7 @@ export const api = {
   tracks: () => request<Track[]>('/tracks'),
   allTrackRecords: () => request<Record<number, TrackRecords>>('/tracks/records'), // solo i circuiti con record
   trackRecords: (trackId: number) => request<TrackRecords>(`/tracks/${trackId}/records`),
+  trackSetups: () => request<Record<number, TrackSetup>>('/tracks/setups'), // solo i circuiti con un assetto
   trackMaps: () => request<Record<number, TrackMap>>('/tracks/maps'), // piante salvate, per id del circuito
   setExcludedTracks: (tracks: number[]) => request<Track[]>('/tracks/excluded', 'PUT', { tracks }),
 

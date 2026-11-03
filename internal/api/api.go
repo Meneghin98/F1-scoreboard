@@ -34,6 +34,7 @@ func New(db *sql.DB, static fs.FS, liveService *live.Service, backups *backup.Ma
 	mux.Handle("GET /api/tracks", s.handle(s.listTracks))
 	mux.Handle("GET /api/tracks/maps", s.handle(s.getTrackMaps))
 	mux.Handle("GET /api/tracks/records", s.handle(s.getAllTrackRecords))
+	mux.Handle("GET /api/tracks/setups", s.handle(s.getTrackSetups))
 	mux.Handle("GET /api/tracks/{id}/records", s.handle(s.getTrackRecords))
 	mux.Handle("PUT /api/tracks/excluded", s.handle(s.setExcludedTracks))
 
