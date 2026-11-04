@@ -275,6 +275,62 @@ func (s *Server) setExcludedTracks(w http.ResponseWriter, r *http.Request) error
 	return s.listTracks(w, r)
 }
 
+// TrackSetup è l'assetto consigliato di un circuito (tabella track_setups,
+// riempita a mano con le migrazioni). I nomi JSON sono quelli dell'assetto
+// della diretta (live.Setup), senza freno motore e carburante.
+type TrackSetup struct {
+	FrontWing        int        `json:"frontWing"`
+	RearWing         int        `json:"rearWing"`
+	OnThrottle       int        `json:"onThrottle"`  // differenziale in accelerazione, %
+	OffThrottle      int        `json:"offThrottle"` // in rilascio, %
+	FrontCamber      float64    `json:"frontCamber"`
+	RearCamber       float64    `json:"rearCamber"`
+	FrontToe         float64    `json:"frontToe"`
+	RearToe          float64    `json:"rearToe"`
+	FrontSuspension  int        `json:"frontSuspension"`
+	RearSuspension   int        `json:"rearSuspension"`
+	FrontAntiRollBar int        `json:"frontAntiRollBar"`
+	RearAntiRollBar  int        `json:"rearAntiRollBar"`
+	FrontHeight      int        `json:"frontHeight"`
+	RearHeight       int        `json:"rearHeight"`
+	BrakePressure    int        `json:"brakePressure"` // %
+	BrakeBias        int        `json:"brakeBias"`     // %
+	TyrePressures    [4]float64 `json:"tyrePressures"` // PSI: ant. sx, ant. dx, post. sx, post. dx
+	Notes            string     `json:"notes"`
+}
+
+// getTrackSetups restituisce gli assetti consigliati, per id del circuito:
+// solo i circuiti che ne hanno uno.
+func (s *Server) getTrackSetups(w http.ResponseWriter, r *http.Request) error {
+	rows, err := s.db.Query(`SELECT track_id, front_wing, rear_wing, on_throttle, off_throttle,
+		front_camber, rear_camber, front_toe, rear_toe,
+		front_suspension, rear_suspension, front_anti_roll_bar, rear_anti_roll_bar, front_height, rear_height,
+		brake_pressure, brake_bias,
+		front_left_pressure, front_right_pressure, rear_left_pressure, rear_right_pressure, notes
+		FROM track_setups`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	setups := map[int]TrackSetup{}
+	for rows.Next() {
+		var id int
+		var t TrackSetup
+		if err := rows.Scan(&id, &t.FrontWing, &t.RearWing, &t.OnThrottle, &t.OffThrottle,
+			&t.FrontCamber, &t.RearCamber, &t.FrontToe, &t.RearToe,
+			&t.FrontSuspension, &t.RearSuspension, &t.FrontAntiRollBar, &t.RearAntiRollBar, &t.FrontHeight, &t.RearHeight,
+			&t.BrakePressure, &t.BrakeBias,
+			&t.TyrePressures[0], &t.TyrePressures[1], &t.TyrePressures[2], &t.TyrePressures[3], &t.Notes); err != nil {
+			return err
+		}
+		setups[id] = t
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	return writeJSON(w, http.StatusOK, setups)
+}
+
 // --- Tornei ---------------------------------------------------------------
 
 func (s *Server) listTournaments(w http.ResponseWriter, r *http.Request) error {

@@ -1,10 +1,11 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { PlayerName } from '../components/NextPair';
 import { TrackOutline } from '../components/TrackMapCard';
+import { TrackSetupDialog } from '../components/TrackSetupDialog';
 import { api } from '../lib/api';
 import { formatLapTime, formatUtcDate } from '../lib/format';
 import { href } from '../lib/route';
-import type { Player, RotationState, Track, TrackMap, TrackRecord, TrackRecords } from '../lib/types';
+import type { Player, RotationState, Track, TrackMap, TrackRecord, TrackRecords, TrackSetup } from '../lib/types';
 import { useLoad } from '../lib/useLoad';
 import { useToast } from '../lib/toast';
 import { Button, Card, ColorDot, cx, fieldSmClass, Loading, Switch } from '../components/ui';
@@ -23,6 +24,8 @@ export function TracksPage() {
   const { data: maps } = useLoad(api.trackMaps, []);
   // Record in gara e in qualifica, in tutti i tornei.
   const { data: records } = useLoad(api.allTrackRecords, []);
+  // Assetti consigliati, inseriti con le migrazioni.
+  const { data: setups } = useLoad(api.trackSetups, []);
 
   function toggleExcluded(track: Track) {
     if (!tracks) return;
@@ -37,7 +40,13 @@ export function TracksPage() {
   return (
     <>
       <PlanCard rotation={rotation} tracks={tracks} maps={maps ?? {}} players={players} onChanged={reloadRotation} />
-      <TracksCard tracks={tracks} maps={maps ?? {}} records={records ?? {}} onToggle={toggleExcluded} />
+      <TracksCard
+        tracks={tracks}
+        maps={maps ?? {}}
+        records={records ?? {}}
+        setups={setups ?? {}}
+        onToggle={toggleExcluded}
+      />
     </>
   );
 }
@@ -144,21 +153,28 @@ function PlanCard({ rotation, tracks, maps, players, onChanged }: {
 }
 
 // Circuiti di F1 25: quelli spenti non vengono mai suggeriti, in nessun torneo.
-function TracksCard({ tracks, maps, records, onToggle }: {
+function TracksCard({ tracks, maps, records, setups, onToggle }: {
   tracks: Track[];
   maps: Record<number, TrackMap>;
   records: Record<number, TrackRecords>;
+  setups: Record<number, TrackSetup>;
   onToggle: (track: Track) => void;
 }) {
   const available = tracks.filter((t) => !t.excluded).length;
+  const withSetup = tracks.filter((t) => setups[t.id]).length;
+  // Circuito di cui è aperto l'assetto.
+  const [setupOf, setSetupOf] = useState<Track | null>(null);
   return (
     <Card>
       <h2 className="font-bold">
-        Circuiti <span className="font-normal text-muted">· {available} di {tracks.length} da giocare</span>
+        Circuiti{' '}
+        <span className="font-normal text-muted">
+          · {available} di {tracks.length} da giocare · {withSetup} con l'assetto consigliato
+        </span>
       </h2>
       <p className="mb-3 text-sm text-muted">
         Spegni le piste che non volete giocare, anche cliccando sul disegno: il programma non le propone più.
-        Sotto ogni pista i record in gara e in qualifica di tutti i tornei.
+        Sotto ogni pista i record in gara e in qualifica di tutti i tornei e, se c'è, l'assetto consigliato.
       </p>
       {/* Una scheda per circuito con il disegno grande, nell'ordine del calendario. */}
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -192,9 +208,22 @@ function TracksCard({ tracks, maps, records, onToggle }: {
                 <RecordRow label="Qualifica" record={records[t.id].qualifying} />
               </dl>
             )}
+            {/* Solo le piste con l'assetto hanno il pulsante, colorato: le altre lo dicono a parole. */}
+            {setups[t.id] ? (
+              <Button size="sm" className="mt-auto" onClick={() => setSetupOf(t)}>
+                Vedi assetto
+              </Button>
+            ) : (
+              <p className="mt-auto flex h-8 items-center justify-center text-xs text-muted">Nessun assetto</p>
+            )}
           </li>
         ))}
       </ul>
+      <TrackSetupDialog
+        track={setupOf?.name ?? ''}
+        setup={setupOf ? (setups[setupOf.id] ?? null) : null}
+        onClose={() => setSetupOf(null)}
+      />
     </Card>
   );
 }

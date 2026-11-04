@@ -528,6 +528,11 @@ export interface TrackRecords {
   qualifying: TrackRecord | null;
 }
 
+// Assetto consigliato di un circuito, inserito a mano con le migrazioni (tabella track_setups).
+export interface TrackSetup extends Omit<CarSetup, 'fuelLoad' | 'engineBraking'> {
+  notes: string; // facoltative, '' se assenti
+}
+
 export interface H2HPlayer {
   id: number;
   name: string;
