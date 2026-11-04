@@ -79,9 +79,26 @@ export function TrackSetupDialog({ track, setup, onClose }: {
               </table>
             </section>
           ))}
-          {setup.notes && <p className="whitespace-pre-line text-muted">{setup.notes}</p>}
+          {setup.notes && <Notes text={setup.notes} />}
         </div>
       )}
     </Dialog>
+  );
+}
+
+// Note dell'assetto, di solito la fonte: i link si aprono in una nuova scheda e vanno a capo dove serve.
+function Notes({ text }: { text: string }) {
+  return (
+    <p className="whitespace-pre-line wrap-anywhere text-muted">
+      {text.split(/(https?:\/\/\S+)/).map((part, i) =>
+        i % 2 === 1 ? (
+          <a key={i} href={part} target="_blank" rel="noreferrer" className="underline hover:text-fg">
+            {part}
+          </a>
+        ) : (
+          part
+        ),
+      )}
+    </p>
   );
 }

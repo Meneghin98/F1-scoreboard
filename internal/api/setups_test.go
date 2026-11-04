@@ -7,17 +7,19 @@ import (
 )
 
 // Gli assetti consigliati arrivano dalle migrazioni: l'API li restituisce per
-// id del circuito, solo per i circuiti che ne hanno uno. Il test non dipende
-// dagli assetti già inseriti: usa Monza, che non ne ha.
+// id del circuito, solo per i circuiti che ne hanno uno. Il test svuota prima
+// la tabella, così non dipende dagli assetti inseriti dalle migrazioni.
 func TestTrackSetups(t *testing.T) {
 	srv, db := newTestServerDB(t)
 
-	var setups map[int]api.TrackSetup
-	expectStatus(t, call(t, srv, "GET", "/tracks/setups", nil, &setups), 200, "assetti delle migrazioni")
-	if _, ok := setups[11]; ok {
-		t.Fatalf("Monza ha già un assetto: il test va spostato su un altro circuito")
+	if _, err := db.Exec("DELETE FROM track_setups"); err != nil {
+		t.Fatal(err)
 	}
-	before := len(setups)
+	var setups map[int]api.TrackSetup
+	expectStatus(t, call(t, srv, "GET", "/tracks/setups", nil, &setups), 200, "assetti senza dati")
+	if len(setups) != 0 {
+		t.Fatalf("assetti %v, attesi nessuno", setups)
+	}
 
 	if _, err := db.Exec(`INSERT INTO track_setups (track_id, front_wing, rear_wing, on_throttle, off_throttle,
 		front_camber, rear_camber, front_toe, rear_toe,
@@ -29,8 +31,8 @@ func TestTrackSetups(t *testing.T) {
 	}
 	expectStatus(t, call(t, srv, "GET", "/tracks/setups", nil, &setups), 200, "assetti")
 	s, ok := setups[11]
-	if len(setups) != before+1 || !ok {
-		t.Fatalf("assetti %v, atteso in più Monza", setups)
+	if len(setups) != 1 || !ok {
+		t.Fatalf("assetti %v, atteso solo Monza", setups)
 	}
 	want := api.TrackSetup{
 		FrontWing: 3, RearWing: 5, OnThrottle: 100, OffThrottle: 60,
